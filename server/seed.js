@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const { initDb, closeDb, saveDb } = require('./database');
 
 const now = Date.now();
@@ -105,3 +106,35 @@ async function seed() {
 }
 
 seed().catch(err => { console.error('Seed failed:', err); process.exit(1); });
+
+
+// ── Fix passwords after seed ──
+const bcryptFix = require('bcryptjs');
+const dbFix = require('./database');
+setTimeout(async () => {
+  try {
+    const db = dbFix.getDb();
+    if (!db) { console.log('DB not ready, skipping password fix'); return; }
+    
+    // Check if password_hash column exists
+    const cols = db.prepare('PRAGMA table_info(users)').all();
+    const hasCol = cols.some(c => c.name === 'password_hash');
+    if (!hasCol) {
+      db.prepare('ALTER TABLE users ADD COLUMN password_hash TEXT').run();
+      db.prepare('ALTER TABLE users ADD COLUMN totp_secret TEXT').run();
+      db.prepare('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0').run();
+    }
+    
+    console.log('  SETTING PASSWORDS...');
+    const hash = await bcryptFix.hash('Seniority2024!', 12);
+    db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE password_hash IS NULL OR password_hash = ?').run(hash, '');
+    const updated = db.prepare('UPDATE users SET password_hash = ? WHERE 1=1').run(hash);
+    dbFix.saveDb();
+    
+    const check = db.prepare('SELECT email, password_hash FROM users').all();
+    check.forEach(u => console.log('  ✓ ' + u.email + ' hash: ' + (u.password_hash ? u.password_hash.substring(0,10) + '...' : 'NULL')));
+    console.log('  ✅ All passwords set to: Seniority2024!');
+  } catch(e) {
+    console.log('  Password fix error:', e.message);
+  }
+}, 2000);

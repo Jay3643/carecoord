@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { getDb, saveDb } = require('../database');
 const { requireAuth, addAudit } = require('../middleware');
 const router = express.Router();
@@ -27,7 +28,7 @@ router.get('/users', requireAuth, requireAdmin, (req, res) => {
   res.json({ users });
 });
 
-router.post('/users', requireAuth, requireAdmin, (req, res) => {
+router.post('/users', requireAuth, requireAdmin, async (req, res) => {
   const db = getDb();
   const { name, email, role, regionIds } = req.body;
   if (!name?.trim() || !email?.trim() || !role) {
@@ -42,6 +43,7 @@ router.post('/users', requireAuth, requireAdmin, (req, res) => {
   const id = 'u-' + uuid().split('-')[0];
   const initials = name.trim().split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
   const tempPassword = crypto.randomBytes(6).toString('hex');
+  const tempHash = tempPassword; // Store unhashed so first login triggers password change
 
   db.prepare('INSERT INTO users (id, name, email, role, avatar, is_active, password_hash) VALUES (?, ?, ?, ?, ?, 1, ?)')
     .run(id, name.trim(), email.trim(), role, initials, tempPassword);
@@ -106,13 +108,13 @@ router.post('/users/:id/reactivate', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
-router.post('/users/:id/reset-password', requireAuth, requireAdmin, (req, res) => {
+router.post('/users/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
   const db = getDb();
   const user = db.prepare('SELECT name FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const tempPassword = crypto.randomBytes(6).toString('hex');
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(tempPassword, req.params.id);
+  db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(tempPassword, req.params.id);
   saveDb();
 
   addAudit(db, req.user.id, 'password_reset', 'user', req.params.id, 'Password reset for: ' + user.name);

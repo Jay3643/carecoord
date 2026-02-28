@@ -14,5 +14,10 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0"
   }
 }

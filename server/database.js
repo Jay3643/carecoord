@@ -74,7 +74,7 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       role TEXT NOT NULL CHECK(role IN ('coordinator','supervisor','admin')),
-      avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT
+      avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT, totp_secret TEXT, totp_enabled INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS user_regions (
       user_id TEXT NOT NULL REFERENCES users(id),

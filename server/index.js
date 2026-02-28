@@ -42,7 +42,7 @@ app.use((err, req, res, next) => {
 });
 
 initDb().then(() => {
-  app.listen(PORT, () => {
+    app.listen(PORT, () => {
     console.log('\n🏥 CareCoord server running on http://localhost:' + PORT);
     console.log('   API: http://localhost:' + PORT + '/api/health\n');
   });

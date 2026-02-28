@@ -1,4 +1,12 @@
-const express = require('express');
+// fix-auth-clean.js
+// Rewrites auth.js from scratch with clean 2FA flow
+
+const fs = require('fs');
+const path = require('path');
+
+const authPath = path.join(__dirname, 'server', 'routes', 'auth.js');
+
+fs.writeFileSync(authPath, `const express = require('express');
 const bcrypt = require('bcryptjs');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
@@ -87,13 +95,13 @@ router.post('/verify-2fa', (req, res) => {
   const codeStr = String(code).trim();
 
   const expected = speakeasy.totp({ secret: secret, encoding: 'base32' });
-  console.log('[2FA-VERIFY] secret:', secret, '| code:', codeStr, '| expected:', expected);
+  console.log('[2FA-VERIFY] code:', codeStr, '| expected:', expected, '| secret:', secret);
 
   const verified = speakeasy.totp.verify({
     secret: secret,
     encoding: 'base32',
     token: codeStr,
-    window: 30,
+    window: 3,
   });
 
   if (!verified) {
@@ -103,6 +111,8 @@ router.post('/verify-2fa', (req, res) => {
   delete req.session.pending2FA;
   completeLogin(req, res, user);
 });
+
+// ── Setup 2FA: Generate secret + QR code ─────────────────────────────────────
 
 router.post('/setup-2fa', async (req, res) => {
   const db = getDb();
@@ -124,23 +134,11 @@ router.post('/setup-2fa', async (req, res) => {
   db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret.base32, userId);
   saveDb();
 
-  // Also store in session so confirm doesn't depend on DB round-trip
-  req.session.setup2faSecret = secret.base32;
-
   const qrUrl = await QRCode.toDataURL(secret.otpauth_url);
-
-  // Debug: generate current valid code so user can verify
-  const currentCode = speakeasy.totp({ secret: secret.base32, encoding: 'base32' });
-  console.log('[2FA-SETUP] secret:', secret.base32);
-  console.log('[2FA-SETUP] otpauth_url:', secret.otpauth_url);
-  console.log('[2FA-SETUP] current valid code:', currentCode);
-  console.log('[2FA-SETUP] server time:', new Date().toISOString());
 
   res.json({
     qrCode: qrUrl,
     manualKey: secret.base32,
-    currentCode: currentCode,
-    serverTime: new Date().toISOString(),
     message: 'Scan the QR code with your authenticator app',
   });
 });
@@ -155,48 +153,40 @@ router.post('/confirm-2fa', (req, res) => {
   }
 
   const userId = req.session.pendingUserId || req.session.userId;
-  const sessionSecret = req.session.setup2faSecret;
-  
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  const dbSecret = toStr(user ? user.totp_secret : null);
+  const secret = toStr(user.totp_secret);
 
-  console.log('[2FA-CONFIRM] session secret:', sessionSecret || 'NONE');
-  console.log('[2FA-CONFIRM] db secret:     ', dbSecret || 'NONE');
-  console.log('[2FA-CONFIRM] same?', sessionSecret === dbSecret);
-
-  // ALWAYS prefer session secret — DB may corrupt it
-  const secret = sessionSecret || dbSecret;
-
-  if (!secret) {
+  if (!user || !secret) {
     return res.status(400).json({ error: 'No 2FA secret found. Run setup first.' });
   }
 
   const codeStr = String(code).trim();
   const expected = speakeasy.totp({ secret: secret, encoding: 'base32' });
 
-  console.log('[2FA-CONFIRM] using secret:  ', secret);
-  console.log('[2FA-CONFIRM] code entered:  ', codeStr);
-  console.log('[2FA-CONFIRM] expected now:  ', expected);
+  console.log('[2FA-CONFIRM] userId:', userId);
+  console.log('[2FA-CONFIRM] secret:', secret);
+  console.log('[2FA-CONFIRM] code entered:', codeStr);
+  console.log('[2FA-CONFIRM] expected now:', expected);
+  console.log('[2FA-CONFIRM] match:', codeStr === expected);
 
   const verified = speakeasy.totp.verify({
     secret: secret,
     encoding: 'base32',
     token: codeStr,
-    window: 30,
+    window: 3,
   });
 
-  console.log('[2FA-CONFIRM] verified:', verified);
+  console.log('[2FA-CONFIRM] speakeasy verified:', verified);
 
   if (!verified) {
     return res.status(401).json({ error: 'Invalid code. Make sure your authenticator is synced and try again.' });
   }
 
-  // Store the KNOWN GOOD secret back to DB and enable
-  db.prepare('UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?').run(secret, userId);
+  db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(userId);
   saveDb();
-  delete req.session.setup2faSecret;
 
   addAudit(db, userId, '2fa_enabled', 'user', userId, '2FA enabled for user');
+
   delete req.session.requireSetup2FA;
   completeLogin(req, res, user);
 });
@@ -293,3 +283,8 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 module.exports = router;
+`, 'utf8');
+
+console.log('✓ server/routes/auth.js — clean rewrite with toStr() everywhere');
+console.log('\nRestart: npm run dev');
+console.log('Login, then watch server terminal for [AUTH], [2FA-SETUP], [2FA-CONFIRM] logs');

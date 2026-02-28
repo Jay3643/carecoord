@@ -16,7 +16,11 @@ async function request(path, options = {}) {
 
 export const api = {
   // Auth
-  login: (userId) => request('/auth/login', { method: 'POST', body: { userId } }),
+  login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
+  verify2fa: (code) => request('/auth/verify-2fa', { method: 'POST', body: { code } }),
+  setup2fa: () => request('/auth/setup-2fa', { method: 'POST' }),
+  confirm2fa: (code) => request('/auth/confirm-2fa', { method: 'POST', body: { code } }),
+  changePassword: (newPassword) => request('/auth/change-password', { method: 'POST', body: { newPassword } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
 
