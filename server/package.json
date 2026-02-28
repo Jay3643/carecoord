@@ -1,0 +1,19 @@
+{
+  "name": "carecoord-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.1",
+    "express-session": "^1.19.0",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "sql.js": "^1.14.0",
+    "uuid": "^10.0.0"
+  }
+}
