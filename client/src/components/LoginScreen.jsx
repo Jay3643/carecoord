@@ -27,7 +27,9 @@ export default function LoginScreen({ onLogin }) {
       if (data.step === '2fa') {
         setStep('2fa');
       } else if (data.step === 'setup_2fa') {
-        await startSetup2fa();
+        setQrCode(data.qrCode);
+        setManualKey(data.secret);
+        setStep('setup_2fa');
       } else if (data.step === 'change_password') {
         setStep('change_password');
       } else if (data.step === 'done') {
@@ -46,7 +48,7 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      const data = await api.verify2fa(code.trim());
+      const data = await api.verify2fa(code.trim(), email.trim().toLowerCase());
       if (data.step === 'done') onLogin(data.user);
     } catch (e) {
       setError(e.message || 'Invalid code');
@@ -75,7 +77,7 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      const data = await api.confirm2fa(code.trim());
+      const data = await api.confirm2fa(code.trim(), email.trim().toLowerCase());
       if (data.step === 'done') onLogin(data.user);
     } catch (e) {
       setError(e.message || 'Invalid code');

@@ -9,6 +9,9 @@ import Dashboard from './components/Dashboard';
 import AuditLog from './components/AuditLog';
 import AdminPanel from './components/AdminPanel';
 import ComposeModal from './components/ComposeModal';
+import PersonalInbox from './components/PersonalInbox';
+import { GmailConnectButton } from './components/GmailPanel';
+import SetupAccount from './components/SetupAccount';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -17,6 +20,8 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
   const [showCompose, setShowCompose] = useState(false);
+  const [showGemini, setShowGemini] = useState(false);
+  const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
   // Reference data (loaded once after login)
@@ -32,13 +37,19 @@ export default function App() {
 
   // Check existing session on mount
   useEffect(() => {
-    api.me()
-      .then(data => {
-        setCurrentUser(data.user);
-        setScreen('regionQueue');
-      })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true));
+    const checkAuth = (retries = 3) => {
+      api.me()
+        .then(data => {
+          setCurrentUser(data.user);
+          setScreen('regionQueue');
+          setAuthChecked(true);
+        })
+        .catch(() => {
+          if (retries > 0) setTimeout(() => checkAuth(retries - 1), 1000);
+          else setAuthChecked(true);
+        });
+    };
+    checkAuth();
   }, []);
 
   // Load reference data after login
@@ -53,10 +64,10 @@ export default function App() {
         setRegions(r.regions);
         setAllUsers(u.users);
         setAllTags(t.tags);
-        setCloseReasons(c.closeReasons);
+        setCloseReasons(c.reasons || c.closeReasons || []);
       }).catch(e => showToast('Error loading reference data'));
     }
-  }, [currentUser, showToast]);
+  }, [currentUser?.id]);
 
   const handleLogin = (user) => {
     setCurrentUser(user);
@@ -81,6 +92,14 @@ export default function App() {
 
   const isSupervisor = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
 
+  const refreshCounts = () => {
+    if (!currentUser) return;
+    api.getTickets({ queue: 'region', status: 'unassigned' })
+      .then(d => setUnassignedCount(d.tickets?.length || 0)).catch(() => {});
+    api.getTickets({ queue: 'personal', status: 'all' })
+      .then(d => setPersonalCount((d.tickets || []).filter(t => t.status !== 'CLOSED').length)).catch(() => {});
+  };
+
   // Unassigned count for sidebar badge
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [personalCount, setPersonalCount] = useState(0);
@@ -96,9 +115,14 @@ export default function App() {
         .catch(() => {});
     };
     fetchCounts();
-    const interval = setInterval(fetchCounts, 15000);
+    const interval = setInterval(fetchCounts, 5000);
     return () => clearInterval(interval);
   }, [currentUser]);
+
+  // Handle /setup route for new user account setup
+  if (window.location.search.includes('token=') && window.location.pathname === '/setup') {
+    return <SetupAccount />;
+  }
 
   if (!authChecked) {
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f7f8', color: '#8a9fb0' }}>Loading...</div>;
@@ -112,12 +136,10 @@ export default function App() {
     <div style={{ display: 'flex', height: '100vh', background: '#f4f7f8', color: '#1e3a4f', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", overflow: 'hidden' }}>
       {/* Sidebar */}
       <aside style={{ width: sidebarCollapsed ? 64 : 240, background: '#f0f4f9', borderRight: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ padding: sidebarCollapsed ? '16px 12px' : '16px 20px', borderBottom: '1px solid #dde8f2', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
+        <div style={{ padding: sidebarCollapsed ? '16px 12px' : '16px 20px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
           {!sidebarCollapsed && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 6, background: 'linear-gradient(135deg, #1a5e9a, #2878b8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="shield" size={14} />
-              </div>
+              
               <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: -0.3, whiteSpace: 'nowrap', color: '#ffffff' }}>Seniority</span>
             </div>
           )}
@@ -148,35 +170,136 @@ export default function App() {
             { key: 'personalQueue', icon: 'user', label: 'My Queue', badge: personalCount, badgeColor: '#1a5e9a' },
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
+            { key: 'personalEmail', icon: 'mail', label: 'Email' },
             ...(currentUser.role === 'admin' ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
-          ].map(item => (
-            <button key={item.key} onClick={() => { setScreen(item.key); setSelectedTicketId(null); }}
+            { key: '_workspace_toggle' },
+            { key: '_workspace_apps' },
+            { key: '_practice_fusion' },
+            { key: '_updox' },
+          ].map(item => {
+            if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
+            if (item.key === '_workspace_toggle') return (
+              <React.Fragment key="_wst">
+                {!sidebarCollapsed ? <div style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />}
+                <button onClick={() => setShowWorkspace(w => !w)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                    borderRadius: 8, border: 'none', background: showWorkspace ? '#102f54' : 'transparent',
+                    color: showWorkspace ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                    width: '100%', textAlign: 'left', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
+                  onMouseEnter={e => { if (!showWorkspace) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; } }}
+                  onMouseLeave={e => { if (!showWorkspace) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; } }}
+                  title="Google Workspace">
+                  <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2" fill={showWorkspace ? '#fff' : '#4285f4'}/><circle cx="12" cy="5" r="2" fill={showWorkspace ? '#fff' : '#ea4335'}/><circle cx="19" cy="5" r="2" fill={showWorkspace ? '#fff' : '#fbbc04'}/><circle cx="5" cy="12" r="2" fill={showWorkspace ? '#fff' : '#34a853'}/><circle cx="12" cy="12" r="2" fill={showWorkspace ? '#fff' : '#4285f4'}/><circle cx="19" cy="12" r="2" fill={showWorkspace ? '#fff' : '#ea4335'}/><circle cx="5" cy="19" r="2" fill={showWorkspace ? '#fff' : '#fbbc04'}/><circle cx="12" cy="19" r="2" fill={showWorkspace ? '#fff' : '#34a853'}/><circle cx="19" cy="19" r="2" fill={showWorkspace ? '#fff' : '#4285f4'}/></svg>
+                  {!sidebarCollapsed && <span>Google Workspace</span>}
+                  {!sidebarCollapsed && <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 'auto', transform: showWorkspace ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}><path d="M7 10l5 5 5-5z"/></svg>}
+                </button>
+              </React.Fragment>
+            );
+            if (item.key === '_workspace_apps') {
+              if (!showWorkspace) return null;
+              const apps = [
+                { label: 'Calendar', url: 'https://calendar.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" fill="#fff" stroke="#4285f4" strokeWidth="1.5"/><rect x="3" y="4" width="18" height="5" rx="2" fill="#4285f4"/><text x="12" y="18" textAnchor="middle" fontSize="9" fontWeight="700" fill="#4285f4" fontFamily="sans-serif">{new Date().getDate()}</text></svg> },
+                { label: 'Drive', url: 'https://drive.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><path d="M8 2l-6 10.5h6L14 2z" fill="#0f9d58"/><path d="M14 2l6 10.5h-6L8 2z" fill="#ffcd40"/><path d="M2 12.5l3 5.5h14l3-5.5z" fill="#4285f4"/></svg> },
+                { label: 'Docs', url: 'https://docs.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2" fill="#4285f4"/><path d="M8 8h8M8 11h8M8 14h5" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+                { label: 'Sheets', url: 'https://sheets.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2" fill="#0f9d58"/><rect x="7" y="7" width="4" height="3" fill="#fff"/><rect x="13" y="7" width="4" height="3" fill="#fff"/><rect x="7" y="12" width="4" height="3" fill="#fff"/><rect x="13" y="12" width="4" height="3" fill="#fff"/></svg> },
+                { label: 'Meet', url: 'https://meet.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" fill="#00897b"/><path d="M16 10l6-4v12l-6-4z" fill="#00897b"/><rect x="5" y="9" width="3" height="2" rx="1" fill="#fff"/><rect x="10" y="9" width="3" height="2" rx="1" fill="#fff"/></svg> },
+                { label: 'Chat', url: 'https://chat.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" fill="#1a73e8"/><path d="M7 8h10M7 12h7" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+                { label: 'Voice', url: 'https://voice.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#0f9d58"/><path d="M15.5 17.5c-3.6 0-6.5-2.9-6.5-6.5 0-.6.4-1 1-1h1.5c.5 0 .9.4 1 .9l.4 1.7c0 .4-.1.7-.3.9l-1.1 1.1c.8 1.5 2 2.7 3.5 3.5l1.1-1.1c.2-.2.6-.3.9-.3l1.7.4c.5.1.9.5.9 1V16c0 .6-.4 1-1 1h-.6z" fill="#fff"/></svg> },
+                { label: 'Gemini', url: 'gemini', icon: <svg width="16" height="16" viewBox="0 0 24 24"><defs><linearGradient id="gmSub" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stopColor="#4285f4"/><stop offset="25%" stopColor="#9b72cb"/><stop offset="50%" stopColor="#d96570"/><stop offset="75%" stopColor="#9b72cb"/><stop offset="100%" stopColor="#4285f4"/></linearGradient></defs><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="url(#gmSub)"/><path d="M12 6l1.5 3.5L17 11l-3.5 1.5L12 16l-1.5-3.5L7 11l3.5-1.5z" fill="#fff"/></svg> },
+              ];
+              return (
+                <div key="_wsa" style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: sidebarCollapsed ? 0 : 12 }}>
+                  {apps.map(a => (
+                    <a key={a.label} href={a.url === 'gemini' ? '#' : a.url} target={a.url === 'gemini' ? undefined : '_blank'} rel="noopener noreferrer"
+                      onClick={a.url === 'gemini' ? (e) => { e.preventDefault(); const w=420,h=window.innerHeight-40,left=window.screenX+window.innerWidth-w-10,top=window.screenY+20; window.open('https://gemini.google.com/app','gemini-ai','width='+w+',height='+h+',left='+left+',top='+top+',menubar=no,toolbar=no,location=yes,scrollbars=yes,resizable=yes'); } : undefined}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '8px 14px' : '8px 12px',
+                        borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                        cursor: 'pointer', fontSize: 12, fontWeight: 400, justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                      title={a.label}>
+                      {a.icon}
+                      {!sidebarCollapsed && <span>{a.label}</span>}
+                    </a>
+                  ))}
+                </div>
+              );
+            }
+            if (item.key === '_updox') return (
+              <a key="_updox" href="https://myupdox.com/ui/html/oauth2/practicefusion.html" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="Updox">
+                <svg width="18" height="18" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#1a3a5c"/><text x="12" y="16.5" textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff" fontFamily="sans-serif">u</text></svg>
+                {!sidebarCollapsed && <span>Updox</span>}
+              </a>
+            );
+            if (item.key === '_practice_fusion') return (
+              <a key="_pf" href="https://www.practicefusion.com/login" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="Practice Fusion">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 2L2 8l0 0 10 6 10-6z" fill="#5bb7db"/><path d="M2 8v8l10 6V16z" fill="#2b6a94"/><path d="M22 8v8l-10 6V16z" fill="#3a8fc5"/></svg>
+                {!sidebarCollapsed && <span>Practice Fusion</span>}
+              </a>
+            );
+            if (item.url) return (
+              <a key={item.key} href={item.url === 'gemini' ? '#' : item.url} target={item.url === 'gemini' ? undefined : '_blank'} rel="noopener noreferrer"
+                onClick={item.url === 'gemini' ? (e) => { e.preventDefault(); const w=420,h=window.innerHeight-40; const left=window.screenX+window.innerWidth-w-10; const top=window.screenY+20; window.open('https://gemini.google.com/app','gemini-ai','width='+w+',height='+h+',left='+left+',top='+top+',menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes'); } : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, border: 'none', textDecoration: 'none',
+                  background: 'transparent',
+                  color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title={item.label}>
+                {item.gIcon || <Icon name={item.icon} size={18} />}
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </a>
+            );
+            return (
+            <button key={item.key} onClick={() => {  setScreen(item.key); setSelectedTicketId(null); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                 borderRadius: 8, border: 'none',
-                background: (screen === item.key || (screen === 'ticketDetail' && item.key === 'regionQueue')) ? '#102f54' : 'transparent',
-                color: screen === item.key ? '#ffffff' : '#a8c8e8',
-                cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left', color: 'inherit',
+                background: (screen === item.key || (screen === 'ticketDetail' && item.key === 'regionQueue') || (item.key === 'gemini' && showGemini)) ? '#102f54' : 'transparent',
+                color: (screen === item.key || (item.key === 'gemini' && showGemini)) ? '#ffffff' : '#143d6b',
+                cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               }} title={item.label}>
-              <Icon name={item.icon} size={18} />
+              {item.gIcon || <Icon name={item.icon} size={18} />}
               {!sidebarCollapsed && <span>{item.label}</span>}
               {!sidebarCollapsed && item.badge > 0 && (
                 <span style={{ marginLeft: 'auto', background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{item.badge}</span>
               )}
             </button>
-          ))}
+            );
+          })}
         </nav>
 
-        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderTop: '1px solid #dde8f2' }}>
+        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderTop: '1px solid #102f54', background: '#143d6b' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: sidebarCollapsed ? 'center' : 'flex-start', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
               <Avatar user={currentUser} size={28} />
               {!sidebarCollapsed && (
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#ffffff' }}>{currentUser.name}</div>
-                  <div style={{ fontSize: 10, color: '#a8c8e8', textTransform: 'capitalize' }}>{currentUser.role}</div>
+                  {!sidebarCollapsed && <GmailConnectButton showToast={showToast} currentUser={currentUser} />}
+                <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#ffffff' }}>{currentUser.name}</div>
+                  <div style={{ fontSize: 10, color: '#ffffff', textTransform: 'capitalize' }}>{currentUser.role}</div>
                 </div>
               )}
             </div>
@@ -189,7 +312,7 @@ export default function App() {
               </button>
             )}
             {sidebarCollapsed && (
-              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', padding: 4 }} title="Log out">
+              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: 4 }} title="Log out">
                 <Icon name="x" size={14} />
               </button>
             )}
@@ -200,10 +323,10 @@ export default function App() {
       {/* Main content */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         {screen === 'regionQueue' && (
-          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} />
+          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'personalQueue' && (
-          <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} />
+          <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'ticketDetail' && selectedTicketId && (
           <TicketDetail
@@ -221,8 +344,13 @@ export default function App() {
         {screen === 'dashboard' && isSupervisor && (
           <Dashboard currentUser={currentUser} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} />
         )}
+        {screen === 'personalEmail' && (
+          <PersonalInbox currentUser={currentUser} showToast={showToast} refreshCounts={refreshCounts} />
+        )}
+        
+        
         {screen === 'admin' && currentUser.role === 'admin' && (
-          <AdminPanel currentUser={currentUser} showToast={showToast} />
+          <AdminPanel currentUser={currentUser} showToast={showToast} regions={regions} />
         )}
         {screen === 'auditLog' && isSupervisor && (
           <AuditLog showToast={showToast} />

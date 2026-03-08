@@ -3,7 +3,125 @@ import { api } from '../api';
 import Icon from './Icons';
 import { Avatar } from './ui';
 
-export default function AdminPanel({ currentUser, showToast }) {
+function InviteSection({ currentUser, showToast, regions }) {
+  const [name, setName] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [role, setRole] = React.useState('coordinator');
+  const [selectedRegions, setSelectedRegions] = React.useState([]);
+  const [invitations, setInvitations] = React.useState([]);
+  const [sending, setSending] = React.useState(false);
+
+  React.useEffect(() => { loadInvitations(); }, []);
+  const loadInvitations = () => {
+    api.getInvitations().then(d => setInvitations(d.invitations || [])).catch(() => {});
+  };
+
+  const sendInvite = async () => {
+    if (!name.trim() || !email.trim()) { showToast('Name and email required'); return; }
+    if (!email.endsWith('@seniorityhealthcare.com')) { showToast('Must be @seniorityhealthcare.com'); return; }
+    if (selectedRegions.length === 0) { showToast('Select at least one region'); return; }
+    setSending(true);
+    try {
+      const d = await api.sendInvite({ name, email: email.toLowerCase(), role, regionIds: selectedRegions });
+      showToast('Invitation sent to ' + email);
+      setName(''); setEmail(''); setSelectedRegions([]);
+      loadInvitations();
+    } catch (e) { showToast(e.message || 'Failed to send'); }
+    setSending(false);
+  };
+
+  const isSupervisor = currentUser.role === 'supervisor';
+  const fmt = (ts) => ts ? new Date(ts).toLocaleDateString() : '-';
+
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e3a4f', marginBottom: 16 }}>Invite New User</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', display: 'block', marginBottom: 4 }}>Full Name</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith"
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', display: 'block', marginBottom: 4 }}>Email</label>
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@seniorityhealthcare.com"
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', display: 'block', marginBottom: 4 }}>Role</label>
+          <select value={role} onChange={e => setRole(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, background: '#fff' }}>
+            <option value="coordinator">Coordinator</option>
+            {!isSupervisor && <option value="supervisor">Supervisor</option>}
+            {!isSupervisor && <option value="admin">Admin</option>}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#5a7a8a', display: 'block', marginBottom: 4 }}>Region(s)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {(regions || []).map(r => (
+              <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedRegions.includes(r.id)}
+                  onChange={e => setSelectedRegions(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))} />
+                {r.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+      <button onClick={sendInvite} disabled={sending}
+        style={{ padding: '10px 24px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: sending ? 0.7 : 1 }}>
+        {sending ? 'Sending...' : 'Send Invitation'}
+      </button>
+
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1e3a4f', margin: '32px 0 12px' }}>Pending Invitations</h3>
+      <div style={{ border: '1px solid #dde8f2', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#f0f4f9' }}>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#5a7a8a', fontWeight: 600 }}>Name</th>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#5a7a8a', fontWeight: 600 }}>Email</th>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#5a7a8a', fontWeight: 600 }}>Role</th>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#5a7a8a', fontWeight: 600 }}>Status</th>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#5a7a8a', fontWeight: 600 }}>Sent</th>
+              <th style={{ padding: '8px 12px', textAlign: 'right', color: '#5a7a8a', fontWeight: 600 }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invitations.map(inv => (
+              <tr key={inv.id} style={{ borderTop: '1px solid #e8f0f8' }}>
+                <td style={{ padding: '8px 12px' }}>{inv.name}</td>
+                <td style={{ padding: '8px 12px', color: '#5a7a8a' }}>{inv.email}</td>
+                <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, background: inv.role === 'admin' ? '#fce4e4' : inv.role === 'supervisor' ? '#e4f0fc' : '#e4fce8', color: inv.role === 'admin' ? '#d94040' : inv.role === 'supervisor' ? '#1a5e9a' : '#2e7d32' }}>{inv.role}</span></td>
+                <td style={{ padding: '8px 12px' }}>
+                  {inv.acceptedAt ? <span style={{ color: '#2e7d32', fontWeight: 600 }}>Accepted</span>
+                    : inv.expired ? <span style={{ color: '#d94040' }}>Expired</span>
+                    : <span style={{ color: '#f59e0b' }}>Pending</span>}
+                </td>
+                <td style={{ padding: '8px 12px', color: '#8a9fb0' }}>{fmt(inv.createdAt)}</td>
+                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                  {!inv.acceptedAt && (
+                    <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                      <button onClick={() => { api.resendInvite(inv.id).then(() => { showToast('Resent'); loadInvitations(); }); }}
+                        style={{ padding: '4px 10px', background: '#e4f0fc', border: '1px solid #c0d0e4', borderRadius: 4, fontSize: 11, cursor: 'pointer', color: '#1a5e9a' }}>Resend</button>
+                      <button onClick={() => { api.revokeInvite(inv.id).then(() => { showToast('Revoked'); loadInvitations(); }); }}
+                        style={{ padding: '4px 10px', background: '#fce4e4', border: '1px solid #e8c0c0', borderRadius: 4, fontSize: 11, cursor: 'pointer', color: '#d94040' }}>Revoke</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {invitations.length === 0 && (
+              <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#8a9fb0' }}>No invitations sent yet</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminPanel({ currentUser, showToast, regions: passedRegions }) {
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [regions, setRegions] = useState([]);
@@ -17,6 +135,7 @@ export default function AdminPanel({ currentUser, showToast }) {
   const [editingUser, setEditingUser] = useState(null);
   const [editingRegion, setEditingRegion] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [workspaceStatus, setWorkspaceStatus] = useState({});
 
   // User form
   const [uName, setUName] = useState('');
@@ -39,6 +158,40 @@ export default function AdminPanel({ currentUser, showToast }) {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Load workspace connection status for all users
+  useEffect(() => {
+    if (currentUser.role !== 'admin') return;
+    users.forEach(u => {
+      api.adminWorkspaceStatus(u.id).then(s => {
+        setWorkspaceStatus(prev => ({ ...prev, [u.id]: s }));
+      }).catch(() => {});
+    });
+  }, [users]);
+
+  const connectWorkspace = async (userId) => {
+    try {
+      const data = await api.adminConnectWorkspace(userId);
+      const w = window.open(data.authUrl, 'gmail-auth-' + userId, 'width=500,height=600');
+      const check = setInterval(() => {
+        if (w?.closed) {
+          clearInterval(check);
+          api.adminWorkspaceStatus(userId).then(s => {
+            setWorkspaceStatus(prev => ({ ...prev, [userId]: s }));
+            if (s.connected) showToast('Workspace connected for ' + s.email);
+          });
+        }
+      }, 500);
+    } catch (e) { showToast(e.message); }
+  };
+
+  const disconnectWorkspace = async (userId) => {
+    try {
+      await api.adminDisconnectWorkspace(userId);
+      setWorkspaceStatus(prev => ({ ...prev, [userId]: { connected: false, email: null } }));
+      showToast('Workspace disconnected');
+    } catch (e) { showToast(e.message); }
+  };
 
   // ── User actions ───────────────────────────────────────────────────────────
 
@@ -165,7 +318,7 @@ export default function AdminPanel({ currentUser, showToast }) {
           <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>Administration</h1>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#dde8f2', borderRadius: 8, padding: 3, border: '1px solid #c0d0e4', width: 'fit-content' }}>
-          {['users', 'regions'].map(t => (
+          {['users', 'invitations', 'regions'].map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: tab === t ? '#1a5e9a' : 'transparent', color: tab === t ? '#fff' : '#5a7a8a', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
               {t}
@@ -178,6 +331,11 @@ export default function AdminPanel({ currentUser, showToast }) {
       <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {loading && <div style={{ color: '#8a9fb0', textAlign: 'center', marginTop: 40 }}>Loading...</div>}
 
+        {/* ── INVITATIONS TAB ── */}
+        {!loading && tab === 'invitations' && (
+          <InviteSection currentUser={currentUser} showToast={showToast} regions={passedRegions || regions} />
+        )}
+
         {/* ── USERS TAB ── */}
         {!loading && tab === 'users' && (
           <div>
@@ -189,9 +347,7 @@ export default function AdminPanel({ currentUser, showToast }) {
                   Show inactive
                 </label>
               </div>
-              <button onClick={openNewUser} style={s.btn('#1a5e9a', '#fff')}>
-                + Add User
-              </button>
+              
             </div>
 
             {filteredUsers.map(u => (
@@ -216,6 +372,20 @@ export default function AdminPanel({ currentUser, showToast }) {
                     <>
                       <button onClick={() => openEditUser(u)} style={s.btnOutline}>Edit</button>
                       <button onClick={() => setShowRegionAssign(u)} style={s.btnOutline}>Regions</button>
+                      {currentUser.role === 'admin' && (
+                        workspaceStatus[u.id]?.connected ? (
+                          <button onClick={() => disconnectWorkspace(u.id)}
+                            style={{ ...s.btnOutline, color: '#2e7d32', borderColor: '#2e7d3240', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} />
+                            {workspaceStatus[u.id]?.email ? workspaceStatus[u.id].email.split('@')[0] : 'Connected'}
+                          </button>
+                        ) : (
+                          <button onClick={() => connectWorkspace(u.id)}
+                            style={{ ...s.btnOutline, color: '#1a73e8', borderColor: '#1a73e840' }}>
+                            Connect Workspace
+                          </button>
+                        )
+                      )}
                       <button onClick={() => resetPassword(u)} style={{ ...s.btnOutline, color: '#c9963b', borderColor: '#c9963b40' }}>Reset PW</button>
                       {u.id !== currentUser.id && (
                         <button onClick={() => deleteUser(u)} style={{ ...s.btnOutline, color: '#d94040', borderColor: '#d9404040' }}>Deactivate</button>

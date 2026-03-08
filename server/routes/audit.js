@@ -1,36 +1,36 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { requireAuth, requireSupervisor } = require('../middleware');
-
+const { requireAuth } = require('../middleware');
 const router = express.Router();
 
-// GET /api/audit
-router.get('/', requireAuth, requireSupervisor, (req, res) => {
-  const db = getDb();
-  const { filter, limit = 200 } = req.query;
-
-  let sql = `
-    SELECT a.*, u.name as actor_name, u.avatar as actor_avatar
-    FROM audit_log a
-    LEFT JOIN users u ON u.id = a.actor_user_id
-  `;
-  const params = [];
-
-  if (filter && filter !== 'all') {
-    sql += ' WHERE a.action_type = ?';
-    params.push(filter);
+router.get('/', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit) || 50;
+    const type = req.query.type;
+    let sql = 'SELECT a.*, u.name as actor_name, u.avatar as actor_avatar FROM audit_log a LEFT JOIN users u ON u.id = a.actor_user_id';
+    const params = [];
+    if (type && type !== 'all') { sql += ' WHERE a.action_type = ?'; params.push(type); }
+    sql += ' ORDER BY a.ts DESC LIMIT ?';
+    params.push(limit);
+    const rows = db.prepare(sql).all(...params);
+    const entries = rows.map(r => ({
+      id: r.id,
+      actor_user_id: r.actor_user_id,
+      actor_name: r.actor_name || 'System',
+      actor_avatar: r.actor_avatar || null,
+      action_type: r.action_type,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      detail: r.detail,
+      ts: r.ts,
+    }));
+    const actionTypes = [...new Set(entries.map(e => e.action_type).filter(Boolean))];
+    res.json({ entries, actionTypes });
+  } catch (err) {
+    console.error('[Audit]', err.message);
+    res.json({ entries: [], actionTypes: [] });
   }
-
-  sql += ' ORDER BY a.ts DESC LIMIT ?';
-  params.push(parseInt(limit));
-
-  const entries = db.prepare(sql).all(...params);
-
-  // Get unique action types for filter dropdown
-  const actionTypes = db.prepare('SELECT DISTINCT action_type FROM audit_log ORDER BY action_type').all()
-    .map(r => r.action_type);
-
-  res.json({ entries, actionTypes });
 });
 
 module.exports = router;

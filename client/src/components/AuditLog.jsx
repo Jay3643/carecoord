@@ -44,7 +44,7 @@ export default function AuditLog({ showToast }) {
             <div style={{ width: 100, fontSize: 10, color: '#6b8299', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>
               {fmt.full(entry.ts)}
             </div>
-            {entry.actor_name ? (
+            {entry.actor_user_id ? (
               <Avatar user={{ id: entry.actor_user_id, name: entry.actor_name, avatar: entry.actor_avatar }} size={22} />
             ) : (
               <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#c0d0e4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

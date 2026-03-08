@@ -100,41 +100,26 @@ async function seed() {
   ].forEach(a => iA.run(...a));
 
   saveDb();
-  console.log('\n✅ Database seeded successfully');
+
+
+
+    
+    // Create gmail_tokens table
+    db.prepare('CREATE TABLE IF NOT EXISTS gmail_tokens (id TEXT PRIMARY KEY, user_id TEXT, access_token TEXT, refresh_token TEXT, expiry_date INTEGER, email TEXT)').run();
+
+    // Hash all passwords
+    const pwHash = require('bcryptjs').hashSync('Seniority2024!', 12);
+    const allUsers = db.prepare('SELECT id FROM users').all();
+    for (const u of allUsers) {
+      db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(pwHash, u.id);
+    }
+    saveDb();
+    console.log('   Passwords set for ' + allUsers.length + ' users (Seniority2024!)');
+
+    console.log('\n✅ Database seeded successfully');
   console.log('   4 regions, 7 users, 10 tickets, 16 messages, 4 notes, 5 audit entries\n');
   closeDb();
 }
 
 seed().catch(err => { console.error('Seed failed:', err); process.exit(1); });
 
-
-// ── Fix passwords after seed ──
-const bcryptFix = require('bcryptjs');
-const dbFix = require('./database');
-setTimeout(async () => {
-  try {
-    const db = dbFix.getDb();
-    if (!db) { console.log('DB not ready, skipping password fix'); return; }
-    
-    // Check if password_hash column exists
-    const cols = db.prepare('PRAGMA table_info(users)').all();
-    const hasCol = cols.some(c => c.name === 'password_hash');
-    if (!hasCol) {
-      db.prepare('ALTER TABLE users ADD COLUMN password_hash TEXT').run();
-      db.prepare('ALTER TABLE users ADD COLUMN totp_secret TEXT').run();
-      db.prepare('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0').run();
-    }
-    
-    console.log('  SETTING PASSWORDS...');
-    const hash = await bcryptFix.hash('Seniority2024!', 12);
-    db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE password_hash IS NULL OR password_hash = ?').run(hash, '');
-    const updated = db.prepare('UPDATE users SET password_hash = ? WHERE 1=1').run(hash);
-    dbFix.saveDb();
-    
-    const check = db.prepare('SELECT email, password_hash FROM users').all();
-    check.forEach(u => console.log('  ✓ ' + u.email + ' hash: ' + (u.password_hash ? u.password_hash.substring(0,10) + '...' : 'NULL')));
-    console.log('  ✅ All passwords set to: Seniority2024!');
-  } catch(e) {
-    console.log('  Password fix error:', e.message);
-  }
-}, 2000);

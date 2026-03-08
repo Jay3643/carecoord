@@ -4,6 +4,14 @@ import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
 
+function MessageBody({ text }) {
+  if (!text) return null;
+  if (text.includes('<div') || text.includes('<p') || text.includes('<br')) {
+    return <div dangerouslySetInnerHTML={{ __html: text }} style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', wordBreak: 'break-word', overflow: 'hidden' }} />;
+  }
+  return <div style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', whiteSpace: 'pre-wrap' }}>{text}</div>;
+}
+
 export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, showToast }) {
   const [ticket, setTicket] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -189,7 +197,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                     <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a5e9a', background: '#1a5e9a18', padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>Inbound</span>
                   </div>
                   <div style={{ marginLeft: 36, padding: '14px 18px', background: '#dde8f2', borderRadius: '4px 12px 12px 12px', border: '1px solid #c0d0e4', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
-                    {m.body_text}
+                    <MessageBody text={m.body_text} />
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div style={{ marginTop: 8, borderTop: '1px solid #c0d0e4', paddingTop: 8 }}>
+                        {m.attachments.map(att => (
+                          <a key={att.id} href={'/api/tickets/' + ticket.id + '/attachments/' + att.id + '/download'} target="_blank" rel="noopener"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#c8d8ec', borderRadius: 6, color: '#1a5e9a', fontSize: 11, fontWeight: 600, textDecoration: 'none', marginRight: 6, marginBottom: 4 }}>
+                            <Icon name="file" size={12} />
+                            {att.filename}
+                            {att.size ? ' (' + (att.size > 1024*1024 ? (att.size/1024/1024).toFixed(1)+'MB' : (att.size/1024).toFixed(0)+'KB') + ')' : ''}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -204,7 +224,18 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                     {m.sender && <Avatar user={m.sender} size={24} />}
                   </div>
                   <div style={{ padding: '14px 18px', background: '#e8f0f8', borderRadius: '12px 4px 12px 12px', border: '1px solid #a8c0dc', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
-                    {m.body_text}
+                    <MessageBody text={m.body_text} />
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div style={{ marginTop: 8, borderTop: '1px solid #a8c0dc', paddingTop: 8 }}>
+                        {m.attachments.map(att => (
+                          <a key={att.id} href={'/api/tickets/' + ticket.id + '/attachments/' + att.id + '/download'} target="_blank" rel="noopener"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#d0e0f0', borderRadius: 6, color: '#1a5e9a', fontSize: 11, fontWeight: 600, textDecoration: 'none', marginRight: 6, marginBottom: 4 }}>
+                            <Icon name="file" size={12} />
+                            {att.filename}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -318,6 +349,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   <button onClick={() => handleStatusChange('WAITING_ON_EXTERNAL')} style={{ padding: '6px 12px', background: '#dde8f2', color: '#c9963b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Set Waiting</button>
                 )}
                 <button onClick={() => setShowCloseModal(true)} style={{ padding: '6px 12px', background: '#dde8f2', color: '#d94040', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Close</button>
+                {isSupervisor && (
+                  <button onClick={async () => { try { await api.pullFromQueue(ticketId); showToast('Returned to inbox'); onBack(); } catch(e) { showToast(e.message); } }}
+                    style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Pull from Queue</button>
+                )}
               </>
             )}
             {ticket.status === 'CLOSED' && isSupervisor && (

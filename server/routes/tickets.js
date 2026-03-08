@@ -1,11 +1,22 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { getDb, saveDb } = require('../database');
-const { requireAuth, requireSupervisor, addAudit } = require('../middleware');
+const { requireAuth, requireSupervisor, addAudit, toStr } = require('../middleware');
+const { google } = require('googleapis');
 const router = express.Router();
+
+function sanitize(obj) {
+  if (!obj) return obj;
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v instanceof Uint8Array || (v && typeof v === 'object' && v.constructor && v.constructor.name === 'Uint8Array')) obj[k] = Buffer.from(v).toString('utf8');
+  }
+  return obj;
+}
 
 function enrichTicket(db, ticket) {
   if (!ticket) return null;
+  sanitize(ticket);
   ticket.external_participants = JSON.parse(ticket.external_participants || '[]');
   const tags = db.prepare('SELECT t.* FROM tags t JOIN ticket_tags tt ON tt.tag_id = t.id WHERE tt.ticket_id = ?').all(ticket.id);
   ticket.tags = tags;
@@ -17,7 +28,7 @@ function enrichTicket(db, ticket) {
 }
 
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   const db = getDb();
   const { toEmail, subject, body, regionId, tagIds } = req.body;
   if (!toEmail?.trim() || !subject?.trim() || !body?.trim() || !regionId) {
@@ -55,6 +66,37 @@ router.post('/', requireAuth, (req, res) => {
   addAudit(db, req.user.id, 'ticket_created', 'ticket', ticketId, 'Outbound ticket created: ' + subject);
   addAudit(db, req.user.id, 'outbound_sent', 'message', msgId, 'Initial message sent to ' + toEmail.trim());
 
+  // Actually send via Gmail
+  try {
+    const tokenRow = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
+    if (tokenRow) {
+      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+      oauth2.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token, expiry_date: tokenRow.expiry_date });
+      const gm = google.gmail({ version: 'v1', auth: oauth2 });
+      const senderEmail = tokenRow.email || fromAddr;
+      const emailLines = [
+        'From: ' + senderEmail,
+        'To: ' + toEmail.trim(),
+        'Subject: ' + subject,
+        'Content-Type: text/plain; charset=utf-8',
+        'MIME-Version: 1.0',
+        '',
+        fullBody,
+      ];
+      const raw = Buffer.from(emailLines.join(String.fromCharCode(13,10))).toString('base64url');
+      const sent = await gm.users.messages.send({ userId: 'me', requestBody: { raw } });
+      console.log('[Gmail] New message sent to', toEmail.trim(), 'threadId:', sent.data.threadId, 'msgId:', sent.data.id);
+      // Save Gmail IDs back to the outbound message
+      db.prepare('UPDATE messages SET gmail_message_id = ?, gmail_thread_id = ?, gmail_user_id = ? WHERE id = ?')
+        .run(sent.data.id, sent.data.threadId, req.user.id, msgId);
+      saveDb();
+    } else {
+      console.log('[Gmail] No token — message saved but not sent');
+    }
+  } catch (gmailErr) {
+    console.error('[Gmail] Send failed:', gmailErr.message);
+  }
+
   const ticket = enrichTicket(db, db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId));
   res.json({ ticket });
 });
@@ -64,17 +106,77 @@ router.get('/', requireAuth, (req, res) => {
   const { queue, region, status, search } = req.query;
   let where = [], params = [];
   if (queue === 'personal') { where.push('t.assignee_user_id = ?'); params.push(req.user.id); }
-  else { const ph = req.user.regionIds.map(() => '?').join(','); where.push('t.region_id IN (' + ph + ')'); params.push(...req.user.regionIds); }
+  else { const rids = req.user.regionIds || []; if (rids.length) { const ph = rids.map(() => '?').join(','); where.push('t.region_id IN (' + ph + ')'); params.push(...rids); } else { where.push('1=0'); } }
   if (region && region !== 'all') { where.push('t.region_id = ?'); params.push(region); }
   if (status === 'unassigned') { where.push("t.assignee_user_id IS NULL AND t.status != ?"); params.push('CLOSED'); }
   else if (status === 'open') where.push("t.status = 'OPEN'");
   else if (status === 'waiting') where.push("t.status = 'WAITING_ON_EXTERNAL'");
   else if (status === 'closed') where.push("t.status = 'CLOSED'");
-  else where.push("t.status != 'CLOSED'");
+  else if (status !== 'all') where.push("t.status != 'CLOSED'");
   if (search) { where.push('(t.subject LIKE ? OR t.external_participants LIKE ? OR t.id LIKE ?)'); const q = '%' + search + '%'; params.push(q, q, q); }
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const tickets = db.prepare('SELECT t.* FROM tickets t ' + wc + ' ORDER BY t.last_activity_at DESC').all(...params);
   res.json({ tickets: tickets.map(t => enrichTicket(db, t)) });
+});
+
+// ── Bird's Eye Dashboard ──
+router.get('/birds-eye', requireAuth, (req, res) => {
+  if (req.user.role !== 'supervisor' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Supervisor access required' });
+  }
+  const db = getDb();
+
+  // All open tickets with details
+  const allTickets = db.prepare(`
+    SELECT t.*, 
+      (SELECT body_text FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
+    FROM tickets t WHERE t.status != 'CLOSED'
+    ORDER BY t.last_activity_at DESC
+  `).all();
+
+  const now = Date.now();
+  const tickets = allTickets.map(t => {
+    const age = now - (t.created_at || now);
+    const lastActivity = now - (t.last_activity_at || now);
+    const assignee = t.assignee_user_id ? db.prepare('SELECT id,name,email,role FROM users WHERE id=?').get(t.assignee_user_id) : null;
+    const region = t.region_id ? db.prepare('SELECT id,name FROM regions WHERE id=?').get(t.region_id) : null;
+    return {
+      id: toStr(t.id), subject: toStr(t.subject), status: toStr(t.status),
+      fromEmail: toStr(t.from_email), createdAt: t.created_at, lastActivityAt: t.last_activity_at,
+      hasUnread: !!t.has_unread, ageMs: age, lastActivityMs: lastActivity,
+      aging: lastActivity > 86400000 ? '24h+' : lastActivity > 14400000 ? '4h+' : lastActivity > 3600000 ? '1h+' : 'fresh',
+      assignee: assignee ? { id: toStr(assignee.id), name: toStr(assignee.name) } : null,
+      region: region ? { id: toStr(region.id), name: toStr(region.name) } : null,
+    };
+  });
+
+  // Coordinator stats
+  const coordinators = db.prepare("SELECT id,name,email,role FROM users WHERE role='coordinator' AND is_active=1").all();
+  const coordStats = coordinators.map(c => {
+    const open = db.prepare("SELECT COUNT(*) as n FROM tickets WHERE assignee_user_id=? AND status!='CLOSED'").get(c.id);
+    const lastActive = db.prepare("SELECT MAX(last_activity_at) as t FROM tickets WHERE assignee_user_id=?").get(c.id);
+    // Check if user has an active session (online indicator)
+    const session = db.prepare("SELECT 1 FROM sessions WHERE user_id=? AND expires > ?").get(c.id, now);
+    return {
+      id: toStr(c.id), name: toStr(c.name), email: toStr(c.email),
+      openTickets: open?.n || 0,
+      lastActive: lastActive?.t || 0,
+      isOnline: !!session,
+    };
+  });
+
+  // Region stats
+  const regions = db.prepare("SELECT id,name FROM regions WHERE is_active=1").all();
+  const regionStats = regions.map(r => {
+    const total = db.prepare("SELECT COUNT(*) as n FROM tickets WHERE region_id=? AND status!='CLOSED'").get(r.id);
+    const unassigned = db.prepare("SELECT COUNT(*) as n FROM tickets WHERE region_id=? AND assignee_user_id IS NULL AND status!='CLOSED'").get(r.id);
+    return {
+      id: toStr(r.id), name: toStr(r.name),
+      totalOpen: total?.n || 0, unassigned: unassigned?.n || 0,
+    };
+  });
+
+  res.json({ tickets, coordinators: coordStats, regions: regionStats });
 });
 
 router.get('/:id', requireAuth, (req, res) => {
@@ -93,6 +195,11 @@ router.get('/:id/messages', requireAuth, (req, res) => {
     m.reference_ids = JSON.parse(m.reference_ids || '[]');
     if (m.created_by_user_id) m.sender = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(m.created_by_user_id);
   });
+  // Add attachments to each message
+  messages.forEach(m => {
+    m.attachments = db.prepare('SELECT id, filename, mime_type, size FROM attachments WHERE message_id = ?').all(m.id);
+  });
+  // Also get ticket-level attachments
   res.json({ messages });
 });
 
@@ -131,7 +238,7 @@ router.post('/:id/status', requireAuth, (req, res) => {
   res.json({ ticket: enrichTicket(db, db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id)) });
 });
 
-router.post('/:id/reply', requireAuth, (req, res) => {
+router.post('/:id/reply', requireAuth, async (req, res) => {
   const db = getDb();
   const { body } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'Body required' });
@@ -150,6 +257,46 @@ router.post('/:id/reply', requireAuth, (req, res) => {
     .run(msgId, req.params.id, fromAddr, JSON.stringify(extP), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), lastIn?.provider_message_id || null, JSON.stringify(refs), req.user.id, Date.now());
   db.prepare("UPDATE tickets SET status = 'WAITING_ON_EXTERNAL', last_activity_at = ?, has_unread = 0 WHERE id = ?").run(Date.now(), req.params.id);
   saveDb();
+
+  // Actually send via Gmail
+  try {
+    const tokenRow = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
+    if (tokenRow) {
+      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+      oauth2.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token, expiry_date: tokenRow.expiry_date });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2 });
+
+      const toAddr = extP[0] || '';
+      const subject = 'Re: ' + ticket.subject;
+      const replyTo = lastIn?.provider_message_id || '';
+
+      // Build RFC 2822 email
+      const senderEmail = tokenRow.email || fromAddr;
+      const emailLines = [
+        'From: ' + senderEmail,
+        'To: ' + toAddr,
+        'Subject: ' + subject,
+        'Content-Type: text/plain; charset=utf-8',
+        'MIME-Version: 1.0',
+      ];
+      if (replyTo) {
+        emailLines.push('In-Reply-To: <' + replyTo + '>');
+        emailLines.push('References: <' + replyTo + '>');
+      }
+      emailLines.push('');
+      emailLines.push(fullBody);
+
+      const raw = Buffer.from(emailLines.join(String.fromCharCode(13,10))).toString('base64url');
+      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      console.log('[Gmail] Reply sent to', toAddr);
+    } else {
+      console.log('[Gmail] No token for user', req.user.id, '— message saved but not sent');
+    }
+  } catch (gmailErr) {
+    console.error('[Gmail] Send failed:', gmailErr.message);
+    // Message is still saved in DB, just not sent via Gmail
+  }
+
   addAudit(db, req.user.id, 'outbound_sent', 'message', msgId, 'Reply sent to ' + extP[0]);
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   message.to_addresses = JSON.parse(message.to_addresses);
@@ -203,5 +350,22 @@ router.post('/bulk/reassign', requireAuth, requireSupervisor, (req, res) => {
   addAudit(db, req.user.id, 'bulk_reassign', 'user', fromUserId, affected.length + ' tickets from ' + fromUser.name + ' -> ' + (toUser ? toUser.name : 'region queue'));
   res.json({ reassigned: affected.length });
 });
+
+router.get('/:id/attachments', requireAuth, (req, res) => {
+  const db = getDb();
+  const atts = db.prepare('SELECT id, filename, mime_type, size FROM attachments WHERE ticket_id = ?').all(req.params.id);
+  res.json({ attachments: atts });
+});
+
+router.get('/:ticketId/attachments/:attId/download', requireAuth, (req, res) => {
+  const db = getDb();
+  const att = db.prepare('SELECT * FROM attachments WHERE id = ? AND ticket_id = ?').get(req.params.attId, req.params.ticketId);
+  if (!att) return res.status(404).json({ error: 'Not found' });
+  const buf = Buffer.from(att.data, 'base64');
+  res.set('Content-Type', att.mime_type || 'application/octet-stream');
+  res.set('Content-Disposition', 'attachment; filename="' + att.filename + '"');
+  res.send(buf);
+});
+
 
 module.exports = router;
