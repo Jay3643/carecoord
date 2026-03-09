@@ -28,7 +28,7 @@ async function initDb() {
   }
   const r = s => rawDb.run(s);
   r('CREATE TABLE IF NOT EXISTS regions (id TEXT PRIMARY KEY, name TEXT, routing_aliases TEXT, is_active INTEGER DEFAULT 1)');
-  r('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT UNIQUE, role TEXT, avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT, totp_secret TEXT, totp_enabled INTEGER DEFAULT 0)');
+  r('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT UNIQUE, role TEXT, avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT, totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, created_at INTEGER)');
   r('CREATE TABLE IF NOT EXISTS user_regions (user_id TEXT, region_id TEXT, PRIMARY KEY(user_id, region_id))');
   r('CREATE TABLE IF NOT EXISTS close_reasons (id TEXT PRIMARY KEY, label TEXT, requires_comment INTEGER DEFAULT 0)');
   r('CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT)');
@@ -44,7 +44,7 @@ async function initDb() {
   try { r('CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_gmail_id ON messages(gmail_message_id)'); } catch(e) {}
   r('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
   r('CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, region_ids TEXT, token TEXT UNIQUE NOT NULL, invited_by TEXT, created_at INTEGER, expires_at INTEGER, accepted_at INTEGER)');
-  r('CREATE TABLE IF NOT EXISTS email_sync_state (user_id TEXT PRIMARY KEY, last_history_id TEXT, last_sync_at INTEGER)');
+  r('CREATE TABLE IF NOT EXISTS email_sync_state (user_id TEXT PRIMARY KEY, last_sync_at INTEGER DEFAULT 0, sync_start_date TEXT)');
   saveDb();
   return { exec: s => rawDb.exec(s), prepare: s => wrap(s), run: (s, p) => rawDb.run(s, p || []) };
 }
