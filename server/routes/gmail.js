@@ -18,8 +18,13 @@ function putTokens(uid, t, email) {
 }
 // ── Service Account with Domain-Wide Delegation ──
 let serviceAccountKey = null;
-try { serviceAccountKey = JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'service-account.json'), 'utf8')); console.log('[SA] Service account loaded:', serviceAccountKey.client_email); }
-catch(e) { console.log('[SA] No service-account.json found — using OAuth tokens only'); }
+if (process.env.GOOGLE_SERVICE_ACCOUNT) {
+  try { serviceAccountKey = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT); console.log('[SA] Service account loaded from env:', serviceAccountKey.client_email); }
+  catch(e) { console.log('[SA] Failed to parse GOOGLE_SERVICE_ACCOUNT env:', e.message); }
+} else {
+  try { serviceAccountKey = JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'service-account.json'), 'utf8')); console.log('[SA] Service account loaded from file:', serviceAccountKey.client_email); }
+  catch(e) { console.log('[SA] No service account found'); }
+}
 
 function getServiceAuth(userEmail) {
   if (!serviceAccountKey) return null;
