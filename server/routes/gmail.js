@@ -19,7 +19,7 @@ function putTokens(uid, t, email) {
 // ── Service Account with Domain-Wide Delegation ──
 let serviceAccountKey = null;
 if (process.env.GOOGLE_SERVICE_ACCOUNT_B64) {
-  try { serviceAccountKey = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_B64, 'base64').toString('utf8')); console.log('[SA] Service account loaded from env (b64):', serviceAccountKey.client_email); }
+try { serviceAccountKey = JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_B64, 'base64').toString('utf8')); if (serviceAccountKey.private_key) serviceAccountKey.private_key = serviceAccountKey.private_key.replace(/\\n/g, '\n'); console.log('[SA] Service account loaded from env (b64):', serviceAccountKey.client_email); }
   catch(e) { console.log('[SA] Failed to parse GOOGLE_SERVICE_ACCOUNT_B64:', e.message); }
 } else if (process.env.GOOGLE_SERVICE_ACCOUNT) {
   try { serviceAccountKey = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT); console.log('[SA] Service account loaded from env:', serviceAccountKey.client_email); }
