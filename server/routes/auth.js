@@ -7,6 +7,18 @@ const { getDb, saveDb } = require('../database');
 const { requireAuth } = require('../middleware');
 const router = express.Router();
 
+function getServiceAuth(email) {
+  const { google } = require('googleapis');
+  let key = null;
+  if (process.env.SA_CLIENT_EMAIL && process.env.SA_PRIVATE_KEY) {
+    key = { client_email: process.env.SA_CLIENT_EMAIL, private_key: process.env.SA_PRIVATE_KEY };
+  } else {
+    try { key = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'service-account.json'), 'utf8')); } catch(e) {}
+  }
+  if (!key) return null;
+  return new google.auth.JWT({ email: key.client_email, key: key.private_key, scopes: ['https://www.googleapis.com/auth/gmail.send'], subject: email });
+}
+
 function toStr(v) { if (v instanceof Uint8Array) return Buffer.from(v).toString('utf8'); return v == null ? null : String(v); }
 
 function setSession(res, userId) {
@@ -279,14 +291,21 @@ router.post('/invite', requireAuth, async (req, res) => {
 
   try {
     const { google } = require('googleapis');
-    const gmailTokens = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
-    if (gmailTokens) {
-      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
-      oauth2.setCredentials({ access_token: toStr(gmailTokens.access_token), refresh_token: toStr(gmailTokens.refresh_token) });
-      const gm = google.gmail({ version: 'v1', auth: oauth2 });
+    const senderEmail = toStr(req.user.email) || 'drhopkins@seniorityhealthcare.com';
+    const saAuth = getServiceAuth(senderEmail);
+    const gmailTokens = !saAuth ? db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id) : null;
+    if (saAuth || gmailTokens) {
+      let gm;
+      if (saAuth) {
+        gm = google.gmail({ version: 'v1', auth: saAuth });
+      } else {
+        const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+        oauth2.setCredentials({ access_token: toStr(gmailTokens.access_token), refresh_token: toStr(gmailTokens.refresh_token) });
+        gm = google.gmail({ version: 'v1', auth: oauth2 });
+      }
 
       const emailBody = [
-        'From: ' + toStr(gmailTokens.email),
+        'From: ' + senderEmail,
         'To: ' + email,
         'Subject: You\'re invited to CareCoord',
         'Content-Type: text/html; charset=utf-8',
@@ -309,7 +328,7 @@ router.post('/invite', requireAuth, async (req, res) => {
       await gm.users.messages.send({ userId: 'me', requestBody: { raw } });
       console.log('[Invite] Email sent to', email);
     } else {
-      console.log('[Invite] No Gmail tokens — invite created but email not sent');
+      console.log('[Invite] No auth available — invite created but email not sent');
     }
   } catch (e) {
     console.log('[Invite] Email send failed:', e.message);
@@ -433,13 +452,20 @@ router.post('/invite/:id/resend', requireAuth, async (req, res) => {
   
   try {
     const { google } = require('googleapis');
-    const gmailTokens = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
-    if (gmailTokens) {
-      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
-      oauth2.setCredentials({ access_token: toStr(gmailTokens.access_token), refresh_token: toStr(gmailTokens.refresh_token) });
-      const gm = google.gmail({ version: 'v1', auth: oauth2 });
+    const senderEmail2 = toStr(req.user.email) || 'drhopkins@seniorityhealthcare.com';
+    const saAuth2 = getServiceAuth(senderEmail2);
+    const gmailTokens = !saAuth2 ? db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id) : null;
+    if (saAuth2 || gmailTokens) {
+      let gm;
+      if (saAuth2) {
+        gm = google.gmail({ version: 'v1', auth: saAuth2 });
+      } else {
+        const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+        oauth2.setCredentials({ access_token: toStr(gmailTokens.access_token), refresh_token: toStr(gmailTokens.refresh_token) });
+        gm = google.gmail({ version: 'v1', auth: oauth2 });
+      }
       const emailBody = [
-        'From: ' + toStr(gmailTokens.email), 'To: ' + toStr(inv.email),
+        'From: ' + senderEmail2, 'To: ' + toStr(inv.email),
         'Subject: Reminder: Set up your CareCoord account',
         'Content-Type: text/html; charset=utf-8', 'MIME-Version: 1.0', '',
         '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;">',
