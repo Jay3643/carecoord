@@ -270,7 +270,7 @@ async function syncUser(db, row) {
   let n = 0, pageToken = null, scanned = 0;
 
   do {
-    const params = { userId: 'me', q: 'in:inbox -from:me after:' + startDate, maxResults: 500 };
+    const params = { userId: 'me', q: '{in:inbox label:CareCoord-Archived} -from:me after:' + startDate, maxResults: 500 };
     if (pageToken) params.pageToken = pageToken;
 
     let list;
