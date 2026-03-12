@@ -1,7 +1,7 @@
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const p = require('path');
-const DB_PATH = p.join(__dirname, 'carecoord.db');
+const DB_PATH = process.env.NODE_ENV === 'production' && require('fs').existsSync('/data') ? '/data/carecoord.db' : p.join(__dirname, 'carecoord.db');
 let rawDb = null;
 
 // Auto-convert all Uint8Array values to strings

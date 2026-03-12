@@ -69,9 +69,9 @@ async function seed() {
   saveDb();
   console.log('\\n✅ Clean database seeded');
   console.log('   3 regions: Central PA, South NJ, Delaware Valley');
-  console.log('   2 users: Dr. Hopkins (admin), Hello Coordinator');
+  console.log('   1 user: Dr. Hopkins (admin)');
   console.log('   Password: Seniority2024!');
-  console.log('   Sync state initialized for hello@\\n');
+  console.log('   No sync state needed\\n');
   closeDb();
 }
 
