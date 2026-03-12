@@ -290,6 +290,7 @@ async function syncUser(db, row) {
       const from = hdr(h, 'From'), subj = hdr(h, 'Subject') || '(no subject)';
       const bd = body(msg.data.payload), thId = msg.data.threadId;
       const ts = parseInt(msg.data.internalDate) || Date.now();
+      const rfcMessageId = hdr(h, 'Message-ID') || hdr(h, 'Message-Id') || '';
 
       // Check exception list — if sender matches, skip queue (stays in personal inbox)
       let isException = false;
@@ -301,35 +302,44 @@ async function syncUser(db, row) {
       }
       if (isException) continue;
 
-      // ── Route to Regional Queue (with multi-recipient dedup) ──
+      // ── Route to Regional Queue (with multi-recipient dedup via Message-ID) ──
 
-      // Check if a ticket already exists for this thread (across ALL users)
-      const existingThread = db.prepare('SELECT ticket_id FROM messages WHERE gmail_thread_id = ? LIMIT 1').get(thId);
-      if (existingThread && db.prepare('SELECT id FROM tickets WHERE id = ?').get(existingThread.ticket_id)) {
-        // Ticket exists for this thread — check if this is a new message or just another recipient
-        const alreadyHasThisMsg = db.prepare('SELECT 1 FROM messages WHERE gmail_message_id = ?').get(m.id);
-        if (!alreadyHasThisMsg) {
-          // New message in existing thread (reply) — add it
-          const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-          db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-            .run(msgId, existingThread.ticket_id, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, m.id, null, '[]', m.id, thId, uid, ts);
-          db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', existingThread.ticket_id);
+      // Check if this exact email (by RFC Message-ID) already created a ticket
+      // Message-ID is identical across all recipients, unlike gmail thread/message IDs
+      let existingTicketId = null;
+      if (rfcMessageId) {
+        const existingByMsgId = db.prepare("SELECT ticket_id FROM messages WHERE provider_message_id = ? LIMIT 1").get(rfcMessageId);
+        if (existingByMsgId) existingTicketId = toStr(existingByMsgId.ticket_id);
+      }
+      // Also check by gmail thread ID for replies within same account
+      if (!existingTicketId) {
+        const existingByThread = db.prepare('SELECT ticket_id FROM messages WHERE gmail_thread_id = ? LIMIT 1').get(thId);
+        if (existingByThread && db.prepare('SELECT id FROM tickets WHERE id = ?').get(existingByThread.ticket_id)) {
+          existingTicketId = toStr(existingByThread.ticket_id);
         }
-        // Check if another user already created this ticket — if so, unassign for supervisor
-        const ticket = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(existingThread.ticket_id);
+      }
+
+      if (existingTicketId) {
+        // Ticket already exists — this is either a reply or another recipient got the same email
+        const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(msgId, existingTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+        db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', existingTicketId);
+
+        // If a different coordinator already owns this ticket, unassign for supervisor
+        const ticket = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(existingTicketId);
         if (ticket && ticket.assignee_user_id && toStr(ticket.assignee_user_id) !== uid) {
-          // Multiple coordinators received this — unassign so supervisor decides
-          db.prepare('UPDATE tickets SET assignee_user_id = NULL WHERE id = ?').run(existingThread.ticket_id);
-          console.log('[Sync] Multi-recipient detected — unassigned ticket', existingThread.ticket_id);
+          db.prepare('UPDATE tickets SET assignee_user_id = NULL WHERE id = ?').run(existingTicketId);
+          console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId, '(was', toStr(ticket.assignee_user_id), ', also received by', uid, ')');
         }
       } else {
-        // No existing ticket for this thread — create new one, auto-assign to this coordinator
+        // Brand new email — create ticket, auto-assign to this coordinator
         const tid = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,?,1)')
           .run(tid, subj, from, rid, 'OPEN', uid, ts, ts, JSON.stringify([from]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, m.id, null, '[]', m.id, thId, uid, ts);
+          .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
 
         // Attachments
         try {
