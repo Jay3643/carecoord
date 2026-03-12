@@ -12,7 +12,7 @@ function fmtTime(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export default function ChatScreen({ currentUser, allUsers, showToast }) {
+export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose }) {
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -132,12 +132,13 @@ export default function ChatScreen({ currentUser, allUsers, showToast }) {
   const css = `.chat-msg:hover{background:#f5f7fa}.chat-ch:hover{background:#e8edf3}`;
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: '#fff', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: isPanel ? 'column' : 'row', height: '100%', background: '#fff', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
       <style>{css}</style>
 
       {/* Channel List */}
-      <div style={{ width: 300, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+      <div style={{ width: isPanel ? '100%' : 300, borderRight: isPanel ? 'none' : '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
         <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {isPanel && onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4 }}>✕</button>}
           <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Messages</span>
           <button onClick={() => setShowNew(true)} style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
         </div>
@@ -177,7 +178,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast }) {
       </div>
 
       {/* Chat Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, display: isPanel && !activeChannel && !showNew ? 'none' : 'flex', flexDirection: 'column' }}>
         {!activeChannel && !showNew ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
             <div style={{ textAlign: 'center' }}>
@@ -189,7 +190,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast }) {
           <div style={{ flex: 1, padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1e3a4f', margin: 0 }}>New Conversation</h2>
-              <button onClick={() => { setShowNew(false); setSelectedMembers([]); setNewName(''); }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b' }}>✕</button>
+              <button onClick={() => { setShowNew(false); setSelectedMembers([]); setNewName(''); if (isPanel && !activeChannel) {} }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b' }}>✕</button>
             </div>
 
             {selectedMembers.length > 1 && (
@@ -237,7 +238,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast }) {
           <>
             {/* Header */}
             <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10, background: '#fafbfc' }}>
-              <button onClick={() => setActiveChannel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4, display: 'none' }}>←</button>
+              <button onClick={() => setActiveChannel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4, display: isPanel ? 'block' : 'none' }}>←</button>
               <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>{activeChannel.name}</span>
               <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>{activeChannel.members.length} members</span>
             </div>

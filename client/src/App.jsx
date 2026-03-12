@@ -104,6 +104,7 @@ export default function App() {
   // Unassigned count for sidebar badge
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
   const [personalCount, setPersonalCount] = useState(0);
 
   useEffect(() => {
@@ -177,7 +178,7 @@ export default function App() {
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
-            { key: 'chat', icon: 'send', label: 'Chat', badge: chatUnread, badgeColor: '#1a5e9a' },
+            { key: '_chat_toggle' },
             ...(currentUser.role === 'admin' ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
@@ -187,6 +188,25 @@ export default function App() {
             { key: '_prompted' },
           ].map(item => {
             if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
+            if (item.key === '_chat_toggle') return (
+              <button key="_chat_toggle" onClick={() => setChatOpen(c => !c)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, border: 'none', background: chatOpen ? '#102f54' : 'transparent',
+                  color: chatOpen ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                  width: '100%', textAlign: 'left', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
+                onMouseEnter={e => { if (!chatOpen) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; } }}
+                onMouseLeave={e => { if (!chatOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; } }}
+                title="Chat">
+                <Icon name="send" size={18} />
+                {!sidebarCollapsed && <span>Chat</span>}
+                {!sidebarCollapsed && chatUnread > 0 && (
+                  <span style={{ marginLeft: 'auto', background: '#1a5e9a', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{chatUnread}</span>
+                )}
+                {sidebarCollapsed && chatUnread > 0 && (
+                  <span style={{ position: 'absolute', top: 2, right: 2, background: '#1a5e9a', color: '#fff', fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 99 }}>{chatUnread}</span>
+                )}
+              </button>
+            );
             if (item.key === '_workspace_toggle') return (
               <React.Fragment key="_wst">
                 {!sidebarCollapsed ? <div style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />}
@@ -355,7 +375,8 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main content */}
+      {/* Main content + Chat panel */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         {screen === 'regionQueue' && (
           <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
@@ -378,9 +399,6 @@ export default function App() {
         )}
         {screen === 'dashboard' && isSupervisor && (
           <Dashboard currentUser={currentUser} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} />
-        )}
-        {screen === 'chat' && (
-          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} />
         )}
         {screen === 'personalEmail' && (
           <PersonalInbox currentUser={currentUser} showToast={showToast} refreshCounts={refreshCounts} />
@@ -413,6 +431,14 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Chat Slide Panel */}
+      {chatOpen && (
+        <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', transition: 'width 0.2s ease', overflow: 'hidden' }}>
+          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} />
+        </div>
+      )}
+      </div>
     </div>
   );
 }
