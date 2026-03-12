@@ -180,6 +180,7 @@ export default function App() {
             { key: '_practice_fusion' },
             { key: '_updox' },
             { key: '_carelink' },
+            { key: '_prompted' },
           ].map(item => {
             if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
             if (item.key === '_workspace_toggle') return (
@@ -229,6 +230,25 @@ export default function App() {
                 </div>
               );
             }
+            if (item.key === '_prompted') return (
+              <a key="_prompted" href="https://seniority.thinkprompted.ai/signin" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="Prompted">
+                <svg width="18" height="18" viewBox="0 0 100 100">
+                  <rect x="5" y="5" width="35" height="90" rx="8" fill="#2b4c7e"/>
+                  <rect x="45" y="25" width="22" height="6" rx="3" fill="#e8673c"/>
+                  <rect x="45" y="40" width="22" height="6" rx="3" fill="#e8673c"/>
+                  <rect x="45" y="55" width="22" height="6" rx="3" fill="#e8673c"/>
+                  <path d="M40 15 Q70 15 70 35 Q70 55 40 55" fill="none" stroke="#2b4c7e" strokeWidth="8" strokeLinecap="round"/>
+                </svg>
+                {!sidebarCollapsed && <span>Prompted</span>}
+              </a>
+            );
             if (item.key === '_carelink') return (
               <a key="_carelink" href="https://seniority.xcelerait.ai/sign-in" target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
