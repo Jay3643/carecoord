@@ -10,6 +10,7 @@ import AuditLog from './components/AuditLog';
 import AdminPanel from './components/AdminPanel';
 import ComposeModal from './components/ComposeModal';
 import PersonalInbox from './components/PersonalInbox';
+import ChatScreen from './components/ChatScreen';
 import { GmailConnectButton } from './components/GmailPanel';
 import SetupAccount from './components/SetupAccount';
 
@@ -102,6 +103,7 @@ export default function App() {
 
   // Unassigned count for sidebar badge
   const [unassignedCount, setUnassignedCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
   const [personalCount, setPersonalCount] = useState(0);
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export default function App() {
       api.getTickets({ queue: 'personal', status: 'all' })
         .then(d => setPersonalCount(d.tickets.filter(t => t.status !== 'CLOSED').length))
         .catch(() => {});
+      api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {});
     };
     fetchCounts();
     const interval = setInterval(fetchCounts, 5000);
@@ -174,6 +177,7 @@ export default function App() {
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
+            { key: 'chat', icon: 'send', label: 'Chat', badge: chatUnread, badgeColor: '#1a5e9a' },
             ...(currentUser.role === 'admin' ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
@@ -374,6 +378,9 @@ export default function App() {
         )}
         {screen === 'dashboard' && isSupervisor && (
           <Dashboard currentUser={currentUser} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} />
+        )}
+        {screen === 'chat' && (
+          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} />
         )}
         {screen === 'personalEmail' && (
           <PersonalInbox currentUser={currentUser} showToast={showToast} refreshCounts={refreshCounts} />

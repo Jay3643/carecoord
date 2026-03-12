@@ -45,7 +45,13 @@ async function initDb() {
   r('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
   r('CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, region_ids TEXT, token TEXT UNIQUE NOT NULL, invited_by TEXT, created_at INTEGER, expires_at INTEGER, accepted_at INTEGER)');
   r('CREATE TABLE IF NOT EXISTS email_sync_state (user_id TEXT PRIMARY KEY, last_sync_at INTEGER DEFAULT 0, sync_start_date TEXT)');
-  saveDb();
+  
+    // Chat tables
+    r("CREATE TABLE IF NOT EXISTS chat_channels (id TEXT PRIMARY KEY, name TEXT, type TEXT DEFAULT 'direct', ticket_id TEXT, created_by TEXT, created_at INTEGER)");
+    r("CREATE TABLE IF NOT EXISTS chat_members (channel_id TEXT, user_id TEXT, joined_at INTEGER, last_read_at INTEGER DEFAULT 0, PRIMARY KEY(channel_id, user_id))");
+    r("CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, channel_id TEXT, user_id TEXT, body TEXT, type TEXT DEFAULT 'text', file_name TEXT, file_data TEXT, file_mime TEXT, created_at INTEGER)");
+
+    saveDb();
   return { exec: s => rawDb.exec(s), prepare: s => wrap(s), run: (s, p) => rawDb.run(s, p || []) };
 }
 

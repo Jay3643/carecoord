@@ -7,7 +7,12 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const { initDb, closeDb } = require('./database');
+const http = require('http');
+const { Server } = require('socket.io');
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: ['http://localhost:5173', 'http://localhost:3000', 'https://carecoord-o3en.onrender.com'], credentials: true } });
+app.io = io;
 const PORT = process.env.PORT || 3001;
 
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -32,6 +37,7 @@ app.use('/api/ref', require('./routes/ref'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/gmail', require('./routes/gmail'));
+app.use('/api/chat', require('./routes/chat'));
 
 // Convenience routes (some components call /api/tags directly)
 app.get('/api/tags', (req, res) => {
@@ -72,8 +78,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Socket.io
+io.on('connection', (socket) => {
+  socket.on('join', (channelId) => { socket.join('channel:' + channelId); });
+  socket.on('leave', (channelId) => { socket.leave('channel:' + channelId); });
+  socket.on('typing', (data) => { socket.to('channel:' + data.channelId).emit('chat:typing', { userId: data.userId, name: data.name }); });
+  socket.on('stop-typing', (data) => { socket.to('channel:' + data.channelId).emit('chat:stop-typing', { userId: data.userId }); });
+});
+
 initDb().then(() => {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log('\n🏥 CareCoord server running on http://localhost:' + PORT);
     console.log('   API: http://localhost:' + PORT + '/api/health\n');
   });
