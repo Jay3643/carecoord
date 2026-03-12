@@ -13,6 +13,7 @@ import PersonalInbox from './components/PersonalInbox';
 import ChatScreen from './components/ChatScreen';
 import { GmailConnectButton } from './components/GmailPanel';
 import SetupAccount from './components/SetupAccount';
+import io from 'socket.io-client';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -105,6 +106,7 @@ export default function App() {
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
+  const appSocketRef = React.useRef(null);
   const [personalCount, setPersonalCount] = useState(0);
 
   useEffect(() => {
@@ -123,10 +125,25 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser]);
 
+  // Socket.io for real-time chat notifications
+  useEffect(() => {
+    if (!currentUser) return;
+    const sock = io(window.location.origin, { transports: ['websocket', 'polling'] });
+    appSocketRef.current = sock;
+    sock.on('chat:message', (msg) => {
+      if (msg.userId !== currentUser.id) {
+        setChatUnread(prev => prev + 1);
+      }
+    });
+    return () => { sock.disconnect(); };
+  }, [currentUser?.id]);
+
   // Handle /setup route for new user account setup
   if (window.location.search.includes('token=') && window.location.pathname === '/setup') {
     return <SetupAccount />;
   }
+
+  const chatBadgeStyle = `@keyframes chatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }`;
 
   if (!authChecked) {
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f7f8', color: '#8a9fb0' }}>Loading...</div>;
@@ -138,6 +155,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#f4f7f8', color: '#1e3a4f', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", overflow: 'hidden' }}>
+      <style>{chatBadgeStyle}</style>
       {/* Sidebar */}
       <aside style={{ width: sidebarCollapsed ? 64 : 240, background: '#f0f4f9', borderRight: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', overflow: 'hidden', flexShrink: 0 }}>
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
@@ -189,7 +207,7 @@ export default function App() {
           ].map(item => {
             if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
             if (item.key === '_chat_toggle') return (
-              <button key="_chat_toggle" onClick={() => setChatOpen(c => !c)}
+              <button key="_chat_toggle" onClick={() => setChatOpen(c => { if (!c) { api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {}); } return !c; })}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                   borderRadius: 8, border: 'none', background: chatOpen ? '#102f54' : 'transparent',
                   color: chatOpen ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
@@ -200,10 +218,10 @@ export default function App() {
                 <Icon name="send" size={18} />
                 {!sidebarCollapsed && <span>Chat</span>}
                 {!sidebarCollapsed && chatUnread > 0 && (
-                  <span style={{ marginLeft: 'auto', background: '#1a5e9a', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{chatUnread}</span>
+                  <span style={{ marginLeft: 'auto', background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, animation: 'chatPulse 2s ease infinite' }}>{chatUnread}</span>
                 )}
                 {sidebarCollapsed && chatUnread > 0 && (
-                  <span style={{ position: 'absolute', top: 2, right: 2, background: '#1a5e9a', color: '#fff', fontSize: 9, fontWeight: 700, padding: '0 4px', borderRadius: 99 }}>{chatUnread}</span>
+                  <span style={{ position: 'absolute', top: 2, right: 2, background: '#d94040', color: '#fff', fontSize: 9, fontWeight: 700, padding: '0 5px', borderRadius: 99, animation: 'chatPulse 2s ease infinite' }}>{chatUnread}</span>
                 )}
               </button>
             );
@@ -435,7 +453,7 @@ export default function App() {
       {/* Chat Slide Panel */}
       {chatOpen && (
         <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', transition: 'width 0.2s ease', overflow: 'hidden' }}>
-          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} />
+          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} />
         </div>
       )}
       </div>

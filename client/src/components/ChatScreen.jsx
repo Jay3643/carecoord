@@ -12,7 +12,7 @@ function fmtTime(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose }) {
+export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose, onRead }) {
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -39,7 +39,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     if (!activeChannel) return;
     socket.emit('join', activeChannel.id);
     api.chatMessages(activeChannel.id).then(d => setMessages(d.messages || []));
-    api.chatMarkRead(activeChannel.id);
+    api.chatMarkRead(activeChannel.id).then(() => { if (onRead) onRead(); });
 
     const onMsg = (msg) => {
       if (msg.channelId === activeChannel.id) {
