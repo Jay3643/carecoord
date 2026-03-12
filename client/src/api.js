@@ -87,6 +87,7 @@ export const api = {
   adminWorkspaceStatus: (userId) => request('/gmail/admin-status/' + userId),
   adminDisconnectWorkspace: (userId) => request('/gmail/admin-disconnect/' + userId, { method: 'POST' }),
   gmailAuth: () => request('/gmail/auth'),
+  getGmailLabels: () => request('/gmail/labels'),
   gmailStatus: () => cached('gmailStatus', 60000, () => request('/gmail/status')),
   gmailDisconnect: () => request('/gmail/disconnect', { method: 'POST' }),
   gmailSync: () => request('/gmail/sync', { method: 'POST' }),

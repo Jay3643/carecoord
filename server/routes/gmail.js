@@ -458,6 +458,26 @@ router.post('/personal/send', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Gmail Labels ──
+router.get('/labels', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.json({ labels: [] });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const r = await gm.users.labels.list({ userId: 'me' });
+    const labels = (r.data.labels || []).map(l => ({ id: l.id, name: l.name, type: l.type }));
+    // Get unread counts for key labels
+    const withCounts = await Promise.all(labels.slice(0, 30).map(async l => {
+      try {
+        const detail = await gm.users.labels.get({ userId: 'me', id: l.id });
+        return { ...l, unread: detail.data.messagesUnread || 0, total: detail.data.messagesTotal || 0 };
+      } catch(e) { return { ...l, unread: 0, total: 0 }; }
+    }));
+    res.json({ labels: withCounts });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Attachment download ──
 router.get('/attachment/:msgId/:attId', requireAuth, async (req, res) => {
   try {
