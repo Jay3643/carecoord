@@ -46,8 +46,7 @@ async function seed() {
   iU.run('u2', 'Hello Coordinator', 'hello@seniorityhealthcare.com', 'coordinator', 'HC', pwHash, now);
   iUR.run('u2', 'r1'); iUR.run('u2', 'r2'); iUR.run('u2', 'r3');
 
-  // Sync state for hello@ coordinator
-  db.prepare('INSERT INTO email_sync_state (user_id, last_sync_at, sync_start_date) VALUES (?, 0, ?)').run('u2', '2026/03/07');
+
 
   // Tags
   const iT = db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)');

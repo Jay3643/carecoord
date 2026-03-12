@@ -138,16 +138,13 @@ export default function App() {
       <aside style={{ width: sidebarCollapsed ? 64 : 240, background: '#f0f4f9', borderRight: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', overflow: 'hidden', flexShrink: 0 }}>
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
           {!sidebarCollapsed && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-              <img src="/logo.png" alt="Seniority Healthcare" style={{ height: 32, objectFit: 'contain' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
-                <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 0.5 }}>WORKSPACE</span>
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, lineHeight: 1.2 }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
+              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>Workspace</span>
             </div>
           )}
           {sidebarCollapsed && (
-            <img src="/logo.png" alt="SH" style={{ height: 28, objectFit: 'contain', margin: '0 auto' }} />
+            <span style={{ fontWeight: 700, fontSize: 16, color: '#ffffff', margin: '0 auto' }}>SH</span>
           )}
           <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{ background: 'none', border: 'none', color: '#a8c8e8', cursor: 'pointer', padding: 4, flexShrink: 0 }}>
             <Icon name={sidebarCollapsed ? 'chevronRight' : 'arrowLeft'} size={16} />
