@@ -94,7 +94,7 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
         </select>
         {(filterRegion !== 'all' || filterCoord !== 'all' || filterAging !== 'all' || filterStatus !== 'all') && (
           <button onClick={() => { setFilterRegion('all'); setFilterCoord('all'); setFilterAging('all'); setFilterStatus('all'); }}
-            style={{ padding: '6px 12px', background: '#fde8e8', color: '#d94040', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Clear All</button>
+            style={{ padding: '6px 12px', background: '#f0f4f9', color: '#6b8299', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>Reset Filters</button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#6b8299' }}>{filteredTickets.length} tickets</span>
       </div>
@@ -117,12 +117,13 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
         })}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #dde8f2', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #dde8f2', overflow: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
             <tr style={{ background: '#f0f4f9' }}>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>Ticket</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>Subject</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>From</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>Region</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>Assigned To</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#5a7a8a' }}>Age</th>
@@ -131,7 +132,7 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
             </tr>
           </thead>
           <tbody>
-            {filteredTickets.slice(0, 100).map(t => {
+            {filteredTickets.map(t => {
               const ageColor = t.aging === '24h+' ? '#d94040' : t.aging === '4h+' ? '#e67e22' : t.aging === '1h+' ? '#f59e0b' : '#2e7d32';
               const ageLabel = t.lastActivityMs < 60000 ? '<1m' : t.lastActivityMs < 3600000 ? Math.floor(t.lastActivityMs/60000)+'m' : t.lastActivityMs < 86400000 ? Math.floor(t.lastActivityMs/3600000)+'h' : Math.floor(t.lastActivityMs/86400000)+'d';
               return (
@@ -141,6 +142,7 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
                     <div onClick={() => onOpenTicket(t.id)} style={{ cursor: 'pointer', fontWeight: 500, color: '#1a5e9a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'} onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>{t.subject}</div>
                     <div style={{ fontSize: 10, color: '#8a9fb0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.fromEmail}</div>
                   </td>
+                  <td style={{ padding: '8px 12px', fontSize: 11, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.fromEmail || '-'}</td>
                   <td style={{ padding: '8px 12px', fontSize: 11 }}>{t.region?.name || '-'}</td>
                   <td style={{ padding: '8px 12px' }}>{t.assignee ? <span style={{ fontSize: 11, fontWeight: 500 }}>{t.assignee.name}</span> : <span style={{ fontSize: 11, color: '#d94040', fontWeight: 600 }}>Unassigned</span>}</td>
                   <td style={{ padding: '8px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: ageColor+'18', color: ageColor }}>{ageLabel}</span></td>
@@ -154,7 +156,7 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
           </tbody>
         </table>
         {filteredTickets.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#8a9fb0' }}>No tickets match filters</div>}
-        {filteredTickets.length > 100 && <div style={{ padding: 8, textAlign: 'center', color: '#8a9fb0', fontSize: 11 }}>Showing first 100 of {filteredTickets.length}</div>}
+        
       </div>
 
       {reassignTicket && (
@@ -311,6 +313,7 @@ export default function Dashboard({ currentUser, allUsers, onOpenTicket, showToa
                   <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299', width: 36 }}>{t.id.toUpperCase()}</span>
                   <StatusBadge status={t.status} />
                   <span style={{ flex: 1, fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.subject}</span>
+                  <span style={{ fontSize: 10, color: '#8a9fb0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.from_email || (t.external_participants||[])[0] || ''}</span>
                   <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.time(t.last_activity_at)}</span>
                   {t.assignee ? <Avatar user={t.assignee} size={20} /> : <span style={{ fontSize: 10, color: '#d94040' }}>unassigned</span>}
                 </button>
