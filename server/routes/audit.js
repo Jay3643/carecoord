@@ -24,6 +24,7 @@ router.get('/', requireAuth, (req, res) => {
       entity_id: r.entity_id,
       detail: r.detail,
       ts: r.ts,
+      formattedTime: r.ts ? new Date(r.ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '',
     }));
     const actionTypes = [...new Set(entries.map(e => e.action_type).filter(Boolean))];
     res.json({ entries, actionTypes });

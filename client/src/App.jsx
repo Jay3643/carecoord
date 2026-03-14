@@ -174,6 +174,7 @@ export default function App() {
         </div>
 
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 12px' }}>
+          {(currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
           <button onClick={() => setShowCompose(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -187,6 +188,7 @@ export default function App() {
             <Icon name="send" size={16} />
             {!sidebarCollapsed && <span>New Message</span>}
           </button>
+          )}
         </div>
 
         <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>

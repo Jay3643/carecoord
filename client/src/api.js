@@ -36,7 +36,7 @@ export const api = {
   claimTicket: (id) => request('/tickets/' + id + '/claim', { method: 'POST' }),
   updateTicket: (id, d) => request('/tickets/' + id, { method: 'PUT', body: d }),
   addMessage: (id, d) => request('/tickets/' + id + '/messages', { method: 'POST', body: d }),
-  addNote: (id, d) => request('/tickets/' + id + '/notes', { method: 'POST', body: d }),
+  addNote: (id, d) => request('/tickets/' + id + '/notes', { method: 'POST', body: typeof d === 'string' ? { body: d } : d }),
   createTicket: (d) => request('/tickets', { method: 'POST', body: d }),
   getRegions: () => cached('regions', 300000, () => request('/regions')),
   getUsers: () => cached('users', 300000, () => request('/users')),

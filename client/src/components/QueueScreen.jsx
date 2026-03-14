@@ -129,7 +129,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
               </select>
             )}
             <button onClick={fetchTickets} style={{ background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, padding: '6px 10px', color: '#6b8299', cursor: 'pointer' }} title="Refresh">
-              <Icon name="settings" size={14} />
+              <Icon name="inbox" size={14} />
             </button>
           </div>
         </div>

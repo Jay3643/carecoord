@@ -25,10 +25,10 @@ export function TagPill({ tag, onRemove }) {
   );
 }
 
-const AVATAR_COLORS = ['#1a5e9a', '#1a5e9a', '#c96a1b', '#d97706', '#dc2626', '#7c3aed', '#1a5e9a'];
+const AVATAR_COLORS = ['#1a5e9a', '#0891b2', '#c96a1b', '#059669', '#dc2626', '#7c3aed', '#d946ef', '#e11d48', '#ca8a04', '#4f46e5', '#0d9488', '#b91c1c'];
 
 export function Avatar({ user, size = 32 }) {
-  const idx = user && user.id ? (user.id.charCodeAt(Math.min(1, user.id.length - 1)) * 7) % AVATAR_COLORS.length : 0;
+  const idx = user && user.id ? (user.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 7) % AVATAR_COLORS.length : 0;
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: user ? AVATAR_COLORS[idx] : '#5a7a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: size * 0.38, fontWeight: 700, letterSpacing: 0.5, flexShrink: 0 }}>
       {user ? (user.avatar || fmt.initials(user.name)) : '?'}

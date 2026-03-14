@@ -301,6 +301,12 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   message.to_addresses = JSON.parse(message.to_addresses);
   message.reference_ids = JSON.parse(message.reference_ids);
+  // Auto-assign to replier if unassigned
+  const ticketCheck = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(req.params.id);
+  if (ticketCheck && !ticketCheck.assignee_user_id) {
+    db.prepare('UPDATE tickets SET assignee_user_id = ? WHERE id = ?').run(req.user.id, req.params.id);
+    addAudit(db, req.user.id, 'auto_assigned', 'ticket', req.params.id, 'Auto-assigned on reply');
+  }
   res.json({ message });
 });
 
