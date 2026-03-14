@@ -11,7 +11,7 @@ router.get('/channels', requireAuth, (req, res) => {
     (SELECT COUNT(*) FROM chat_messages m WHERE m.channel_id = c.id AND m.created_at > cm.last_read_at AND m.user_id != ?) as unread
     FROM chat_channels c
     JOIN chat_members cm ON cm.channel_id = c.id AND cm.user_id = ?
-    ORDER BY (SELECT MAX(created_at) FROM chat_messages WHERE channel_id = c.id) DESC
+    ORDER BY COALESCE((SELECT MAX(created_at) FROM chat_messages WHERE channel_id = c.id), c.created_at) DESC
   `).all(req.user.id, req.user.id);
 
   // Enrich with member info and last message
@@ -38,7 +38,7 @@ router.post('/channels', requireAuth, (req, res) => {
   const db = getDb();
   const { name, type, memberIds, ticketId } = req.body;
 
-  // For direct messages, check if channel already exists
+  // For direct messages, check if channel already exists between these two users
   if (type === 'direct' && memberIds && memberIds.length === 1) {
     const otherId = memberIds[0];
     const existing = db.prepare(`
@@ -49,6 +49,27 @@ router.post('/channels', requireAuth, (req, res) => {
       AND (SELECT COUNT(*) FROM chat_members WHERE channel_id = c.id) = 2
     `).get(req.user.id, otherId);
     if (existing) return res.json({ channelId: toStr(existing.id), existing: true });
+  }
+
+  // For group chats, check if a group with the exact same members already exists
+  if (type === 'group' && memberIds && memberIds.length > 1) {
+    const allMembers = [req.user.id, ...memberIds].sort();
+    const memberCount = allMembers.length;
+    // Find channels where the current user is a member and member count matches
+    const candidates = db.prepare(`
+      SELECT c.id FROM chat_channels c
+      WHERE c.type = 'group'
+      AND (SELECT COUNT(*) FROM chat_members WHERE channel_id = c.id) = ?
+      AND EXISTS (SELECT 1 FROM chat_members WHERE channel_id = c.id AND user_id = ?)
+    `).all(memberCount, req.user.id);
+    
+    for (const cand of candidates) {
+      const members = db.prepare('SELECT user_id FROM chat_members WHERE channel_id = ? ORDER BY user_id').all(toStr(cand.id));
+      const candMembers = members.map(m => toStr(m.user_id)).sort();
+      if (JSON.stringify(candMembers) === JSON.stringify(allMembers)) {
+        return res.json({ channelId: toStr(cand.id), existing: true });
+      }
+    }
   }
 
   const id = 'ch-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -84,10 +105,10 @@ router.get('/channels/:id/messages', requireAuth, (req, res) => {
     SELECT cm.*, u.name as sender_name, u.avatar as sender_avatar
     FROM chat_messages cm JOIN users u ON u.id = cm.user_id
     WHERE cm.channel_id = ? AND cm.created_at < ?
-    ORDER BY cm.created_at DESC LIMIT ?
+    ORDER BY cm.created_at ASC LIMIT ?
   `).all(req.params.id, before, limit);
 
-  res.json({ messages: messages.reverse().map(m => ({
+  res.json({ messages: messages.map(m => ({
     id: toStr(m.id), channelId: toStr(m.channel_id), userId: toStr(m.user_id),
     body: toStr(m.body), type: toStr(m.type),
     fileName: toStr(m.file_name), fileMime: toStr(m.file_mime),
