@@ -240,7 +240,7 @@ router.post('/:id/status', requireAuth, (req, res) => {
 
 router.post('/:id/reply', requireAuth, async (req, res) => {
   const db = getDb();
-  const { body } = req.body;
+  const { body, attachments: replyAttachments } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'Body required' });
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
@@ -270,23 +270,38 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
       const subject = 'Re: ' + ticket.subject;
       const replyTo = lastIn?.provider_message_id || '';
 
-      // Build RFC 2822 email
+      // Build RFC 2822 email (with optional attachments)
       const senderEmail = tokenRow.email || fromAddr;
-      const emailLines = [
-        'From: ' + senderEmail,
-        'To: ' + toAddr,
-        'Subject: ' + subject,
-        'Content-Type: text/plain; charset=utf-8',
-        'MIME-Version: 1.0',
-      ];
-      if (replyTo) {
-        emailLines.push('In-Reply-To: <' + replyTo + '>');
-        emailLines.push('References: <' + replyTo + '>');
-      }
-      emailLines.push('');
-      emailLines.push(fullBody);
+      const CRLF = String.fromCharCode(13, 10);
+      let raw;
 
-      const raw = Buffer.from(emailLines.join(String.fromCharCode(13,10))).toString('base64url');
+      if (replyAttachments && replyAttachments.length > 0) {
+        const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const headers = [
+          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: ' + subject,
+          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+        ];
+        if (replyTo) { headers.push('In-Reply-To: <' + replyTo + '>'); headers.push('References: <' + replyTo + '>'); }
+        let mimeBody = headers.join(CRLF) + CRLF + CRLF;
+        mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
+        for (const att of replyAttachments) {
+          mimeBody += '--' + boundary + CRLF;
+          mimeBody += 'Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Disposition: attachment; filename="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Transfer-Encoding: base64' + CRLF + CRLF;
+          mimeBody += att.data + CRLF + CRLF;
+        }
+        mimeBody += '--' + boundary + '--' + CRLF;
+        raw = Buffer.from(mimeBody).toString('base64url');
+      } else {
+        const emailLines = [
+          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: ' + subject,
+          'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0',
+        ];
+        if (replyTo) { emailLines.push('In-Reply-To: <' + replyTo + '>'); emailLines.push('References: <' + replyTo + '>'); }
+        emailLines.push(''); emailLines.push(fullBody);
+        raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      }
       await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
       console.log('[Gmail] Reply sent to', toAddr);
     } else {

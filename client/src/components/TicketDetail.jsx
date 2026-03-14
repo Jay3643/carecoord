@@ -29,6 +29,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [regionCoordinators, setRegionCoordinators] = useState([]);
   const [sending, setSending] = useState(false);
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const fileInputRef = useRef(null);
   const timelineRef = useRef(null);
   const [discussionMsgs, setDiscussionMsgs] = useState([]);
   const [discussionText, setDiscussionText] = useState('');
@@ -157,8 +159,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     if (!replyText.trim() || sending) return;
     setSending(true);
     try {
-      await api.sendReply(ticketId, replyText);
+      await api.sendReply(ticketId, replyText, replyAttachments.length > 0 ? replyAttachments : undefined);
       setReplyText('');
+      setReplyAttachments([]);
       await fetchData();
       showToast('Reply sent');
     } catch (e) {
@@ -166,6 +169,20 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     } finally {
       setSending(false);
     }
+  };
+
+  const handleAttachFile = (e) => {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)'); continue; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        setReplyAttachments(prev => [...prev, { name: file.name, data: base64, mimeType: file.type || 'application/octet-stream', size: file.size }]);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
   };
 
   const handleAddNote = async () => {
