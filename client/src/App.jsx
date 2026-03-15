@@ -133,7 +133,7 @@ export default function App() {
         .then(d => setUnassignedCount(d.tickets.length))
         .catch(() => {});
       api.getTickets({ queue: 'personal', status: 'all' })
-        .then(d => setPersonalCount(d.tickets.filter(t => t.status !== 'CLOSED').length))
+        .then(d => setPersonalCount(d.tickets.filter(t => t.status !== 'CLOSED' && t.has_unread).length))
         .catch(() => {});
       api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {});
     };
