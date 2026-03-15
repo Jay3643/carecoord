@@ -10,6 +10,7 @@
     "scripting"
   ],
   "host_permissions": [
+    "https://*.practicefusion.com/*",
     "https://www.practicefusion.com/*",
     "https://app.practicefusion.com/*",
     "https://static.practicefusion.com/*",

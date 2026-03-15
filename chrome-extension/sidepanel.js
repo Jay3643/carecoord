@@ -5,7 +5,7 @@ let state = {
   user: null,
   serverUrl: '',
   tab: 'patient',
-  patientSubTab: 'overview', // 'overview' or 'chartscan'
+  patientSubTab: 'overview',
   patientData: null,
   clinicalSnapshot: null,
   tickets: [],
@@ -14,6 +14,7 @@ let state = {
   loading: false,
   chartScanning: false,
   scrapeProgress: '',
+  scrapeLog: [],
   scanStartDate: '',
   scanEndDate: '',
 };
@@ -155,6 +156,7 @@ async function scrapePatient() {
 async function startChartScan() {
   state.chartScanning = true;
   state.clinicalSnapshot = null;
+  state.scrapeLog = [];
   state.scrapeProgress = 'Starting chart scan...';
   render();
   chrome.runtime.sendMessage({
@@ -348,11 +350,19 @@ function renderPatientTab() {
   html += '</div>';
 
   if (state.chartScanning) {
-    html += '<div class="card" style="text-align:center;padding:24px">';
-    html += '<img src="icons/icon128.jpg" style="width:40px;height:40px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite;margin-bottom:8px">';
-    html += '<div style="font-size:13px;font-weight:600;color:#3d8ba8">Chart Scan in Progress</div>';
-    html += '<div style="font-size:11px;color:#6b8299;margin-top:4px">' + (state.scrapeProgress || 'Working...') + '</div>';
-    html += '<div style="font-size:10px;color:#8a9fb0;margin-top:8px">Reading encounters — please don\'t navigate away.</div>';
+    html += '<div class="card" style="padding:16px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    html += '<img src="icons/icon128.jpg" style="width:28px;height:28px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite">';
+    html += '<div><div style="font-size:13px;font-weight:600;color:#3d8ba8">Chart Scan in Progress</div>';
+    html += '<div style="font-size:11px;color:#6b8299">' + (state.scrapeProgress || 'Starting...') + '</div></div>';
+    html += '</div>';
+    // Progress log
+    html += '<div style="background:#f8fafc;border:1px solid #e8f0f8;border-radius:6px;padding:8px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:10px;line-height:1.6;color:#5a7a8a">';
+    for (const line of state.scrapeLog) {
+      const isError = line.includes('ERROR') || line.includes('WARNING');
+      html += '<div style="color:' + (isError ? '#d94040' : '#5a7a8a') + '">' + escapeHtml(line) + '</div>';
+    }
+    html += '</div>';
     html += '</div>';
     return html;
   }
@@ -703,15 +713,30 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg.type === 'SCRAPE_PROGRESS') {
     state.scrapeProgress = msg.status;
+    state.scrapeLog.push(new Date().toLocaleTimeString() + ' — ' + msg.status);
+    if (state.scrapeLog.length > 30) state.scrapeLog.shift();
     render();
   }
   if (msg.type === 'CHART_SCAN_COMPLETE') {
     state.patientData = msg.data;
     savePatientData();
     if (msg.data.patientName) searchTickets(msg.data.patientName);
-    showToast('Chart scan complete — ' + (msg.data._encountersScanned || 0) + ' encounters read');
-    // Generate clinical snapshot via AI
-    generateSnapshot(msg.data);
+    const enc = msg.data._encountersScanned || 0;
+    const errs = msg.data._errors || [];
+    if (errs.length > 0) {
+      showToast('Scan finished with ' + errs.length + ' error(s)');
+      state.scrapeLog.push('--- ERRORS ---');
+      errs.forEach(e => state.scrapeLog.push('ERROR: ' + e));
+    } else {
+      showToast('Chart scan complete — ' + enc + ' encounters read');
+    }
+    if (enc > 0 || msg.data.patientName) {
+      generateSnapshot(msg.data);
+    } else {
+      state.chartScanning = false;
+      state.scrapeProgress = 'No data found — check that a patient chart is open';
+      render();
+    }
   }
 });
 
