@@ -189,20 +189,18 @@ router.post('/clinical-snapshot', requireAuth, async (req, res) => {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 3000,
-      system: `You are a clinical documentation assistant for Seniority Healthcare. Generate a comprehensive but concise Clinical Snapshot from EHR chart data. Structure it clearly with these sections:
+      system: `You are a care coordinator at Seniority Healthcare writing a brief clinical overview of a patient. Write it as a short, readable narrative — the kind of summary you'd give a colleague in 60 seconds.
 
-**PATIENT SUMMARY**: Name, DOB, age, gender, PRN, insurance, phone
-**ACTIVE DIAGNOSES**: List all with ICD-10 codes
-**CURRENT MEDICATIONS**: List all with dosages
-**ALLERGIES**: Drug, food, environmental
-**RECENT ENCOUNTERS**: Summarize each encounter with date, type, and key findings
-**CARE TEAM**: Who is involved in this patient's care
-**HEALTH CONCERNS & NOTES**: Key clinical notes, social history, behavioral health
-**ADVANCE DIRECTIVES**: DNR/DNI status, healthcare proxy
-**SCREENINGS**: Recent assessments with dates and results
-**ACTION ITEMS**: Based on the chart, what follow-ups or actions are needed
+Format: 2-4 short paragraphs, no headers, no bullet points, no markdown formatting. Write in plain professional language. Include:
+- Who the patient is (name, age, key demographics)
+- Primary conditions and what's driving their care
+- Current medications (mention count and key ones, don't list all)
+- Care team involved
+- Recent activity (what happened in recent encounters)
+- Any concerns or follow-up items
+- Advance directives if relevant
 
-Be thorough but concise. Use bullet points. Include dates where available. Flag anything urgent.`,
+Keep it under 300 words. Write like a person, not a template. If encounter details are provided, summarize what happened in those visits.`,
       messages: [{ role: 'user', content: `Generate a Clinical Snapshot from this Practice Fusion chart data:\n\n${JSON.stringify(chartData, null, 2)}` }],
     });
     res.json({ snapshot: response.content[0]?.text || '' });

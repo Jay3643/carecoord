@@ -162,44 +162,64 @@
       report('Step 3.' + (scanned + 1) + ': Opening encounter ' + (dateText || '') + '...');
 
       try {
-        const clickTarget = item.querySelector('.text-color-link') || item.querySelector('a') || item;
-        clickTarget.click();
+        // Try multiple click strategies
+        const urlBefore = location.href;
+        const textBefore = document.body.innerText.substring(0, 500);
+
+        // Strategy 1: Click the date link
+        const dateLink = item.querySelector('.text-color-link');
+        if (dateLink) { report('  Clicking date link...'); dateLink.click(); }
+        // Strategy 2: Click any anchor
+        else { const a = item.querySelector('a'); if (a) { report('  Clicking anchor...'); a.click(); } else { report('  Clicking item...'); item.click(); } }
+
         await sleep(3000);
+
+        // Check if page changed
+        const urlAfter = location.href;
+        const textAfter = document.body.innerText.substring(0, 500);
+        const navigated = urlAfter !== urlBefore || textAfter !== textBefore;
+        report('  Navigation: ' + (navigated ? 'YES — page changed' : 'NO — same page'));
 
         // Read encounter content
         const content = document.body.innerText.substring(0, 8000);
+
+        // Check if we see encounter-specific content (not just the timeline list)
+        const hasEncounterContent = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('Objective') || content.includes('HPI') || content.length > 3000;
+        report('  Encounter content: ' + (hasEncounterContent ? 'YES — found clinical notes' : 'MINIMAL — may not have navigated into encounter'));
+
         chart.encounterDetails.push({
           date: dateText,
           summary: encounterLabel,
           content: content,
+          navigated: navigated,
+          hasEncounterContent: hasEncounterContent,
         });
         scanned++;
-        report('Read encounter ' + scanned + ' (' + (dateText || '?') + ')');
+        report('  Saved encounter ' + scanned + ' (' + content.length + ' chars)');
 
-        // Navigate back
-        const backBtn = sel('[data-element="encounter-back-button"]')
-          || Array.from(document.querySelectorAll('button, a')).find(el => {
-            const t = el.textContent.trim().toLowerCase();
-            return t === 'back' || t === '← back' || t === 'back to timeline';
-          });
+        // Navigate back if we navigated away
+        if (navigated) {
+          const backBtn = sel('[data-element="encounter-back-button"]')
+            || Array.from(document.querySelectorAll('button, a')).find(el => {
+              const t = el.textContent.trim().toLowerCase();
+              return t === 'back' || t.includes('back to') || t === '←' || t === '← back';
+            });
+          if (backBtn) { report('  Clicking back button'); backBtn.click(); await sleep(2500); }
+          else {
+            report('  No back button — clicking Timeline tab');
+            const tl = sel('[data-element="patient-header-tab-Timeline"]');
+            if (tl) { tl.click(); await sleep(2500); }
+          }
 
-        if (backBtn) {
-          backBtn.click();
-          await sleep(2500);
-        } else {
-          report('No back button — clicking Timeline tab');
-          const tl = sel('[data-element="patient-header-tab-Timeline"]');
-          if (tl) { tl.click(); await sleep(2500); }
+          // Re-find encounter items after navigation
+          encounterItems = selAll('[data-element^="encounter-item-"]');
+          if (encounterItems.length === 0) encounterItems = selAll('.encounter-list li');
+          report('  Re-found ' + encounterItems.length + ' encounters');
         }
-
-        // Re-find encounter items (DOM may have changed)
-        encounterItems = selAll('[data-element^="encounter-item-"]');
-        if (encounterItems.length === 0) encounterItems = selAll('.encounter-list li');
 
       } catch(e) {
         report('ERROR reading encounter: ' + e.message);
         errors.push('Failed to read encounter ' + (dateText || i));
-        // Try to recover
         const tl = sel('[data-element="patient-header-tab-Timeline"]');
         if (tl) { tl.click(); await sleep(2000); }
       }
