@@ -17,7 +17,15 @@ const PORT = process.env.PORT || 3001;
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: function(origin, callback) {
+    // Allow requests from known origins and Chrome extensions
+    const allowed = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'https://carecoord-o3en.onrender.com'];
+    if (!origin || allowed.includes(origin) || origin.startsWith('chrome-extension://')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now — tighten in production
+    }
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '25mb' }));

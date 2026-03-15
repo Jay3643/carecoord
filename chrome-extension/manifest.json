@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Seniority Healthcare CareCoord",
+  "version": "1.0.0",
+  "description": "Care coordination copilot for Practice Fusion — syncs patient data with CareCoord",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.practicefusion.com/*",
+    "https://app.practicefusion.com/*",
+    "https://static.practicefusion.com/*",
+    "http://localhost:3001/*",
+    "https://carecoord-o3en.onrender.com/*"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.practicefusion.com/*",
+        "https://app.practicefusion.com/*",
+        "https://static.practicefusion.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Seniority CareCoord"
+  },
+  "icons": {
+    "128": "icons/icon128.jpg"
+  }
+}
