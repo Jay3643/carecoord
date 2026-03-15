@@ -352,7 +352,7 @@ function renderPatientTab() {
   if (state.chartScanning) {
     html += '<div class="card" style="padding:16px">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
-    html += '<img src="icons/icon128.jpg" style="width:28px;height:28px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite">';
+    html += '<img src="icons/icon128.jpg" style="width:28px;height:28px;border-radius:4px;object-fit:contain;animation:pulse 1.5s ease-in-out infinite">';
     html += '<div><div style="font-size:13px;font-weight:600;color:#3d8ba8">Chart Scan in Progress</div>';
     html += '<div style="font-size:11px;color:#6b8299">' + (state.scrapeProgress || 'Starting...') + '</div></div>';
     html += '</div>';
@@ -381,7 +381,7 @@ function renderPatientTab() {
     // Clinical Snapshot
     if (state.clinicalSnapshot) {
       html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
-      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:50%">Clinical Snapshot</div>';
+      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:4px;object-fit:contain">Clinical Snapshot</div>';
       html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto">' + escapeHtml(state.clinicalSnapshot) + '</div>';
       html += '<div style="margin-top:8px;display:flex;gap:4px">';
       html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
@@ -391,7 +391,7 @@ function renderPatientTab() {
       html += '</div>';
     } else {
       html += '<div style="text-align:center;color:#8a9fb0;padding:24px;font-size:12px">';
-      html += '<img src="icons/icon128.jpg" style="width:32px;height:32px;border-radius:50%;margin-bottom:8px;opacity:0.5">';
+      html += '<img src="icons/icon128.jpg" style="width:32px;height:32px;border-radius:4px;object-fit:contain;margin-bottom:8px;opacity:0.5">';
       html += '<div>Select a date range and run a Chart Scan to generate a clinical snapshot.</div>';
       html += '</div>';
     }
@@ -534,7 +534,7 @@ function renderAITab() {
   html += '<div class="ai-messages" id="ai-messages">';
   if (state.aiMessages.length === 0) {
     html += '<div style="text-align:center;padding:24px;color:#8a9fb0">';
-    html += '<img src="icons/icon128.jpg" style="width:40px;height:40px;border-radius:50%;margin-bottom:8px">';
+    html += '<img src="icons/icon128.jpg" style="width:40px;height:40px;border-radius:4px;object-fit:contain;margin-bottom:8px">';
     html += '<div style="font-size:12px">Ask me about the patient on screen, or anything about CareCoord.</div>';
     html += '</div>';
   }

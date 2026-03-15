@@ -27,7 +27,7 @@ function AiLogo({ size = 28, animate = false }) {
   return (
     <img src="/ai-logo.jpg" alt="AI"
       style={{
-        width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
+        width: size, height: size, borderRadius: 4, objectFit: 'contain', flexShrink: 0,
         animation: animate ? 'aiPulse 1.5s ease-in-out infinite, aiBreathe 1.5s ease-in-out infinite' : 'none',
       }} />
   );
@@ -117,7 +117,7 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
       <style>{aiCss}</style>
 
       {/* Header */}
-      <div style={{ padding: '12px 16px', background: TEAL, color: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      <div style={{ padding: '12px 16px', background: '#143d6b', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <AiLogo size={30} animate={loading} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Seniority AI</div>

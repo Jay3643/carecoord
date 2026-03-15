@@ -406,7 +406,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <Icon name="send" size={12} /> Discussion
               </button>
               <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? '#52a8c7' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: '50%' }} /> Seniority AI
+                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'contain' }} /> Seniority AI
               </button>
             </div>
             {activeTab === 'ai' ? (

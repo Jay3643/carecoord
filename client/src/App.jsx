@@ -272,7 +272,7 @@ export default function App() {
                 onMouseEnter={e => { if (!aiOpen) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; } }}
                 onMouseLeave={e => { if (!aiOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; } }}
                 title="Seniority AI">
-                <img src="/ai-logo.jpg" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
+                <img src="/ai-logo.jpg" alt="" style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'contain' }} />
                 {!sidebarCollapsed && <span>Seniority AI</span>}
               </button>
             );

@@ -152,7 +152,7 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
               </div>
               <button onClick={aiDraftBody} disabled={aiDrafting}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#52a8c7', border: 'none', borderRadius: 6, cursor: aiDrafting ? 'default' : 'pointer', fontSize: 11, color: '#fff', fontWeight: 600, opacity: aiDrafting ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: '50%' }} /> {aiDrafting ? 'Drafting...' : 'AI Draft'}
+                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'contain' }} /> {aiDrafting ? 'Drafting...' : 'AI Draft'}
               </button>
             </div>
           </div>

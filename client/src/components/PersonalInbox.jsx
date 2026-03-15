@@ -599,7 +599,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                       <button onClick={sendReply} disabled={sending} style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:sending?'default':'pointer',fontSize:14,fontWeight:500,opacity:sending?.7:1 }}>{sending ? 'Sending...' : 'Send'}</button>
                       <button onClick={aiDraftReply} disabled={aiDraftingReply}
                         style={{ padding:'6px 16px',background:'#52a8c7',border:'none',borderRadius:18,cursor:aiDraftingReply?'default':'pointer',fontSize:13,fontWeight:500,color:'#fff',opacity:aiDraftingReply?.7:1,display:'flex',alignItems:'center',gap:4 }}>
-                        <img src="/ai-logo.jpg" alt="" style={{ width:16,height:16,borderRadius:'50%' }} /> {aiDraftingReply ? 'Drafting...' : 'AI Draft'}
+                        <img src="/ai-logo.jpg" alt="" style={{ width:16,height:16,borderRadius:2,objectFit:'contain' }} /> {aiDraftingReply ? 'Drafting...' : 'AI Draft'}
                       </button>
                       <input type="file" ref={replyFileRef} onChange={e => handleFileAttach(e, setReplyAttachments)} multiple style={{ display:'none' }} />
                       <div onClick={() => replyFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
@@ -654,7 +654,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             </button>
             <button onClick={aiDraftCompose} disabled={aiDraftingCompose}
               style={{ padding:'6px 16px',background:'#52a8c7',border:'none',borderRadius:18,cursor:aiDraftingCompose?'default':'pointer',fontSize:13,fontWeight:500,color:'#fff',opacity:aiDraftingCompose?.7:1,display:'flex',alignItems:'center',gap:4 }}>
-              <img src="/ai-logo.jpg" alt="" style={{ width:16,height:16,borderRadius:'50%' }} /> {aiDraftingCompose ? 'Drafting...' : 'AI Draft'}
+              <img src="/ai-logo.jpg" alt="" style={{ width:16,height:16,borderRadius:2,objectFit:'contain' }} /> {aiDraftingCompose ? 'Drafting...' : 'AI Draft'}
             </button>
             <input type="file" ref={composeFileRef} onChange={e => handleFileAttach(e, setComposeAttachments)} multiple style={{ display:'none' }} />
             <div onClick={() => composeFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
