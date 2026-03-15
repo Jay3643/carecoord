@@ -116,7 +116,7 @@ export default function App() {
     api.getTickets({ queue: 'region', status: 'unassigned' })
       .then(d => setUnassignedCount(d.tickets?.length || 0)).catch(() => {});
     api.getTickets({ queue: 'personal', status: 'all' })
-      .then(d => setPersonalCount((d.tickets || []).filter(t => t.status !== 'CLOSED').length)).catch(() => {});
+      .then(d => setPersonalCount((d.tickets || []).filter(t => t.status !== 'CLOSED' && t.has_unread).length)).catch(() => {});
   };
 
   // Unassigned count for sidebar badge
@@ -211,7 +211,7 @@ export default function App() {
         <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
             { key: 'regionQueue', icon: 'inbox', label: 'Region Queue', badge: unassignedCount, badgeColor: '#d94040' },
-            { key: 'personalQueue', icon: 'user', label: 'My Queue', badge: personalCount, badgeColor: '#1a5e9a' },
+            { key: 'personalQueue', icon: 'user', label: 'My Queue', badge: personalCount, badgeColor: '#d94040' },
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
