@@ -17,6 +17,8 @@ let state = {
   scrapeLog: [],
   scanStartDate: '',
   scanEndDate: '',
+  chartAiMessages: [],
+  chartAiLoading: false,
 };
 
 const app = document.getElementById('app');
@@ -156,6 +158,7 @@ async function scrapePatient() {
 async function startChartScan() {
   state.chartScanning = true;
   state.clinicalSnapshot = null;
+  state.chartAiMessages = [];
   state.scrapeLog = [];
   state.scrapeProgress = 'Starting chart scan...';
   render();
@@ -215,6 +218,50 @@ async function pushToTicket(ticketId) {
     await apiRequest('/tickets/' + ticketId + '/notes', { method: 'POST', body: { body: noteBody } });
     showToast('Patient data pushed to ticket');
   } catch(e) { showToast(e.message); }
+}
+
+// ── Chart AI — ask questions about the scanned chart ──
+async function chartAiChat(message) {
+  if (!message.trim() || state.chartAiLoading) return;
+  state.chartAiMessages.push({ role: 'user', content: message });
+  state.chartAiLoading = true;
+  render();
+
+  // Build context from snapshot + chart data
+  let ctx = '';
+  if (state.clinicalSnapshot) ctx += 'Clinical Overview:\n' + state.clinicalSnapshot + '\n\n';
+  if (state.patientData) {
+    const pd = state.patientData;
+    if (pd.patientName) ctx += 'Patient: ' + pd.patientName + '\n';
+    if (pd.diagnoses?.length) ctx += 'Diagnoses: ' + pd.diagnoses.join('; ') + '\n';
+    if (pd.medications?.length) ctx += 'Medications: ' + pd.medications.join('; ') + '\n';
+    if (pd.encounterDetails?.length) {
+      ctx += '\nEncounter Details:\n';
+      for (const enc of pd.encounterDetails) {
+        ctx += '\n--- ' + (enc.date || '?') + ' ---\n' + (enc.content || enc.summary || '') + '\n';
+      }
+    }
+  }
+
+  let fullMsg = message;
+  if (state.chartAiMessages.length <= 1) {
+    fullMsg = 'Here is the patient chart data from Practice Fusion:\n\n' + ctx + '\n---\n\nUser question: ' + message;
+  }
+
+  try {
+    const history = state.chartAiMessages.length > 1 ? state.chartAiMessages.slice(0, -1) : undefined;
+    const d = await apiRequest('/ai/chat', { method: 'POST', body: { message: fullMsg, history } });
+    state.chartAiMessages.push({ role: 'assistant', content: d.reply });
+  } catch(e) {
+    state.chartAiMessages.push({ role: 'assistant', content: 'Error: ' + e.message });
+  }
+  state.chartAiLoading = false;
+  render();
+  // Scroll to bottom
+  setTimeout(() => {
+    const el = document.getElementById('chart-ai-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 100);
 }
 
 // ── Push snapshot to ticket as note ──
@@ -388,6 +435,28 @@ function renderPatientTab() {
       html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
       html += '<button class="btn btn-secondary btn-small" id="clear-snapshot-btn">Clear</button>';
       html += '</div>';
+      html += '</div>';
+      // Chart AI — ask questions about the scanned data
+      html += '<div class="card" style="margin-top:8px">';
+      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:14px;height:14px;border-radius:2px;object-fit:contain">Ask about this chart</div>';
+      html += '<div id="chart-ai-messages" style="max-height:200px;overflow-y:auto;margin-bottom:8px">';
+      if (state.chartAiMessages && state.chartAiMessages.length > 0) {
+        for (const m of state.chartAiMessages) {
+          const isUser = m.role === 'user';
+          html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:flex-start">';
+          html += '<div style="width:20px;height:20px;border-radius:' + (isUser ? '50%' : '3px') + ';background:' + (isUser ? '#1a5e9a' : '#52a8c7') + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">' + (isUser ? (state.user?.name?.[0] || 'U') : '<img src="icons/icon128.jpg" style="width:14px;height:14px;border-radius:2px">') + '</div>';
+          html += '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:' + (isUser ? '#1e3a4f' : '#3d8ba8') + '">' + (isUser ? 'You' : 'Seniority AI') + '</div>';
+          html += '<div style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content) + '</div></div></div>';
+        }
+      }
+      if (state.chartAiLoading) {
+        html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:center">';
+        html += '<img src="icons/icon128.jpg" style="width:20px;height:20px;border-radius:3px;animation:pulse 1.5s ease-in-out infinite">';
+        html += '<span style="font-size:11px;color:#8a9fb0;font-style:italic">Thinking...</span></div>';
+      }
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px"><input type="text" id="chart-ai-input" placeholder="Ask about this patient\'s chart..." style="flex:1;padding:6px 10px;border:1px solid #c0d0e4;border-radius:16px;font-size:11px;outline:none">';
+      html += '<button class="btn btn-primary btn-small" id="chart-ai-send" style="background:#52a8c7;border-radius:16px;padding:6px 12px">Ask</button></div>';
       html += '</div>';
     } else {
       html += '<div style="text-align:center;color:#8a9fb0;padding:24px;font-size:12px">';
@@ -619,6 +688,14 @@ function bindEvents() {
 
   const refreshBtn = document.getElementById('refresh-btn');
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadTickets(); scrapePatient(); });
+
+  // Chart AI
+  const chartAiInput = document.getElementById('chart-ai-input');
+  const chartAiSend = document.getElementById('chart-ai-send');
+  if (chartAiInput && chartAiSend) {
+    chartAiSend.addEventListener('click', () => { chartAiChat(chartAiInput.value); });
+    chartAiInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') chartAiChat(chartAiInput.value); });
+  }
 
   // Snapshot actions
   document.querySelectorAll('[data-copy-snapshot]').forEach(el => {
