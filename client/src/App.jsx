@@ -271,9 +271,9 @@ export default function App() {
                   width: '100%', textAlign: 'left', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
                 onMouseEnter={e => { if (!aiOpen) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; } }}
                 onMouseLeave={e => { if (!aiOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; } }}
-                title="AI Assistant">
-                <Icon name="sparkle" size={18} />
-                {!sidebarCollapsed && <span>AI Assistant</span>}
+                title="Seniority AI">
+                <img src="/ai-logo.jpg" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
+                {!sidebarCollapsed && <span>Seniority AI</span>}
               </button>
             );
             if (item.key === '_workspace_toggle') return (

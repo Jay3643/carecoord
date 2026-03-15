@@ -151,8 +151,8 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
                 Your signature ({currentUser.name} — {regions.find(r => r.id === regionId)?.name || 'Region'}) will be appended automatically.
               </div>
               <button onClick={aiDraftBody} disabled={aiDrafting}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', backgroundImage: 'linear-gradient(135deg, #7c3aed, #4f46e5)', border: 'none', borderRadius: 6, cursor: aiDrafting ? 'default' : 'pointer', fontSize: 11, color: '#fff', fontWeight: 600, opacity: aiDrafting ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-                <Icon name="sparkle" size={12} /> {aiDrafting ? 'Drafting...' : 'AI Draft'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#52a8c7', border: 'none', borderRadius: 6, cursor: aiDrafting ? 'default' : 'pointer', fontSize: 11, color: '#fff', fontWeight: 600, opacity: aiDrafting ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: '50%' }} /> {aiDrafting ? 'Drafting...' : 'AI Draft'}
               </button>
             </div>
           </div>

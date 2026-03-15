@@ -405,8 +405,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'discussion' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'discussion' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="send" size={12} /> Discussion
               </button>
-              <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', backgroundImage: activeTab === 'ai' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none' }}>
-                <Icon name="sparkle" size={12} /> AI Assistant
+              <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? '#52a8c7' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: '50%' }} /> Seniority AI
               </button>
             </div>
             {activeTab === 'ai' ? (
@@ -415,19 +415,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 {aiMessages.length === 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                     <button onClick={() => aiQuickAction('summarize')} disabled={aiLoading}
-                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      style={{ padding: '6px 14px', background: '#f0f9fc', border: '1px solid #e8f6fa', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#3d8ba8', cursor: 'pointer' }}>
                       Summarize Ticket
                     </button>
                     <button onClick={() => aiQuickAction('extract')} disabled={aiLoading}
-                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      style={{ padding: '6px 14px', background: '#f0f9fc', border: '1px solid #e8f6fa', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#3d8ba8', cursor: 'pointer' }}>
                       Extract Patient Info
                     </button>
                     <button onClick={() => aiQuickAction('draft')} disabled={aiLoading}
-                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      style={{ padding: '6px 14px', background: '#f0f9fc', border: '1px solid #e8f6fa', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#3d8ba8', cursor: 'pointer' }}>
                       Draft Reply
                     </button>
                     <button onClick={() => aiQuickAction('tags')} disabled={aiLoading}
-                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      style={{ padding: '6px 14px', background: '#f0f9fc', border: '1px solid #e8f6fa', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#3d8ba8', cursor: 'pointer' }}>
                       Suggest Tags
                     </button>
                   </div>
@@ -441,11 +441,11 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   )}
                   {aiMessages.map((m, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.role === 'user' ? '#1a5e9a' : 'linear-gradient(135deg, #7c3aed, #4f46e5)', backgroundImage: m.role === 'assistant' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.role === 'user' ? '#1a5e9a' : '#52a8c7', backgroundImage: m.role === 'assistant' ? '#52a8c7' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                         {m.role === 'user' ? (currentUser.name?.[0] || 'U') : <Icon name="sparkle" size={12} />}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: m.role === 'user' ? '#1e3a4f' : '#4f46e5', marginBottom: 2 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: m.role === 'user' ? '#1e3a4f' : '#3d8ba8', marginBottom: 2 }}>
                           {m.role === 'user' ? 'You' : 'AI Assistant'}
                         </div>
                         <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -462,7 +462,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   ))}
                   {aiLoading && (
                     <div style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'center' }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundImage: 'linear-gradient(135deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundImage: '#52a8c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
                         <Icon name="sparkle" size={12} />
                       </div>
                       <span style={{ fontSize: 12, color: '#8a9fb0', fontStyle: 'italic' }}>Thinking...</span>
@@ -478,7 +478,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                     disabled={aiLoading}
                     style={{ flex: 1, padding: '10px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 20, color: '#1e3a4f', fontSize: 13, outline: 'none' }} />
                   <button onClick={() => sendAiMessage()} disabled={!aiInput.trim() || aiLoading}
-                    style={{ padding: '10px 20px', backgroundImage: aiInput.trim() && !aiLoading ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none', background: aiInput.trim() && !aiLoading ? undefined : '#dde8f2', color: aiInput.trim() && !aiLoading ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 20, cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                    style={{ padding: '10px 20px', backgroundImage: aiInput.trim() && !aiLoading ? '#52a8c7' : 'none', background: aiInput.trim() && !aiLoading ? undefined : '#dde8f2', color: aiInput.trim() && !aiLoading ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 20, cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
                     Ask
                   </button>
                   {aiMessages.length > 0 && (
