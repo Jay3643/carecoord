@@ -10,6 +10,8 @@ let state = {
   aiMessages: [],
   aiLoading: false,
   loading: false,
+  deepScraping: false,
+  scrapeProgress: '',
 };
 
 const app = document.getElementById('app');
@@ -130,21 +132,41 @@ async function scrapePatient() {
   });
 }
 
+// ── Deep scrape — navigates through all chart sections ──
+async function deepScrapePatient() {
+  state.deepScraping = true;
+  state.scrapeProgress = 'Starting full chart scan...';
+  render();
+  chrome.runtime.sendMessage({ type: 'DEEP_SCRAPE' });
+}
+
 // ── Push patient data to CareCoord (create note on a ticket) ──
 async function pushToTicket(ticketId) {
   if (!state.patientData) { showToast('No patient data to push'); return; }
   const pd = state.patientData;
-  let noteBody = '📋 Patient Data from Practice Fusion:\n\n';
+  let noteBody = 'Patient Data from Practice Fusion:\n\n';
   if (pd.patientName) noteBody += 'Patient: ' + pd.patientName + '\n';
   if (pd.dob) noteBody += 'DOB: ' + pd.dob + '\n';
+  if (pd.age) noteBody += 'Age: ' + pd.age + '\n';
   if (pd.gender) noteBody += 'Gender: ' + pd.gender + '\n';
   if (pd.phone) noteBody += 'Phone: ' + pd.phone + '\n';
+  if (pd.email) noteBody += 'Email: ' + pd.email + '\n';
   if (pd.address) noteBody += 'Address: ' + pd.address + '\n';
+  if (pd.ssnLast4) noteBody += 'SSN (last 4): ' + pd.ssnLast4 + '\n';
   if (pd.insurance) noteBody += 'Insurance: ' + pd.insurance + '\n';
   if (pd.memberId) noteBody += 'Member ID: ' + pd.memberId + '\n';
-  if (pd.medications) noteBody += '\nMedications:\n' + pd.medications.join('\n') + '\n';
-  if (pd.allergies) noteBody += '\nAllergies:\n' + pd.allergies.join('\n') + '\n';
-  if (pd.diagnoses) noteBody += '\nDiagnoses:\n' + pd.diagnoses.join('\n') + '\n';
+  if (pd.groupNumber) noteBody += 'Group #: ' + pd.groupNumber + '\n';
+  if (pd.pcp) noteBody += 'PCP: ' + pd.pcp + '\n';
+  if (pd.pharmacy) noteBody += 'Pharmacy: ' + pd.pharmacy + '\n';
+  if (pd.smokingStatus) noteBody += 'Smoking: ' + pd.smokingStatus + '\n';
+  if (pd.vitals) {
+    noteBody += '\nVitals:\n';
+    const vl = { bp: 'BP', hr: 'HR', temp: 'Temp', weight: 'Weight', height: 'Height', bmi: 'BMI', o2: 'O2' };
+    for (const [k, v] of Object.entries(pd.vitals)) noteBody += '  ' + (vl[k]||k) + ': ' + v + '\n';
+  }
+  if (pd.medications?.length) noteBody += '\nMedications:\n' + pd.medications.map(m => '  - ' + m).join('\n') + '\n';
+  if (pd.allergies?.length) noteBody += '\nAllergies:\n' + pd.allergies.map(a => '  - ' + a).join('\n') + '\n';
+  if (pd.diagnoses?.length) noteBody += '\nDiagnoses:\n' + pd.diagnoses.map(d => '  - ' + d).join('\n') + '\n';
 
   try {
     await apiRequest('/tickets/' + ticketId + '/notes', { method: 'POST', body: { body: noteBody } });
@@ -169,7 +191,8 @@ async function aiChat(message) {
     if (pd.insurance) ctx += 'Insurance: ' + pd.insurance + '\n';
     if (pd.medications) ctx += 'Medications: ' + pd.medications.join(', ') + '\n';
     if (pd.diagnoses) ctx += 'Diagnoses: ' + pd.diagnoses.join(', ') + '\n';
-    if (pd._pageContext) ctx += '\nVisible page text:\n' + pd._pageContext.substring(0, 2000) + '\n';
+    if (pd._fullChartContext) ctx += '\nFull chart data:\n' + pd._fullChartContext.substring(0, 8000) + '\n';
+    else if (pd._pageContext) ctx += '\nVisible page text:\n' + pd._pageContext.substring(0, 2000) + '\n';
     fullMsg = ctx + '\n---\n\nUser request: ' + message;
   }
 
@@ -267,7 +290,8 @@ function render2FA(email) {
 function renderPatientTab() {
   let html = '';
   html += '<div class="action-bar">';
-  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Read Patient from PF</button>';
+  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Quick Read</button>';
+  html += '<button class="btn btn-primary btn-small" id="deep-scrape-btn" style="background:#3d8ba8">Full Chart Scan</button>';
   html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
   html += '</div>';
 
@@ -276,21 +300,45 @@ function renderPatientTab() {
     return html;
   }
 
+  if (state.deepScraping) {
+    html += '<div class="card" style="text-align:center;padding:24px">';
+    html += '<img src="icons/icon128.jpg" style="width:40px;height:40px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite;margin-bottom:8px">';
+    html += '<div style="font-size:13px;font-weight:600;color:#3d8ba8">Scanning Full Chart</div>';
+    html += '<div style="font-size:11px;color:#6b8299;margin-top:4px">' + (state.scrapeProgress || 'Working...') + '</div>';
+    html += '<div style="font-size:10px;color:#8a9fb0;margin-top:8px">The extension is clicking through each section of the patient chart. Please don\'t navigate away.</div>';
+    html += '</div>';
+    return html;
+  }
+
   const pd = state.patientData;
   if (!pd) {
-    html += '<div class="card"><div style="text-align:center;color:#8a9fb0;padding:20px">Navigate to a patient chart in Practice Fusion, then click "Read Patient from PF"</div></div>';
+    html += '<div class="card"><div style="text-align:center;color:#8a9fb0;padding:20px">';
+    html += '<div style="margin-bottom:8px">Navigate to a patient chart in Practice Fusion, then:</div>';
+    html += '<div style="font-size:12px"><strong>Quick Read</strong> — reads the current screen</div>';
+    html += '<div style="font-size:12px"><strong>Full Chart Scan</strong> — navigates through every section and pulls the complete chart</div>';
+    html += '</div></div>';
     return html;
+  }
+
+  // Sections found indicator
+  if (pd._sectionsFound !== undefined) {
+    html += '<div style="font-size:10px;color:#3d8ba8;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:4px">';
+    html += '<span style="background:#e8f6fa;padding:2px 8px;border-radius:4px">Chart scan: ' + pd._sectionsFound + '/' + pd._sectionsTotal + ' sections</span>';
+    html += '</div>';
   }
 
   html += '<div class="card"><div class="card-title">Patient Information</div>';
   const fields = [
-    ['Name', pd.patientName], ['DOB', pd.dob], ['Gender', pd.gender],
-    ['Phone', pd.phone], ['Address', pd.address],
-    ['Insurance', pd.insurance], ['Member ID', pd.memberId],
+    ['Name', pd.patientName], ['DOB', pd.dob], ['Age', pd.age], ['Gender', pd.gender],
+    ['Phone', pd.phone], ['Email', pd.email], ['Address', pd.address], ['SSN (last 4)', pd.ssnLast4],
+    ['Insurance', pd.insurance], ['Member ID', pd.memberId], ['Group #', pd.groupNumber],
+    ['PCP', pd.pcp], ['Pharmacy', pd.pharmacy], ['Smoking', pd.smokingStatus],
   ];
   for (const [label, val] of fields) {
-    html += `<div class="field"><div class="field-label">${label}</div><div class="field-value${val ? '' : ' empty'}">${val || 'Not found'}</div></div>`;
+    if (val) html += `<div class="field"><div class="field-label">${label}</div><div class="field-value">${val}</div></div>`;
   }
+  // Show "not found" only for critical fields
+  if (!pd.patientName) html += '<div class="field"><div class="field-label">Name</div><div class="field-value empty">Not found</div></div>';
   html += '</div>';
 
   if (pd.medications && pd.medications.length) {
@@ -322,9 +370,33 @@ function renderPatientTab() {
     html += '</div>';
   }
 
+  // Vitals
+  if (pd.vitals && Object.keys(pd.vitals).length > 0) {
+    html += '<div class="card"><div class="card-title">Latest Vitals</div>';
+    const vitalLabels = { bp: 'Blood Pressure', hr: 'Heart Rate', temp: 'Temperature', weight: 'Weight', height: 'Height', bmi: 'BMI', o2: 'O2 Sat' };
+    for (const [k, v] of Object.entries(pd.vitals)) {
+      html += `<div class="field"><div class="field-label">${vitalLabels[k] || k}</div><div class="field-value">${v}</div></div>`;
+    }
+    html += '</div>';
+  }
+
+  // Chart sections (from deep scrape)
+  if (pd._sections) {
+    const sectionNames = Object.keys(pd._sections).filter(k => pd._sections[k]);
+    if (sectionNames.length > 0) {
+      html += '<div class="card"><div class="card-title">Chart Sections Retrieved</div>';
+      for (const name of sectionNames) {
+        html += `<details style="margin-bottom:4px"><summary style="cursor:pointer;font-size:12px;font-weight:500;color:#1e3a4f;padding:4px 0">${name}</summary>`;
+        html += `<div style="font-size:11px;white-space:pre-wrap;color:#6b8299;max-height:200px;overflow:auto;padding:4px 8px;background:#f8fafc;border-radius:4px;margin-top:4px">${escapeHtml(pd._sections[name].substring(0, 3000))}</div>`;
+        html += '</details>';
+      }
+      html += '</div>';
+    }
+  }
+
   if (pd._rawBanner && !pd.patientName) {
     html += '<div class="card"><div class="card-title">Raw Page Data (AI can analyze)</div>';
-    html += `<div style="font-size:11px;white-space:pre-wrap;color:#6b8299;max-height:200px;overflow:auto">${pd._rawBanner}</div>`;
+    html += `<div style="font-size:11px;white-space:pre-wrap;color:#6b8299;max-height:200px;overflow:auto">${escapeHtml(pd._rawBanner)}</div>`;
     html += '</div>';
   }
 
@@ -428,9 +500,12 @@ function bindEvents() {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; render(); });
   });
 
-  // Scrape button
+  // Scrape buttons
   const scrapeBtn = document.getElementById('scrape-btn');
   if (scrapeBtn) scrapeBtn.addEventListener('click', scrapePatient);
+
+  const deepScrapeBtn = document.getElementById('deep-scrape-btn');
+  if (deepScrapeBtn) deepScrapeBtn.addEventListener('click', deepScrapePatient);
 
   const refreshBtn = document.getElementById('refresh-btn');
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadTickets(); scrapePatient(); });
@@ -506,12 +581,24 @@ function bindEvents() {
   if (aiMsgs) aiMsgs.scrollTop = aiMsgs.scrollHeight;
 }
 
-// ── Listen for patient data from content script ──
+// ── Listen for messages from content script ──
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === 'PATIENT_DATA_UPDATE') {
+  if (msg.type === 'PATIENT_DATA_UPDATE' || msg.type === 'PATIENT_DATA') {
     state.patientData = msg.data;
     if (state.tab === 'patient') render();
     if (msg.data.patientName) searchTickets(msg.data.patientName);
+  }
+  if (msg.type === 'SCRAPE_PROGRESS') {
+    state.scrapeProgress = msg.status;
+    render();
+  }
+  if (msg.type === 'DEEP_SCRAPE_COMPLETE') {
+    state.patientData = msg.data;
+    state.deepScraping = false;
+    state.scrapeProgress = '';
+    if (msg.data.patientName) searchTickets(msg.data.patientName);
+    showToast('Full chart scan complete — ' + (msg.data._sectionsFound || 0) + ' sections read');
+    render();
   }
 });
 
