@@ -416,24 +416,38 @@ function renderPatientTab() {
 
   // ── Chart Scan sub-tab ──
   if (state.patientSubTab === 'chartscan') {
-    html += '<div class="card" style="margin-bottom:8px">';
-    html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
-    html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
-    html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
-    html += '</div>';
-    html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Start Chart Scan</button>';
-    html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads summary + clicks into each encounter. Generates an AI clinical snapshot.</div>';
-    html += '</div>';
 
-    // Clinical Snapshot
+    // If we have a completed scan, show the summary header instead of the date picker
     if (state.clinicalSnapshot) {
+      // Scan complete header
+      const pd = state.patientData || {};
+      const fromDate = state.scanStartDate ? new Date(state.scanStartDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'All';
+      const toDate = state.scanEndDate ? new Date(state.scanEndDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Present';
+      const encCount = pd._encountersScanned || 0;
+      const encSkipped = pd._encountersSkipped || 0;
+
+      html += '<div class="card" style="background:#f0f9fc;border-color:#52a8c7;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+      html += '<div style="width:8px;height:8px;border-radius:50%;background:#2e7d32;flex-shrink:0"></div>';
+      html += '<div style="font-size:13px;font-weight:700;color:#1e3a4f">Chart Scan Complete</div>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:#5a7a8a;line-height:1.6">';
+      html += '<div><strong>Patient:</strong> ' + (pd.patientName || '—') + '</div>';
+      html += '<div><strong>Date Range:</strong> ' + fromDate + ' — ' + toDate + '</div>';
+      html += '<div><strong>Encounters Scanned:</strong> ' + encCount + (encSkipped > 0 ? ' (' + encSkipped + ' outside range)' : '') + '</div>';
+      if (pd.medications?.length) html += '<div><strong>Medications:</strong> ' + pd.medications.length + '</div>';
+      if (pd.diagnoses?.length) html += '<div><strong>Diagnoses:</strong> ' + pd.diagnoses.length + '</div>';
+      html += '</div>';
+      html += '<button class="btn btn-secondary btn-small" id="rescan-btn" style="margin-top:8px;width:100%">Change Range & Rescan</button>';
+      html += '</div>';
+
+      // Clinical Overview
       html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
-      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:4px;object-fit:contain">Clinical Snapshot</div>';
+      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:4px;object-fit:contain">Clinical Overview</div>';
       html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto">' + escapeHtml(state.clinicalSnapshot) + '</div>';
       html += '<div style="margin-top:8px;display:flex;gap:4px">';
       html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
       html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
-      html += '<button class="btn btn-secondary btn-small" id="clear-snapshot-btn">Clear</button>';
       html += '</div>';
       html += '</div>';
       // Chart AI — ask questions about the scanned data
@@ -459,9 +473,15 @@ function renderPatientTab() {
       html += '<button class="btn btn-primary btn-small" id="chart-ai-send" style="background:#52a8c7;border-radius:16px;padding:6px 12px">Ask</button></div>';
       html += '</div>';
     } else {
-      html += '<div style="text-align:center;color:#8a9fb0;padding:24px;font-size:12px">';
-      html += '<img src="icons/icon128.jpg" style="width:32px;height:32px;border-radius:4px;object-fit:contain;margin-bottom:8px;opacity:0.5">';
-      html += '<div>Select a date range and run a Chart Scan to generate a clinical snapshot.</div>';
+      // No scan yet — show date picker
+      html += '<div class="card" style="margin-bottom:8px">';
+      html += '<div class="card-title">Select Date Range</div>';
+      html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
+      html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+      html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+      html += '</div>';
+      html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Start Chart Scan</button>';
+      html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads patient summary + clicks into each encounter within the date range. Generates an AI clinical overview.</div>';
       html += '</div>';
     }
     return html;
@@ -671,9 +691,14 @@ function bindEvents() {
   document.querySelectorAll('[data-subtab]').forEach(t => {
     t.addEventListener('click', () => { state.patientSubTab = t.dataset.subtab; render(); });
   });
-  // Clear snapshot
-  const clearSnap = document.getElementById('clear-snapshot-btn');
-  if (clearSnap) clearSnap.addEventListener('click', () => { state.clinicalSnapshot = null; savePatientData(); render(); });
+  // Rescan — clear snapshot and show date picker again
+  const rescanBtn = document.getElementById('rescan-btn');
+  if (rescanBtn) rescanBtn.addEventListener('click', () => {
+    state.clinicalSnapshot = null;
+    state.chartAiMessages = [];
+    savePatientData();
+    render();
+  });
 
   // Scrape buttons
   const scrapeBtn = document.getElementById('scrape-btn');
