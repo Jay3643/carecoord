@@ -12,6 +12,7 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState([]);
+  const [aiDrafting, setAiDrafting] = useState(false);
   const fileInputRef = useRef(null);
 
   const userRegions = regions.filter(r => currentUser.regionIds.includes(r.id));
@@ -47,6 +48,17 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
       reader.readAsDataURL(file);
     }
     e.target.value = '';
+  };
+
+  const aiDraftBody = async () => {
+    if (!subject.trim() && !toEmail.trim()) { showToast('Add a recipient or subject first so the AI has context'); return; }
+    setAiDrafting(true);
+    try {
+      const d = await api.aiDraftEmail(body.trim() || 'Write an appropriate professional email', toEmail, subject);
+      setBody(d.result);
+      showToast('AI draft inserted');
+    } catch (e) { showToast(e.message || 'AI draft failed'); }
+    setAiDrafting(false);
   };
 
   return (
@@ -134,8 +146,14 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
               placeholder="Type your message..."
               rows={8}
               style={{ width: '100%', padding: '12px 14px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', fontSize: 13, resize: 'vertical', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box' }} />
-            <div style={{ fontSize: 11, color: '#8a9fb0', marginTop: 4 }}>
-              Your signature ({currentUser.name} — {regions.find(r => r.id === regionId)?.name || 'Region'}) will be appended automatically.
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: '#8a9fb0', flex: 1 }}>
+                Your signature ({currentUser.name} — {regions.find(r => r.id === regionId)?.name || 'Region'}) will be appended automatically.
+              </div>
+              <button onClick={aiDraftBody} disabled={aiDrafting}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', backgroundImage: 'linear-gradient(135deg, #7c3aed, #4f46e5)', border: 'none', borderRadius: 6, cursor: aiDrafting ? 'default' : 'pointer', fontSize: 11, color: '#fff', fontWeight: 600, opacity: aiDrafting ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+                <Icon name="sparkle" size={12} /> {aiDrafting ? 'Drafting...' : 'AI Draft'}
+              </button>
             </div>
           </div>
 

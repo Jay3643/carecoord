@@ -11,8 +11,8 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   const endRef = useRef(null);
 
   useEffect(() => {
-    if (activeTicketId && activeTicketId !== contextTicketId) {
-      setContextTicketId(activeTicketId);
+    if (activeTicketId !== contextTicketId) {
+      setContextTicketId(activeTicketId || null);
     }
   }, [activeTicketId]);
 
@@ -20,7 +20,6 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Resolve ticket subject for context label
   useEffect(() => {
     if (contextTicketId) {
       api.getTicket(contextTicketId).then(d => {
@@ -34,17 +33,18 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   const sendMessage = async (text) => {
     const msg = text || input;
     if (!msg.trim() || loading) return;
-    if (!contextTicketId) {
-      showToast('Open a ticket first to give the AI context');
-      return;
-    }
     const userMsg = { role: 'user', content: msg };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
     try {
       const history = messages.length > 0 ? messages : undefined;
-      const d = await api.aiChat(contextTicketId, msg, history);
+      let d;
+      if (contextTicketId) {
+        d = await api.aiChat(contextTicketId, msg, history);
+      } else {
+        d = await api.aiGeneralChat(msg, history);
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: d.reply }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + (e.message || 'AI request failed') }]);
@@ -53,7 +53,7 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   };
 
   const quickAction = async (action) => {
-    if (!contextTicketId) { showToast('Open a ticket first'); return; }
+    if (!contextTicketId) { showToast('Open a ticket to use ticket actions'); return; }
     setLoading(true);
     let label, fn;
     if (action === 'summarize') { label = 'Summarize this ticket'; fn = () => api.aiSummarize(contextTicketId); }
@@ -71,6 +71,7 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   };
 
   const gradient = 'linear-gradient(135deg, #7c3aed, #4f46e5)';
+  const hasTicket = !!contextTicketId;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
@@ -79,44 +80,42 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
         <Icon name="sparkle" size={18} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>AI Assistant</div>
-          {contextLabel && (
-            <div style={{ fontSize: 10, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
-              {contextTicketId?.toUpperCase()} — {contextLabel}
-            </div>
-          )}
+          <div style={{ fontSize: 10, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+            {contextLabel ? contextTicketId?.toUpperCase() + ' — ' + contextLabel : 'General — no ticket selected'}
+          </div>
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}>
           <Icon name="x" size={16} />
         </button>
       </div>
 
-      {/* Quick Actions */}
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f4f9', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {[
-          { key: 'summarize', label: 'Summarize' },
-          { key: 'extract', label: 'Patient Info' },
-          { key: 'draft', label: 'Draft Reply' },
-          { key: 'tags', label: 'Suggest Tags' },
-        ].map(a => (
-          <button key={a.key} onClick={() => quickAction(a.key)} disabled={loading || !contextTicketId}
-            style={{ padding: '4px 10px', background: '#f0f4f9', border: '1px solid #dde8f2', borderRadius: 6, fontSize: 10, fontWeight: 600, color: contextTicketId ? '#4f46e5' : '#8a9fb0', cursor: contextTicketId && !loading ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
-            {a.label}
-          </button>
-        ))}
-      </div>
+      {/* Quick Actions — only when ticket is active */}
+      {hasTicket && (
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f4f9', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {[
+            { key: 'summarize', label: 'Summarize' },
+            { key: 'extract', label: 'Patient Info' },
+            { key: 'draft', label: 'Draft Reply' },
+            { key: 'tags', label: 'Suggest Tags' },
+          ].map(a => (
+            <button key={a.key} onClick={() => quickAction(a.key)} disabled={loading}
+              style={{ padding: '4px 10px', background: '#f0f4f9', border: '1px solid #dde8f2', borderRadius: 6, fontSize: 10, fontWeight: 600, color: '#4f46e5', cursor: loading ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-        {!contextTicketId && (
+        {messages.length === 0 && !loading && (
           <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: '40px 16px' }}>
             <Icon name="sparkle" size={32} />
-            <div style={{ marginTop: 8 }}>Open a ticket to start using the AI assistant.</div>
-          </div>
-        )}
-        {contextTicketId && messages.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: '40px 16px' }}>
-            <Icon name="sparkle" size={32} />
-            <div style={{ marginTop: 8 }}>Ask anything about this ticket, or use a quick action above.</div>
+            <div style={{ marginTop: 8 }}>
+              {hasTicket
+                ? 'Ask anything about this ticket, or use a quick action above.'
+                : 'Ask me anything — draft emails, answer questions, help with care coordination.'}
+            </div>
           </div>
         )}
         {messages.map((m, i) => (
@@ -160,10 +159,10 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
       <div style={{ padding: '8px 12px', borderTop: '1px solid #f0f4f9', display: 'flex', gap: 6, alignItems: 'center' }}>
         <input value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-          placeholder={contextTicketId ? 'Ask about this ticket...' : 'Open a ticket first...'}
-          disabled={loading || !contextTicketId}
+          placeholder={hasTicket ? 'Ask about this ticket...' : 'Ask anything...'}
+          disabled={loading}
           style={{ flex: 1, padding: '8px 12px', background: '#f0f4f9', border: '1px solid #dde8f2', borderRadius: 20, color: '#1e3a4f', fontSize: 12, outline: 'none' }} />
-        <button onClick={() => sendMessage()} disabled={!input.trim() || loading || !contextTicketId}
+        <button onClick={() => sendMessage()} disabled={!input.trim() || loading}
           style={{ padding: '8px 14px', backgroundImage: input.trim() && !loading ? gradient : 'none', background: input.trim() && !loading ? undefined : '#dde8f2', color: input.trim() && !loading ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 20, cursor: input.trim() && !loading ? 'pointer' : 'default', fontWeight: 600, fontSize: 11 }}>
           Ask
         </button>

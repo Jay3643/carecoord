@@ -63,6 +63,58 @@ Guidelines:
 - Flag any urgent or time-sensitive items
 - If you're unsure about something, say so rather than guessing`;
 
+// ── General AI chat (no ticket required) ──
+router.post('/chat', requireAuth, async (req, res) => {
+  const client = getClient();
+  if (!client) return res.status(500).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY in environment.' });
+
+  const { message, history } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+
+  try {
+    const msgs = [];
+    if (history && history.length > 0) {
+      for (const h of history) {
+        msgs.push({ role: h.role, content: h.content });
+      }
+    }
+    msgs.push({ role: 'user', content: message });
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: SYSTEM_PROMPT,
+      messages: msgs,
+    });
+
+    const reply = response.content[0]?.text || 'No response generated.';
+    res.json({ reply });
+  } catch (e) {
+    console.error('[AI] Error:', e.message);
+    res.status(500).json({ error: 'AI request failed: ' + e.message });
+  }
+});
+
+// ── Draft email from scratch (for compose) ──
+router.post('/draft-email', requireAuth, async (req, res) => {
+  const client = getClient();
+  if (!client) return res.status(500).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY in environment.' });
+
+  const db = getDb();
+  const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
+  const { instructions, to, subject } = req.body;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Draft a professional email for ${toStr(user.name)} at Seniority Healthcare.\n\nTo: ${to || '(not specified)'}\nSubject: ${subject || '(not specified)'}\nInstructions: ${instructions || 'Write an appropriate professional email'}\n\nWrite ONLY the email body (no greeting header like "Dear..." unless appropriate, no signature — it's added automatically). Be professional, empathetic, and concise.` }],
+    });
+    res.json({ result: response.content[0]?.text || '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Chat with AI about a ticket ──
 router.post('/ticket/:ticketId/chat', requireAuth, async (req, res) => {
   const client = getClient();
