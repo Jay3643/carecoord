@@ -218,6 +218,37 @@ router.post('/chat', requireAuth, async (req, res) => {
   }
 });
 
+// ── Proactive suggestions based on user role and system state ──
+router.post('/suggestions', requireAuth, async (req, res) => {
+  const client = getClient();
+  if (!client) return res.status(500).json({ error: 'AI not configured.' });
+
+  const db = getDb();
+  const sysCtx = getSystemContext(db, req.user.id);
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 512,
+      system: `You generate brief, actionable suggestions for a care coordination platform user. Based on their role and the current system state, suggest 3-5 specific actions they should take right now. Each suggestion should be one short sentence (under 15 words) that the user can click to ask you about. Format: return ONLY a JSON array of strings, nothing else. Example: ["Review 3 unassigned tickets in Northern PA","Follow up on the Smith referral from last week","Check unread email from Dr. Johnson"]`,
+      messages: [{ role: 'user', content: `Here is the system state. Generate suggestions for this user.\n\nUser role: ${req.user.role}\n\n${sysCtx}` }],
+    });
+
+    const text = response.content[0]?.text || '[]';
+    let suggestions;
+    try {
+      // Extract JSON array from response (handle markdown code blocks)
+      const match = text.match(/\[[\s\S]*\]/);
+      suggestions = match ? JSON.parse(match[0]) : [];
+    } catch (e) { suggestions = []; }
+
+    res.json({ suggestions });
+  } catch (e) {
+    console.error('[AI] Suggestions error:', e.message);
+    res.json({ suggestions: [] });
+  }
+});
+
 // ── Draft email from scratch (for compose) ──
 router.post('/draft-email', requireAuth, async (req, res) => {
   const client = getClient();

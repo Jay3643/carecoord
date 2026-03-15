@@ -123,6 +123,7 @@ export const api = {
   driveFiles: (q, fid, pt) => cached('drive:'+q+':'+fid, 30000, () => request('/gmail/drive/files?q='+encodeURIComponent(q||'')+(fid?'&folderId='+fid:'')+(pt?'&pageToken='+pt:''))),
   driveShared: () => request('/gmail/drive/shared'),
   aiGeneralChat: (message, history) => request('/ai/chat', { method: 'POST', body: { message, history } }),
+  aiSuggestions: () => request('/ai/suggestions', { method: 'POST' }),
   aiDraftEmail: (instructions, to, subject) => request('/ai/draft-email', { method: 'POST', body: { instructions, to, subject } }),
   aiChat: (ticketId, message, history) => request('/ai/ticket/' + ticketId + '/chat', { method: 'POST', body: { message, history } }),
   aiSummarize: (ticketId) => request('/ai/ticket/' + ticketId + '/summarize', { method: 'POST' }),

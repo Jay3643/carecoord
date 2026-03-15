@@ -8,6 +8,8 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   const [loading, setLoading] = useState(false);
   const [contextTicketId, setContextTicketId] = useState(activeTicketId || null);
   const [contextLabel, setContextLabel] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -19,6 +21,14 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Fetch suggestions on mount
+  useEffect(() => {
+    setSuggestionsLoading(true);
+    api.aiSuggestions().then(d => {
+      setSuggestions(d.suggestions || []);
+    }).catch(() => {}).finally(() => setSuggestionsLoading(false));
+  }, []);
 
   useEffect(() => {
     if (contextTicketId) {
@@ -109,13 +119,32 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
         {messages.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: '40px 16px' }}>
-            <Icon name="sparkle" size={32} />
-            <div style={{ marginTop: 8 }}>
-              {hasTicket
-                ? 'Ask anything about this ticket, or use a quick action above.'
-                : 'Ask me anything — draft emails, answer questions, help with care coordination.'}
+          <div style={{ padding: '16px 4px' }}>
+            <div style={{ textAlign: 'center', color: '#8a9fb0', marginBottom: 16 }}>
+              <Icon name="sparkle" size={28} />
+              <div style={{ marginTop: 6, fontSize: 12 }}>
+                {hasTicket
+                  ? 'Ask anything about this ticket, or use a quick action above.'
+                  : 'Hi ' + (currentUser.name?.split(' ')[0] || '') + '! Here are some things I\'d suggest:'}
+              </div>
             </div>
+            {/* Suggestions */}
+            {suggestionsLoading && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#8a9fb0', fontStyle: 'italic', padding: 8 }}>Loading suggestions...</div>
+            )}
+            {!suggestionsLoading && suggestions.length > 0 && !hasTicket && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {suggestions.map((s, i) => (
+                  <button key={i} onClick={() => sendMessage(s)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8f6ff', border: '1px solid #e8e0ff', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#4f46e5', textAlign: 'left', fontWeight: 500, lineHeight: 1.4 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#ede9ff'; e.currentTarget.style.borderColor = '#c4b5fd'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#f8f6ff'; e.currentTarget.style.borderColor = '#e8e0ff'; }}>
+                    <span style={{ color: '#7c3aed', fontSize: 14, flexShrink: 0 }}>→</span>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {messages.map((m, i) => (
