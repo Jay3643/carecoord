@@ -27,6 +27,8 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [workStatus, setWorkStatus] = useState('active');
   const [aiOpen, setAiOpen] = useState(false);
+  const [chatWidth, setChatWidth] = useState(380);
+  const [aiWidth, setAiWidth] = useState(380);
 
   // Reference data (loaded once after login)
   const [regions, setRegions] = useState([]);
@@ -160,6 +162,21 @@ export default function App() {
   if (window.location.search.includes('token=') && window.location.pathname === '/setup') {
     return <SetupAccount />;
   }
+
+  const handleResize = (setter, minW, maxW) => (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = e.target.parentElement.offsetWidth;
+    const onMove = (ev) => {
+      const delta = startX - ev.clientX;
+      setter(Math.min(maxW, Math.max(minW, startW + delta)));
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
 
   const chatBadgeStyle = `@keyframes chatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }`;
 
@@ -490,15 +507,27 @@ export default function App() {
 
       {/* Chat Slide Panel */}
       {chatOpen && (
-        <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', transition: 'width 0.2s ease', overflow: 'hidden' }}>
-          <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} />
+        <div style={{ width: chatWidth, flexShrink: 0, display: 'flex', background: '#fff', overflow: 'hidden', position: 'relative' }}>
+          <div onMouseDown={handleResize(setChatWidth, 280, 700)}
+            style={{ width: 4, cursor: 'col-resize', background: 'transparent', flexShrink: 0, position: 'relative', zIndex: 2 }}
+            onMouseEnter={e => e.currentTarget.style.background = '#c0d0e4'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #dde8f2', overflow: 'hidden' }}>
+            <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} />
+          </div>
         </div>
       )}
 
       {/* AI Assistant Panel */}
       {aiOpen && (
-        <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
-          <AiPanel currentUser={currentUser} onClose={() => setAiOpen(false)} showToast={showToast} activeTicketId={selectedTicketId} />
+        <div style={{ width: aiWidth, flexShrink: 0, display: 'flex', background: '#fff', overflow: 'hidden', position: 'relative' }}>
+          <div onMouseDown={handleResize(setAiWidth, 280, 700)}
+            style={{ width: 4, cursor: 'col-resize', background: 'transparent', flexShrink: 0, position: 'relative', zIndex: 2 }}
+            onMouseEnter={e => e.currentTarget.style.background = '#c0d0e4'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #dde8f2', overflow: 'hidden' }}>
+            <AiPanel currentUser={currentUser} onClose={() => setAiOpen(false)} showToast={showToast} activeTicketId={selectedTicketId} />
+          </div>
         </div>
       )}
       </div>
