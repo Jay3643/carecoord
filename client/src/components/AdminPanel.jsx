@@ -3,6 +3,109 @@ import { api } from '../api';
 import Icon from './Icons';
 import { Avatar } from './ui';
 
+const TAG_COLORS = ['#6b7280', '#d94040', '#c96a1b', '#ca8a04', '#2e7d32', '#0891b2', '#1a5e9a', '#7c3aed', '#d946ef', '#e11d48'];
+
+function TagsSection({ showToast, s }) {
+  const [tags, setTags] = React.useState([]);
+  const [newName, setNewName] = React.useState('');
+  const [newColor, setNewColor] = React.useState('#1a5e9a');
+  const [editingId, setEditingId] = React.useState(null);
+  const [editName, setEditName] = React.useState('');
+  const [editColor, setEditColor] = React.useState('');
+
+  const loadTags = () => {
+    api.adminGetTags().then(d => setTags(d.tags || [])).catch(() => {});
+  };
+  React.useEffect(() => { loadTags(); }, []);
+
+  const createTag = async () => {
+    if (!newName.trim()) { showToast('Tag name required'); return; }
+    try {
+      await api.adminCreateTag({ name: newName.trim(), color: newColor });
+      showToast('Tag created');
+      setNewName(''); setNewColor('#1a5e9a');
+      loadTags();
+    } catch (e) { showToast(e.message || 'Failed'); }
+  };
+
+  const saveEdit = async (id) => {
+    try {
+      await api.adminUpdateTag(id, { name: editName.trim(), color: editColor });
+      showToast('Tag updated');
+      setEditingId(null);
+      loadTags();
+    } catch (e) { showToast(e.message || 'Failed'); }
+  };
+
+  const deleteTag = async (tag) => {
+    if (!confirm('Delete tag "' + tag.name + '"? It will be removed from all tickets.')) return;
+    try {
+      await api.adminDeleteTag(tag.id);
+      showToast('Tag deleted');
+      loadTags();
+    } catch (e) { showToast(e.message || 'Failed'); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{tags.length} Tags</span>
+      </div>
+
+      {/* Create new tag */}
+      <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {TAG_COLORS.map(c => (
+            <button key={c} onClick={() => setNewColor(c)}
+              style={{ width: 20, height: 20, borderRadius: '50%', background: c, border: newColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+          ))}
+        </div>
+        <div style={{ width: 20, height: 20, borderRadius: '50%', background: newColor, flexShrink: 0 }} />
+        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New tag name..."
+          onKeyDown={e => e.key === 'Enter' && createTag()}
+          style={{ flex: 1, padding: '8px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, outline: 'none' }} />
+        <button onClick={createTag} disabled={!newName.trim()}
+          style={s.btn(newName.trim() ? '#1a5e9a' : '#dde8f2', newName.trim() ? '#fff' : '#8a9fb0')}>
+          + Add Tag
+        </button>
+      </div>
+
+      {/* Tag list */}
+      {tags.map(tag => (
+        <div key={tag.id} style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {editingId === tag.id ? (
+            <>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {TAG_COLORS.map(c => (
+                  <button key={c} onClick={() => setEditColor(c)}
+                    style={{ width: 16, height: 16, borderRadius: '50%', background: c, border: editColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+                ))}
+              </div>
+              <input value={editName} onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveEdit(tag.id)}
+                style={{ flex: 1, padding: '6px 10px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 13, outline: 'none' }} />
+              <button onClick={() => saveEdit(tag.id)} style={s.btn('#1a5e9a', '#fff')}>Save</button>
+              <button onClick={() => setEditingId(null)} style={s.btnOutline}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <div style={{ width: 16, height: 16, borderRadius: '50%', background: tag.color || '#6b7280', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{tag.name}</span>
+              <span style={{ fontSize: 10, color: '#8a9fb0', fontFamily: "'IBM Plex Mono', monospace" }}>{tag.id}</span>
+              <button onClick={() => { setEditingId(tag.id); setEditName(tag.name); setEditColor(tag.color || '#6b7280'); }} style={s.btnOutline}>Edit</button>
+              <button onClick={() => deleteTag(tag)} style={{ ...s.btnOutline, color: '#d94040', borderColor: '#d9404040' }}>Delete</button>
+            </>
+          )}
+        </div>
+      ))}
+
+      {tags.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#8a9fb0' }}>No tags yet. Create one above.</div>
+      )}
+    </div>
+  );
+}
+
 function InviteSection({ currentUser, showToast, regions }) {
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
@@ -122,7 +225,8 @@ function InviteSection({ currentUser, showToast, regions }) {
 }
 
 export default function AdminPanel({ currentUser, showToast, regions: passedRegions }) {
-  const [tab, setTab] = useState('users');
+  const isAdmin = currentUser.role === 'admin';
+  const [tab, setTab] = useState(isAdmin ? 'users' : 'tags');
   const [users, setUsers] = useState([]);
   const [regions, setRegions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -318,7 +422,7 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
           <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>Administration</h1>
         </div>
         <div style={{ display: 'flex', gap: 4, background: '#dde8f2', borderRadius: 8, padding: 3, border: '1px solid #c0d0e4', width: 'fit-content' }}>
-          {['users', 'invitations', 'regions'].map(t => (
+          {(isAdmin ? ['users', 'invitations', 'regions', 'tags'] : ['tags']).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: tab === t ? '#1a5e9a' : 'transparent', color: tab === t ? '#fff' : '#5a7a8a', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
               {t}
@@ -441,6 +545,11 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
               </div>
             ))}
           </div>
+        )}
+
+        {/* ── TAGS TAB ── */}
+        {!loading && tab === 'tags' && (
+          <TagsSection showToast={showToast} s={s} />
         )}
       </div>
 

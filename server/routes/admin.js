@@ -3,7 +3,7 @@ const { v4: uuid } = require('uuid');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { getDb, saveDb } = require('../database');
-const { requireAuth, addAudit } = require('../middleware');
+const { requireAuth, addAudit, toStr } = require('../middleware');
 const router = express.Router();
 
 function requireAdmin(req, res, next) {

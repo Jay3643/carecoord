@@ -28,6 +28,7 @@ export const api = {
   confirm2fa: (code, email) => request('/auth/confirm-2fa', { method: 'POST', body: { code, email } }),
   changePassword: (pw) => request('/auth/change-password', { method: 'POST', body: { newPassword: pw } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  setWorkStatus: (status) => request('/auth/work-status', { method: 'POST', body: { status } }),
   me: () => request('/auth/me'),
   getTickets: (p) => request('/tickets' + (p ? '?' + new URLSearchParams(p) : '')),
   getRegionTickets: (id) => request('/tickets/region/' + id),

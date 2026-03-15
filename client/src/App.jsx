@@ -25,6 +25,7 @@ export default function App() {
   const [showGemini, setShowGemini] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [workStatus, setWorkStatus] = useState('active');
 
   // Reference data (loaded once after login)
   const [regions, setRegions] = useState([]);
@@ -43,6 +44,7 @@ export default function App() {
       api.me()
         .then(data => {
           setCurrentUser(data.user);
+          setWorkStatus(data.user.workStatus || 'active');
           setScreen('regionQueue');
           setAuthChecked(true);
         })
@@ -73,6 +75,7 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
+    setWorkStatus(user.workStatus || 'active');
     setScreen('regionQueue');
   };
 
@@ -80,6 +83,20 @@ export default function App() {
     try { await api.logout(); } catch (e) {}
     setCurrentUser(null);
     setScreen('login');
+  };
+
+  const toggleWorkStatus = async () => {
+    const newStatus = workStatus === 'active' ? 'inactive' : 'active';
+    try {
+      await api.setWorkStatus(newStatus);
+      setWorkStatus(newStatus);
+      if (newStatus === 'inactive') {
+        showToast('Status: Inactive — your tickets have been returned to the queue');
+      } else {
+        showToast('Status: Active — you can now receive tickets');
+      }
+      refreshCounts();
+    } catch (e) { showToast(e.message); }
   };
 
   const openTicket = (id) => {
@@ -199,7 +216,7 @@ export default function App() {
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
             { key: '_chat_toggle' },
-            ...(currentUser.role === 'admin' ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
+            ...((currentUser.role === 'admin' || currentUser.role === 'supervisor') ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
             { key: '_practice_fusion' },
@@ -378,6 +395,13 @@ export default function App() {
                 </div>
               )}
             </div>
+            {!sidebarCollapsed && currentUser.role === 'coordinator' && (
+              <button onClick={toggleWorkStatus}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: workStatus === 'active' ? '#0d3b1e' : '#3b1a0d', border: '1px solid', borderColor: workStatus === 'active' ? '#2e7d32' : '#d94040', borderRadius: 6, color: workStatus === 'active' ? '#4ade80' : '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : '#f87171' }} />
+                {workStatus === 'active' ? 'Active' : 'Inactive'}
+              </button>
+            )}
             {!sidebarCollapsed && (
               <button onClick={handleLogout}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#102f54', border: '1px solid #143d6b', borderRadius: 6, color: '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%', justifyContent: 'center' }}
@@ -425,7 +449,7 @@ export default function App() {
         )}
         
         
-        {screen === 'admin' && currentUser.role === 'admin' && (
+        {screen === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
           <AdminPanel currentUser={currentUser} showToast={showToast} regions={regions} />
         )}
         {screen === 'auditLog' && isSupervisor && (

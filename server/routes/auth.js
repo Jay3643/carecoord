@@ -96,6 +96,7 @@ router.post('/login', async (req, res) => {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
       regionIds: regions.map(r => r.region_id),
+      workStatus: toStr(user.work_status) || 'active',
     }
   });
 });
@@ -138,6 +139,7 @@ router.post('/verify-2fa', (req, res) => {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
       regionIds: regions.map(r => r.region_id),
+      workStatus: toStr(user.work_status) || 'active',
     }
   });
 });
@@ -198,6 +200,7 @@ router.post('/confirm-2fa', (req, res) => {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
       regionIds: regions.map(r => r.region_id),
+      workStatus: toStr(user.work_status) || 'active',
     }
   });
 });
@@ -231,8 +234,35 @@ router.get('/me', (req, res) => {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
       regionIds: regions.map(r => r.region_id),
+      workStatus: toStr(user.work_status) || 'active',
     }
   });
+});
+
+// ── Work Status (coordinator availability) ──
+router.post('/work-status', requireAuth, (req, res) => {
+  const db = getDb();
+  const { status } = req.body;
+  if (!['active', 'inactive'].includes(status)) return res.status(400).json({ error: 'Status must be active or inactive' });
+
+  db.prepare('UPDATE users SET work_status = ? WHERE id = ?').run(status, req.user.id);
+
+  // If going inactive, unassign their open tickets back to the regional queue
+  if (status === 'inactive') {
+    const affected = db.prepare("SELECT id FROM tickets WHERE assignee_user_id = ? AND status != 'CLOSED'").all(req.user.id);
+    if (affected.length > 0) {
+      db.prepare("UPDATE tickets SET assignee_user_id = NULL, last_activity_at = ? WHERE assignee_user_id = ? AND status != 'CLOSED'")
+        .run(Date.now(), req.user.id);
+    }
+    const { addAudit } = require('../middleware');
+    addAudit(db, req.user.id, 'status_inactive', 'user', req.user.id, 'Set status to inactive — ' + affected.length + ' tickets returned to queue');
+  } else {
+    const { addAudit } = require('../middleware');
+    addAudit(db, req.user.id, 'status_active', 'user', req.user.id, 'Set status to active');
+  }
+
+  saveDb();
+  res.json({ workStatus: status });
 });
 
 router.post('/logout', (req, res) => {

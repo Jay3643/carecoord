@@ -97,6 +97,13 @@ initDb().then(() => {
     saveDb();
     console.log('[DB] Chat tables ready');
   } catch(e) { console.log('[DB] Chat migration:', e.message); }
+  // Migrate: add work_status column to users
+  try {
+    const { getDb: gDb, saveDb: sDb } = require('./database');
+    const db2 = gDb();
+    try { db2.exec("ALTER TABLE users ADD COLUMN work_status TEXT DEFAULT 'active'"); sDb(); console.log('[DB] Added work_status column'); }
+    catch(e) { /* column already exists */ }
+  } catch(e) { console.log('[DB] work_status migration:', e.message); }
   server.listen(PORT, () => {
     console.log('\n🏥 CareCoord server running on http://localhost:' + PORT);
     console.log('   API: http://localhost:' + PORT + '/api/health\n');

@@ -241,6 +241,10 @@ router.post('/:id/assign', requireAuth, (req, res) => {
   if (!ticket) return res.status(404).json({ error: 'Not found' });
   if (req.user.role === 'coordinator' && userId && userId !== req.user.id)
     return res.status(403).json({ error: 'Coordinators can only assign to themselves' });
+  // Block inactive coordinators from claiming tickets
+  const assigneeUser = userId ? db.prepare('SELECT work_status FROM users WHERE id = ?').get(userId) : null;
+  if (assigneeUser && assigneeUser.work_status === 'inactive' && req.user.role === 'coordinator')
+    return res.status(400).json({ error: 'You are currently inactive. Set your status to Active to claim tickets.' });
   db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ? WHERE id = ?').run(userId || null, Date.now(), req.params.id);
   saveDb();
   const assignee = userId ? db.prepare('SELECT name FROM users WHERE id = ?').get(userId) : null;
@@ -350,9 +354,10 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   message.to_addresses = JSON.parse(message.to_addresses);
   message.reference_ids = JSON.parse(message.reference_ids);
-  // Auto-assign to replier if unassigned
+  // Auto-assign to replier if unassigned (skip if replier is inactive)
   const ticketCheck = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(req.params.id);
-  if (ticketCheck && !ticketCheck.assignee_user_id) {
+  const replierStatus = db.prepare('SELECT work_status FROM users WHERE id = ?').get(req.user.id);
+  if (ticketCheck && !ticketCheck.assignee_user_id && (!replierStatus || replierStatus.work_status !== 'inactive')) {
     db.prepare('UPDATE tickets SET assignee_user_id = ? WHERE id = ?').run(req.user.id, req.params.id);
     addAudit(db, req.user.id, 'auto_assigned', 'ticket', req.params.id, 'Auto-assigned on reply');
   }
