@@ -38,6 +38,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [discussionLoading, setDiscussionLoading] = useState(false);
   const discussionEndRef = useRef(null);
   const socketRef = useRef(null);
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiEndRef = useRef(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -103,6 +107,44 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setDiscussionText('');
       if (discussionChannelId) api.chatMarkRead(discussionChannelId);
     } catch(e) { showToast?.(e.message); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai') aiEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [aiMessages, activeTab]);
+
+  const sendAiMessage = async (text) => {
+    const msg = text || aiInput;
+    if (!msg.trim() || aiLoading) return;
+    const userMsg = { role: 'user', content: msg };
+    setAiMessages(prev => [...prev, userMsg]);
+    setAiInput('');
+    setAiLoading(true);
+    try {
+      const history = aiMessages.length > 0 ? aiMessages : undefined;
+      const d = await api.aiChat(ticketId, msg, history);
+      setAiMessages(prev => [...prev, { role: 'assistant', content: d.reply }]);
+    } catch (e) {
+      setAiMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + (e.message || 'AI request failed') }]);
+    }
+    setAiLoading(false);
+  };
+
+  const aiQuickAction = async (action) => {
+    setAiLoading(true);
+    let label, fn;
+    if (action === 'summarize') { label = 'Summarize this ticket'; fn = () => api.aiSummarize(ticketId); }
+    else if (action === 'extract') { label = 'Extract patient information'; fn = () => api.aiExtractPatient(ticketId); }
+    else if (action === 'draft') { label = 'Draft a reply'; fn = () => api.aiDraftReply(ticketId); }
+    else if (action === 'tags') { label = 'Suggest tags'; fn = () => api.aiSuggestTags(ticketId); }
+    setAiMessages(prev => [...prev, { role: 'user', content: label }]);
+    try {
+      const d = await fn();
+      setAiMessages(prev => [...prev, { role: 'assistant', content: d.result }]);
+    } catch (e) {
+      setAiMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + (e.message || 'Failed') }]);
+    }
+    setAiLoading(false);
   };
 
   useEffect(() => {
@@ -336,8 +378,91 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'discussion' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'discussion' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="send" size={12} /> Discussion
               </button>
+              <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', backgroundImage: activeTab === 'ai' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none' }}>
+                <Icon name="sparkle" size={12} /> AI Assistant
+              </button>
             </div>
-            {activeTab === 'discussion' ? (
+            {activeTab === 'ai' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 350 }}>
+                {/* Quick action buttons */}
+                {aiMessages.length === 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                    <button onClick={() => aiQuickAction('summarize')} disabled={aiLoading}
+                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      Summarize Ticket
+                    </button>
+                    <button onClick={() => aiQuickAction('extract')} disabled={aiLoading}
+                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      Extract Patient Info
+                    </button>
+                    <button onClick={() => aiQuickAction('draft')} disabled={aiLoading}
+                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      Draft Reply
+                    </button>
+                    <button onClick={() => aiQuickAction('tags')} disabled={aiLoading}
+                      style={{ padding: '6px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#4f46e5', cursor: 'pointer' }}>
+                      Suggest Tags
+                    </button>
+                  </div>
+                )}
+                {/* Chat messages */}
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 100, maxHeight: 240, padding: '4px 0' }}>
+                  {aiMessages.length === 0 && !aiLoading && (
+                    <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>
+                      Ask the AI assistant anything about this ticket, or use a quick action above.
+                    </div>
+                  )}
+                  {aiMessages.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'flex-start' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.role === 'user' ? '#1a5e9a' : 'linear-gradient(135deg, #7c3aed, #4f46e5)', backgroundImage: m.role === 'assistant' ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                        {m.role === 'user' ? (currentUser.name?.[0] || 'U') : <Icon name="sparkle" size={12} />}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: m.role === 'user' ? '#1e3a4f' : '#4f46e5', marginBottom: 2 }}>
+                          {m.role === 'user' ? 'You' : 'AI Assistant'}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {m.content}
+                        </div>
+                        {m.role === 'assistant' && (
+                          <button onClick={() => { navigator.clipboard.writeText(m.content); showToast('Copied to clipboard'); }}
+                            style={{ marginTop: 4, padding: '2px 8px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 4, fontSize: 10, color: '#6b8299', cursor: 'pointer' }}>
+                            Copy
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {aiLoading && (
+                    <div style={{ display: 'flex', gap: 8, padding: '6px 0', alignItems: 'center' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundImage: 'linear-gradient(135deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                        <Icon name="sparkle" size={12} />
+                      </div>
+                      <span style={{ fontSize: 12, color: '#8a9fb0', fontStyle: 'italic' }}>Thinking...</span>
+                    </div>
+                  )}
+                  <div ref={aiEndRef} />
+                </div>
+                {/* Input */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <input value={aiInput} onChange={e => setAiInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
+                    placeholder="Ask AI about this ticket..."
+                    disabled={aiLoading}
+                    style={{ flex: 1, padding: '10px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 20, color: '#1e3a4f', fontSize: 13, outline: 'none' }} />
+                  <button onClick={() => sendAiMessage()} disabled={!aiInput.trim() || aiLoading}
+                    style={{ padding: '10px 20px', backgroundImage: aiInput.trim() && !aiLoading ? 'linear-gradient(135deg, #7c3aed, #4f46e5)' : 'none', background: aiInput.trim() && !aiLoading ? undefined : '#dde8f2', color: aiInput.trim() && !aiLoading ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 20, cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                    Ask
+                  </button>
+                  {aiMessages.length > 0 && (
+                    <button onClick={() => setAiMessages([])}
+                      style={{ padding: '10px 14px', background: '#dde8f2', color: '#5a7a8a', border: 'none', borderRadius: 20, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : activeTab === 'discussion' ? (
               <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 300 }}>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 120, maxHeight: 200 }}>
                   {discussionLoading && <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>Loading discussion...</div>}

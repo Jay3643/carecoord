@@ -122,4 +122,9 @@ export const api = {
   calendarDelete: (id) => request('/gmail/calendar/events/' + id, { method: 'DELETE' }),
   driveFiles: (q, fid, pt) => cached('drive:'+q+':'+fid, 30000, () => request('/gmail/drive/files?q='+encodeURIComponent(q||'')+(fid?'&folderId='+fid:'')+(pt?'&pageToken='+pt:''))),
   driveShared: () => request('/gmail/drive/shared'),
+  aiChat: (ticketId, message, history) => request('/ai/ticket/' + ticketId + '/chat', { method: 'POST', body: { message, history } }),
+  aiSummarize: (ticketId) => request('/ai/ticket/' + ticketId + '/summarize', { method: 'POST' }),
+  aiExtractPatient: (ticketId) => request('/ai/ticket/' + ticketId + '/extract-patient', { method: 'POST' }),
+  aiDraftReply: (ticketId, instructions) => request('/ai/ticket/' + ticketId + '/draft-reply', { method: 'POST', body: { instructions } }),
+  aiSuggestTags: (ticketId) => request('/ai/ticket/' + ticketId + '/suggest-tags', { method: 'POST' }),
 };

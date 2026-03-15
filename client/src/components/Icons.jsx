@@ -24,6 +24,7 @@ const paths = {
   move: <><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></>,
   file: <><path d="M13 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V9Z"/><polyline points="13 2 13 9 20 9"/></>,
   paperclip: <path d="M21.44 11.05L12.25 20.24A5.37 5.37 0 0 1 4.69 12.68L13.88 3.49A3.58 3.58 0 0 1 18.94 8.55L9.75 17.74A1.79 1.79 0 0 1 7.22 15.21L15.41 7.02"/>,
+  sparkle: <><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"/></>,
 };
 
 export default function Icon({ name, size = 18 }) {

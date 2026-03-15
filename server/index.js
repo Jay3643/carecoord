@@ -38,6 +38,7 @@ app.use('/api/audit', require('./routes/audit'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/gmail', require('./routes/gmail'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/ai', require('./routes/ai'));
 
 // Convenience routes (some components call /api/tags directly)
 app.get('/api/tags', (req, res) => {
