@@ -162,11 +162,11 @@ async function startChartScan() {
   state.scrapeLog = [];
   state.scrapeProgress = 'Starting chart scan...';
   render();
-  chrome.runtime.sendMessage({
-    type: 'CHART_SCAN',
-    startDate: state.scanStartDate || null,
-    endDate: state.scanEndDate || null,
-  });
+  // Auto-fix backwards date range
+  let sd = state.scanStartDate || null;
+  let ed = state.scanEndDate || null;
+  if (sd && ed && new Date(sd) > new Date(ed)) { const tmp = sd; sd = ed; ed = tmp; state.scanStartDate = sd; state.scanEndDate = ed; }
+  chrome.runtime.sendMessage({ type: 'CHART_SCAN', startDate: sd, endDate: ed });
 }
 
 // ── Generate clinical snapshot from chart data ──

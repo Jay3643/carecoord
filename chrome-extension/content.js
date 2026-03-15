@@ -86,24 +86,24 @@
     const chart = {};
     const errors = [];
 
-    // Step 1: Ensure we're on Summary
-    report('Step 1: Reading Summary page...');
-    const summaryTab = sel('[data-element="patient-header-tab-Summary"]');
-    if (summaryTab) {
-      summaryTab.click();
-      await sleep(2000);
-    } else {
-      report('WARNING: Summary tab not found — reading current page');
+    // Fix date range if backwards
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      report('Date range was backwards — swapping');
+      const tmp = startDate; startDate = endDate; endDate = tmp;
     }
 
-    // Scrape summary
+    // Step 1: Make sure we're on Summary
+    report('Step 1: Reading Summary page...');
+    const summaryTab = sel('[data-element="patient-header-tab-Summary"]');
+    if (summaryTab) { summaryTab.click(); await sleep(2000); }
+
     Object.assign(chart, scrapePatientData());
     const foundFields = Object.keys(chart).filter(k => !k.startsWith('_') && chart[k] && (Array.isArray(chart[k]) ? chart[k].length > 0 : true));
-    report('Summary: found ' + foundFields.length + ' data fields (' + (chart.patientName || 'no name') + ')');
+    report('Summary: ' + foundFields.length + ' fields, ' + (chart.medications?.length || 0) + ' meds, ' + (chart.diagnoses?.length || 0) + ' dx');
 
     if (!chart.patientName) {
-      report('WARNING: No patient name found — are you on a patient chart?');
-      errors.push('No patient name detected. Make sure a patient chart is open in Practice Fusion.');
+      report('WARNING: No patient name — are you on a patient chart?');
+      errors.push('No patient name detected');
     }
 
     // Step 2: Go to Timeline
@@ -111,7 +111,7 @@
     const timelineTab = sel('[data-element="patient-header-tab-Timeline"]');
     if (!timelineTab) {
       report('ERROR: Timeline tab not found');
-      errors.push('Timeline tab not found in PF');
+      errors.push('Timeline tab not found');
       chart._errors = errors;
       chart._scanComplete = true;
       chart._encountersScanned = 0;
@@ -120,24 +120,61 @@
 
     timelineTab.click();
     await sleep(3000);
-    report('Timeline loaded');
 
-    // Look for encounter links
-    const viewAll = Array.from(document.querySelectorAll('a')).find(a => a.textContent.includes('View all encounters'));
-    if (viewAll) {
-      report('Found "View all encounters" link — clicking...');
-      viewAll.click();
+    // Discover what's on the Timeline page
+    const pageText = document.body.innerText;
+    report('Timeline page loaded (' + pageText.length + ' chars)');
+
+    // Look for "View all encounters" link
+    const viewAllLinks = Array.from(document.querySelectorAll('a')).filter(a =>
+      a.textContent.toLowerCase().includes('view all encounters') ||
+      a.textContent.toLowerCase().includes('view all') ||
+      (a.href && a.href.includes('timeline/encounter'))
+    );
+    report('Found ' + viewAllLinks.length + ' "view all" links');
+    if (viewAllLinks.length > 0) {
+      viewAllLinks[0].click();
       await sleep(2500);
+      report('Clicked "View all encounters"');
     }
 
-    // Find encounter items
+    // Try multiple strategies to find encounters
     let encounterItems = selAll('[data-element^="encounter-item-"]');
-    report('Found ' + encounterItems.length + ' encounters in Timeline');
+    report('Strategy 1 [data-element^="encounter-item-"]: ' + encounterItems.length + ' items');
 
     if (encounterItems.length === 0) {
-      // Try broader selector
       encounterItems = selAll('.encounter-list li');
-      report('Fallback: found ' + encounterItems.length + ' encounters');
+      report('Strategy 2 .encounter-list li: ' + encounterItems.length + ' items');
+    }
+    if (encounterItems.length === 0) {
+      encounterItems = selAll('.timeline-item, [class*="timeline"] li, [class*="encounter"] li');
+      report('Strategy 3 timeline/encounter classes: ' + encounterItems.length + ' items');
+    }
+    if (encounterItems.length === 0) {
+      // Look for any list items with dates
+      const allLis = selAll('li');
+      encounterItems = allLis.filter(li => {
+        const t = li.textContent;
+        return t.match(/\d{2}\/\d{2}\/\d{4}/) && t.length > 20 && t.length < 500;
+      });
+      report('Strategy 4 (li with dates): ' + encounterItems.length + ' items');
+    }
+    if (encounterItems.length === 0) {
+      // Last resort: find clickable elements with dates
+      const allClickable = selAll('a, [role="link"], [role="button"]');
+      encounterItems = allClickable.filter(el => {
+        const t = el.textContent;
+        return t.match(/\d{2}\/\d{2}\/\d{4}/) && t.length > 10;
+      });
+      report('Strategy 5 (clickable with dates): ' + encounterItems.length + ' items');
+    }
+
+    if (encounterItems.length === 0) {
+      report('WARNING: No encounters found on Timeline page');
+      report('Page snippet: ' + pageText.substring(0, 500).replace(/\n/g, ' | '));
+      // Dump some DOM info for debugging
+      const allDataElements = selAll('[data-element]').map(el => el.getAttribute('data-element')).slice(0, 30);
+      report('data-elements found: ' + allDataElements.join(', '));
     }
 
     chart.encounterDetails = [];
@@ -146,8 +183,9 @@
 
     for (let i = 0; i < encounterItems.length; i++) {
       const item = encounterItems[i];
-      const dateSpan = item.querySelector('.text-color-link, span');
-      const dateText = dateSpan ? dateSpan.textContent.trim() : null;
+      // Find the date in this encounter
+      const dateMatch = item.textContent.match(/(\d{2}\/\d{2}\/\d{4})/);
+      const dateText = dateMatch ? dateMatch[1] : null;
       const encounterDate = parseDate(dateText);
 
       // Date range filter
@@ -158,82 +196,71 @@
         if (encounterDate > new Date(endDate)) { skipped++; continue; }
       }
 
-      const encounterLabel = item.textContent.trim().replace(/\s+/g, ' ').substring(0, 100);
-      report('Step 3.' + (scanned + 1) + ': Opening encounter ' + (dateText || '') + '...');
+      const encounterLabel = item.textContent.trim().replace(/\s+/g, ' ').substring(0, 120);
+      report('Encounter ' + (scanned + 1) + ': ' + (dateText || '?') + ' — ' + encounterLabel.substring(0, 60));
 
       try {
-        // Try multiple click strategies
         const urlBefore = location.href;
-        const textBefore = document.body.innerText.substring(0, 500);
 
-        // Strategy 1: Click the date link
-        const dateLink = item.querySelector('.text-color-link');
-        if (dateLink) { report('  Clicking date link...'); dateLink.click(); }
-        // Strategy 2: Click any anchor
-        else { const a = item.querySelector('a'); if (a) { report('  Clicking anchor...'); a.click(); } else { report('  Clicking item...'); item.click(); } }
-
+        // Click the encounter
+        const clickTarget = item.querySelector('.text-color-link') || item.querySelector('a') || item;
+        report('  Clicking: <' + clickTarget.tagName + '> "' + clickTarget.textContent.trim().substring(0, 30) + '"');
+        clickTarget.click();
         await sleep(3000);
 
-        // Check if page changed
         const urlAfter = location.href;
-        const textAfter = document.body.innerText.substring(0, 500);
-        const navigated = urlAfter !== urlBefore || textAfter !== textBefore;
-        report('  Navigation: ' + (navigated ? 'YES — page changed' : 'NO — same page'));
+        const navigated = urlAfter !== urlBefore;
+        report('  URL changed: ' + (navigated ? 'YES' : 'NO'));
 
-        // Read encounter content
+        // Read content
         const content = document.body.innerText.substring(0, 8000);
-
-        // Check if we see encounter-specific content (not just the timeline list)
-        const hasEncounterContent = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('Objective') || content.includes('HPI') || content.length > 3000;
-        report('  Encounter content: ' + (hasEncounterContent ? 'YES — found clinical notes' : 'MINIMAL — may not have navigated into encounter'));
+        const hasClinical = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('HPI') || content.includes('Objective');
 
         chart.encounterDetails.push({
           date: dateText,
           summary: encounterLabel,
           content: content,
           navigated: navigated,
-          hasEncounterContent: hasEncounterContent,
+          hasClinicalContent: hasClinical,
         });
         scanned++;
-        report('  Saved encounter ' + scanned + ' (' + content.length + ' chars)');
+        report('  Saved (' + content.length + ' chars, clinical: ' + (hasClinical ? 'YES' : 'no') + ')');
 
-        // Navigate back if we navigated away
+        // Go back
         if (navigated) {
-          const backBtn = sel('[data-element="encounter-back-button"]')
-            || Array.from(document.querySelectorAll('button, a')).find(el => {
-              const t = el.textContent.trim().toLowerCase();
-              return t === 'back' || t.includes('back to') || t === '←' || t === '← back';
-            });
-          if (backBtn) { report('  Clicking back button'); backBtn.click(); await sleep(2500); }
+          // Try back button or timeline tab
+          const backBtn = Array.from(document.querySelectorAll('button, a')).find(el => {
+            const t = el.textContent.trim().toLowerCase();
+            return t === 'back' || t.includes('back to') || t === '←';
+          });
+          if (backBtn) { backBtn.click(); await sleep(2500); }
           else {
-            report('  No back button — clicking Timeline tab');
             const tl = sel('[data-element="patient-header-tab-Timeline"]');
             if (tl) { tl.click(); await sleep(2500); }
           }
-
-          // Re-find encounter items after navigation
+          // Re-find encounters
           encounterItems = selAll('[data-element^="encounter-item-"]');
           if (encounterItems.length === 0) encounterItems = selAll('.encounter-list li');
-          report('  Re-found ' + encounterItems.length + ' encounters');
+          if (encounterItems.length === 0) {
+            const allLis = selAll('li');
+            encounterItems = allLis.filter(li => li.textContent.match(/\d{2}\/\d{2}\/\d{4}/) && li.textContent.length > 20 && li.textContent.length < 500);
+          }
+          report('  Back — re-found ' + encounterItems.length + ' encounters');
         }
-
       } catch(e) {
-        report('ERROR reading encounter: ' + e.message);
-        errors.push('Failed to read encounter ' + (dateText || i));
+        report('ERROR: ' + e.message);
+        errors.push('Encounter ' + (dateText || i) + ': ' + e.message);
         const tl = sel('[data-element="patient-header-tab-Timeline"]');
         if (tl) { tl.click(); await sleep(2000); }
       }
 
-      if (scanned >= 10) {
-        report('Reached 10 encounter limit');
-        break;
-      }
+      if (scanned >= 10) { report('Reached 10 encounter limit'); break; }
     }
 
-    report('Skipped ' + skipped + ' encounters outside date range');
+    report('Scanned: ' + scanned + ', Skipped: ' + skipped + ', Errors: ' + errors.length);
 
-    // Step 4: Return to Summary
-    report('Step 4: Returning to Summary...');
+    // Return to Summary
+    report('Returning to Summary...');
     const sumTab = sel('[data-element="patient-header-tab-Summary"]');
     if (sumTab) { sumTab.click(); await sleep(1500); }
 
@@ -241,10 +268,7 @@
     chart._encountersScanned = scanned;
     chart._encountersSkipped = skipped;
     chart._errors = errors;
-
-    if (errors.length > 0) report('Completed with ' + errors.length + ' error(s)');
-    else report('Chart scan complete — ' + scanned + ' encounters scanned');
-
+    report('Chart scan done');
     return chart;
   }
 
@@ -253,8 +277,7 @@
     if (msg.type === 'SCRAPE_PATIENT') {
       try {
         const data = scrapePatientData();
-        const fields = Object.keys(data).filter(k => !k.startsWith('_') && data[k]);
-        report('Patient overview: ' + fields.length + ' fields (' + (data.patientName || 'no name') + ')');
+        report('Patient overview: ' + (data.patientName || 'no name') + ', ' + (data.medications?.length || 0) + ' meds');
         sendResponse({ success: true, data });
       } catch(e) {
         report('ERROR: ' + e.message);
@@ -266,7 +289,7 @@
       chartScan(msg.startDate, msg.endDate).then(data => {
         chrome.runtime.sendMessage({ type: 'CHART_SCAN_COMPLETE', data });
       }).catch(e => {
-        report('FATAL ERROR: ' + e.message);
+        report('FATAL: ' + e.message);
         chrome.runtime.sendMessage({ type: 'CHART_SCAN_COMPLETE', data: { _errors: [e.message], _scanComplete: true, _encountersScanned: 0 } });
       });
       sendResponse({ success: true, started: true });
@@ -274,29 +297,26 @@
     return true;
   });
 
-  // Auto-scrape on page load
+  // Auto-scrape
   setTimeout(() => {
     const data = scrapePatientData();
     if (data.patientName) {
-      report('Auto-detected patient: ' + data.patientName);
+      report('Auto-detected: ' + data.patientName);
       chrome.runtime.sendMessage({ type: 'PATIENT_DATA', data });
     }
   }, 3000);
 
-  // SPA navigation watcher
+  // SPA navigation
   let lastUrl = location.href;
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       setTimeout(() => {
         const data = scrapePatientData();
-        if (data.patientName) {
-          report('Navigation detected — patient: ' + data.patientName);
-          chrome.runtime.sendMessage({ type: 'PATIENT_DATA', data });
-        }
+        if (data.patientName) chrome.runtime.sendMessage({ type: 'PATIENT_DATA', data });
       }, 2000);
     }
   }).observe(document.body, { childList: true, subtree: true });
 
-  report('Content script loaded on ' + location.hostname);
+  report('Content script ready on ' + location.hostname);
 })();
