@@ -82,8 +82,16 @@ router.get('/auth', requireAuth, (req, res) => {
 router.get('/callback', async (req, res) => {
   try {
     const c = oauth2(); const { tokens: t } = await c.getToken(req.query.code); c.setCredentials(t);
-    const email = (await google.oauth2({version:'v2',auth:c}).userinfo.get()).data.email;
+    const userInfo = (await google.oauth2({version:'v2',auth:c}).userinfo.get()).data;
+    const email = userInfo.email;
     putTokens(req.query.state, t, email);
+    // Save Google profile photo
+    if (userInfo.picture) {
+      const db = getDb();
+      db.prepare('UPDATE users SET profile_photo_url = ? WHERE id = ?').run(userInfo.picture, req.query.state);
+      saveDb();
+      console.log('[Workspace] Saved profile photo for', email);
+    }
     console.log('[Workspace] Connected:', email);
     res.send('<html><body><h2>Google Workspace Connected!</h2><script>window.close()</script></body></html>');
   } catch(e) { res.status(500).send('<h2>Failed</h2><p>'+e.message+'</p>'); }
@@ -115,6 +123,35 @@ router.post('/admin-disconnect/:userId', requireAuth, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   getDb().prepare('DELETE FROM gmail_tokens WHERE user_id=?').run(req.params.userId); saveDb();
   res.json({ ok: true });
+});
+
+// ── Sync profile photos for all connected users ──
+router.post('/sync-photos', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const db = getDb();
+  const users = db.prepare('SELECT id, email FROM users WHERE is_active = 1').all();
+  let updated = 0;
+  for (const u of users) {
+    try {
+      const email = toStr(u.email);
+      // Try service account first
+      const sa = getServiceAuth(email);
+      if (sa) {
+        const info = await google.people({version:'v1', auth: sa}).people.get({ resourceName: 'people/me', personFields: 'photos' });
+        const photo = (info.data.photos || []).find(p => p.metadata?.primary);
+        if (photo?.url) { db.prepare('UPDATE users SET profile_photo_url = ? WHERE id = ?').run(photo.url, u.id); updated++; continue; }
+      }
+      // Try OAuth tokens
+      const t = getTokens(toStr(u.id));
+      if (t) {
+        const c = authClient(t);
+        const userInfo = (await google.oauth2({version:'v2', auth: c}).userinfo.get()).data;
+        if (userInfo.picture) { db.prepare('UPDATE users SET profile_photo_url = ? WHERE id = ?').run(userInfo.picture, u.id); updated++; }
+      }
+    } catch(e) { console.log('[Photo] Failed for', toStr(u.email), e.message); }
+  }
+  saveDb();
+  res.json({ updated, total: users.length });
 });
 
 router.get('/status', requireAuth, (req, res) => {

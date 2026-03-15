@@ -103,6 +103,7 @@ export const api = {
   gmailStatus: () => cached('gmailStatus', 60000, () => request('/gmail/status')),
   gmailDisconnect: () => request('/gmail/disconnect', { method: 'POST' }),
   gmailSync: () => request('/gmail/sync', { method: 'POST' }),
+  gmailSyncPhotos: () => request('/gmail/sync-photos', { method: 'POST' }),
   gmailAutoSync: () => request('/gmail/auto-sync?t=' + Date.now()),
   gmailFilters: () => request('/gmail/filters'),
   gmailAddFilter: (d) => request('/gmail/filters', { method: 'POST', body: d }),

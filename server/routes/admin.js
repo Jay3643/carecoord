@@ -17,7 +17,7 @@ function requireAdmin(req, res, next) {
 
 router.get('/users', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
-  const users = db.prepare('SELECT id, name, email, role, avatar, is_active FROM users ORDER BY name').all();
+  const users = db.prepare('SELECT id, name, email, role, avatar, is_active, profile_photo_url as photoUrl FROM users ORDER BY name').all();
   users.forEach(u => {
     const regions = db.prepare('SELECT r.id, r.name FROM regions r JOIN user_regions ur ON ur.region_id = r.id WHERE ur.user_id = ?').all(u.id);
     u.regions = regions;

@@ -95,6 +95,7 @@ router.post('/login', async (req, res) => {
     user: {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
+      photoUrl: toStr(user.profile_photo_url) || null,
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
     }
@@ -138,6 +139,7 @@ router.post('/verify-2fa', (req, res) => {
     user: {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
+      photoUrl: toStr(user.profile_photo_url) || null,
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
     }
@@ -199,6 +201,7 @@ router.post('/confirm-2fa', (req, res) => {
     user: {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
+      photoUrl: toStr(user.profile_photo_url) || null,
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
     }
@@ -233,6 +236,7 @@ router.get('/me', (req, res) => {
     user: {
       id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
       role: toStr(user.role), avatar: toStr(user.avatar),
+      photoUrl: toStr(user.profile_photo_url) || null,
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
     }

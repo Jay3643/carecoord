@@ -57,11 +57,11 @@ app.get('/api/users', (req, res) => {
   if (regionId) {
     try {
       const { getDb } = require('./database');
-      const users = getDb().prepare('SELECT u.id, u.name, u.email, u.role, u.avatar FROM users u JOIN user_regions ur ON ur.user_id = u.id WHERE ur.region_id = ? AND u.is_active = 1').all(regionId);
+      const users = getDb().prepare('SELECT u.id, u.name, u.email, u.role, u.avatar, u.profile_photo_url as photoUrl FROM users u JOIN user_regions ur ON ur.user_id = u.id WHERE ur.region_id = ? AND u.is_active = 1').all(regionId);
       return res.json({ users });
     } catch(e) { return res.json({ users: [] }); }
   }
-  try { const { getDb } = require('./database'); res.json({ users: getDb().prepare('SELECT id, name, email, role, avatar FROM users WHERE is_active = 1').all() }); }
+  try { const { getDb } = require('./database'); res.json({ users: getDb().prepare('SELECT id, name, email, role, avatar, profile_photo_url as photoUrl FROM users WHERE is_active = 1').all() }); }
   catch(e) { res.json({ users: [] }); }
 });
 
@@ -103,10 +103,37 @@ initDb().then(() => {
     const db2 = gDb();
     try { db2.exec("ALTER TABLE users ADD COLUMN work_status TEXT DEFAULT 'active'"); sDb(); console.log('[DB] Added work_status column'); }
     catch(e) { /* column already exists */ }
+    try { db2.exec("ALTER TABLE users ADD COLUMN profile_photo_url TEXT"); sDb(); console.log('[DB] Added profile_photo_url column'); }
+    catch(e) { /* column already exists */ }
   } catch(e) { console.log('[DB] work_status migration:', e.message); }
   server.listen(PORT, () => {
     console.log('\n🏥 CareCoord server running on http://localhost:' + PORT);
     console.log('   API: http://localhost:' + PORT + '/api/health\n');
+    // Auto-sync profile photos for users without one
+    setTimeout(async () => {
+      try {
+        const { getDb: gDb2, saveDb: sDb2 } = require('./database');
+        const { google } = require('googleapis');
+        const db3 = gDb2();
+        const users = db3.prepare("SELECT id, email FROM users WHERE is_active = 1 AND (profile_photo_url IS NULL OR profile_photo_url = '')").all();
+        if (users.length === 0) return;
+        console.log('[Photos] Syncing profile photos for', users.length, 'users...');
+        for (const u of users) {
+          try {
+            const email = u.email instanceof Uint8Array ? Buffer.from(u.email).toString('utf8') : String(u.email);
+            const uid = u.id instanceof Uint8Array ? Buffer.from(u.id).toString('utf8') : String(u.id);
+            const t = db3.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(uid);
+            if (t && t.access_token) {
+              const c = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+              c.setCredentials({ access_token: t.access_token instanceof Uint8Array ? Buffer.from(t.access_token).toString('utf8') : t.access_token, refresh_token: t.refresh_token instanceof Uint8Array ? Buffer.from(t.refresh_token).toString('utf8') : t.refresh_token, expiry_date: t.expiry_date });
+              const info = (await google.oauth2({version:'v2', auth: c}).userinfo.get()).data;
+              if (info.picture) { db3.prepare('UPDATE users SET profile_photo_url = ? WHERE id = ?').run(info.picture, uid); console.log('[Photos]', email, '-> photo saved'); }
+            }
+          } catch(e) { /* skip */ }
+        }
+        sDb2();
+      } catch(e) { console.log('[Photos] Auto-sync error:', e.message); }
+    }, 5000);
   });
 }).catch(err => { console.error('Failed to init DB:', err); process.exit(1); });
 

@@ -22,7 +22,7 @@ function enrichTicket(db, ticket) {
   ticket.tags = tags;
   ticket.tagIds = tags.map(t => t.id);
   if (ticket.assignee_user_id)
-    ticket.assignee = db.prepare('SELECT id, name, email, role, avatar FROM users WHERE id = ?').get(ticket.assignee_user_id);
+    ticket.assignee = db.prepare('SELECT id, name, email, role, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.assignee_user_id);
   ticket.region = db.prepare('SELECT id, name FROM regions WHERE id = ?').get(ticket.region_id);
   return ticket;
 }
@@ -224,7 +224,7 @@ router.get('/:id/messages', requireAuth, (req, res) => {
     m.to_addresses = JSON.parse(m.to_addresses || '[]');
     m.cc_addresses = JSON.parse(m.cc_addresses || '[]');
     m.reference_ids = JSON.parse(m.reference_ids || '[]');
-    if (m.created_by_user_id) m.sender = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(m.created_by_user_id);
+    if (m.created_by_user_id) m.sender = db.prepare('SELECT id, name, email, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(m.created_by_user_id);
   });
   // Add attachments to each message
   messages.forEach(m => {
@@ -236,7 +236,7 @@ router.get('/:id/messages', requireAuth, (req, res) => {
 
 router.get('/:id/notes', requireAuth, (req, res) => {
   const db = getDb();
-  const notes = db.prepare('SELECT n.*, u.name as author_name, u.avatar as author_avatar FROM notes n JOIN users u ON u.id = n.author_user_id WHERE n.ticket_id = ? ORDER BY n.created_at ASC').all(req.params.id);
+  const notes = db.prepare('SELECT n.*, u.name as author_name, u.avatar as author_avatar, u.profile_photo_url as author_photo_url FROM notes n JOIN users u ON u.id = n.author_user_id WHERE n.ticket_id = ? ORDER BY n.created_at ASC').all(req.params.id);
   res.json({ notes });
 });
 
@@ -379,7 +379,7 @@ router.post('/:id/notes', requireAuth, (req, res) => {
   db.prepare('UPDATE tickets SET last_activity_at = ? WHERE id = ?').run(Date.now(), req.params.id);
   saveDb();
   addAudit(db, req.user.id, 'note_added', 'note', noteId, 'Internal note added');
-  res.json({ note: db.prepare('SELECT n.*, u.name as author_name, u.avatar as author_avatar FROM notes n JOIN users u ON u.id = n.author_user_id WHERE n.id = ?').get(noteId) });
+  res.json({ note: db.prepare('SELECT n.*, u.name as author_name, u.avatar as author_avatar, u.profile_photo_url as author_photo_url FROM notes n JOIN users u ON u.id = n.author_user_id WHERE n.id = ?').get(noteId) });
 });
 
 router.post('/:id/tags', requireAuth, (req, res) => {

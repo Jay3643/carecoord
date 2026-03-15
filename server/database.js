@@ -28,7 +28,7 @@ async function initDb() {
   }
   const r = s => rawDb.run(s);
   r('CREATE TABLE IF NOT EXISTS regions (id TEXT PRIMARY KEY, name TEXT, routing_aliases TEXT, is_active INTEGER DEFAULT 1)');
-  r('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT UNIQUE, role TEXT, avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT, totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, created_at INTEGER, work_status TEXT DEFAULT \'active\')');
+  r('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT UNIQUE, role TEXT, avatar TEXT, is_active INTEGER DEFAULT 1, password_hash TEXT, totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, created_at INTEGER, work_status TEXT DEFAULT \'active\', profile_photo_url TEXT)');
   r('CREATE TABLE IF NOT EXISTS user_regions (user_id TEXT, region_id TEXT, PRIMARY KEY(user_id, region_id))');
   r('CREATE TABLE IF NOT EXISTS close_reasons (id TEXT PRIMARY KEY, label TEXT, requires_comment INTEGER DEFAULT 0)');
   r('CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT)');

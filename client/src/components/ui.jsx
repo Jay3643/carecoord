@@ -29,6 +29,15 @@ const AVATAR_COLORS = ['#1a5e9a', '#0891b2', '#c96a1b', '#059669', '#dc2626', '#
 
 export function Avatar({ user, size = 32 }) {
   const idx = user && user.id ? (user.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 7) % AVATAR_COLORS.length : 0;
+  const photoUrl = user?.photoUrl || user?.profile_photo_url;
+  const [imgError, setImgError] = React.useState(false);
+  if (photoUrl && !imgError) {
+    return (
+      <img src={photoUrl} alt={user.name || ''} referrerPolicy="no-referrer"
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+        onError={() => setImgError(true)} />
+    );
+  }
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: user ? AVATAR_COLORS[idx] : '#5a7a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: size * 0.38, fontWeight: 700, letterSpacing: 0.5, flexShrink: 0 }}>
       {user ? (user.avatar || fmt.initials(user.name)) : '?'}
