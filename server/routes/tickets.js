@@ -30,7 +30,7 @@ function enrichTicket(db, ticket) {
 
 router.post('/', requireAuth, async (req, res) => {
   const db = getDb();
-  const { toEmail, subject, body, regionId, tagIds } = req.body;
+  const { toEmail, subject, body, regionId, tagIds, attachments: newAttachments } = req.body;
   if (!toEmail?.trim() || !subject?.trim() || !body?.trim() || !regionId) {
     return res.status(400).json({ error: 'toEmail, subject, body, and regionId are required' });
   }
@@ -55,6 +55,14 @@ router.post('/', requireAuth, async (req, res) => {
   db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, in_reply_to, reference_ids, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(msgId, ticketId, fromAddr, JSON.stringify([toEmail.trim()]), subject, fullBody, now, providerMsgId, null, '[]', req.user.id, now);
 
+  // Save attachments to DB
+  if (newAttachments && newAttachments.length > 0) {
+    const insAtt = db.prepare('INSERT INTO attachments (id, ticket_id, filename, data, message_id, mime_type, size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const att of newAttachments) {
+      insAtt.run(uuid(), ticketId, att.name, att.data, msgId, att.mimeType || 'application/octet-stream', att.size || 0);
+    }
+  }
+
   // Add tags if provided
   if (tagIds && tagIds.length > 0) {
     const insTag = db.prepare('INSERT OR IGNORE INTO ticket_tags (ticket_id, tag_id) VALUES (?, ?)');
@@ -74,19 +82,36 @@ router.post('/', requireAuth, async (req, res) => {
       oauth2.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token, expiry_date: tokenRow.expiry_date });
       const gm = google.gmail({ version: 'v1', auth: oauth2 });
       const senderEmail = tokenRow.email || fromAddr;
-      const emailLines = [
-        'From: ' + senderEmail,
-        'To: ' + toEmail.trim(),
-        'Subject: ' + subject,
-        'Content-Type: text/plain; charset=utf-8',
-        'MIME-Version: 1.0',
-        '',
-        fullBody,
-      ];
-      const raw = Buffer.from(emailLines.join(String.fromCharCode(13,10))).toString('base64url');
+      const CRLF = String.fromCharCode(13, 10);
+      let raw;
+
+      if (newAttachments && newAttachments.length > 0) {
+        const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const headers = [
+          'From: ' + senderEmail, 'To: ' + toEmail.trim(), 'Subject: ' + subject,
+          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+        ];
+        let mimeBody = headers.join(CRLF) + CRLF + CRLF;
+        mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
+        for (const att of newAttachments) {
+          mimeBody += '--' + boundary + CRLF;
+          mimeBody += 'Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Disposition: attachment; filename="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Transfer-Encoding: base64' + CRLF + CRLF;
+          mimeBody += att.data + CRLF + CRLF;
+        }
+        mimeBody += '--' + boundary + '--' + CRLF;
+        raw = Buffer.from(mimeBody).toString('base64url');
+      } else {
+        const emailLines = [
+          'From: ' + senderEmail, 'To: ' + toEmail.trim(), 'Subject: ' + subject,
+          'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody,
+        ];
+        raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      }
+
       const sent = await gm.users.messages.send({ userId: 'me', requestBody: { raw } });
       console.log('[Gmail] New message sent to', toEmail.trim(), 'threadId:', sent.data.threadId, 'msgId:', sent.data.id);
-      // Save Gmail IDs back to the outbound message
       db.prepare('UPDATE messages SET gmail_message_id = ?, gmail_thread_id = ?, gmail_user_id = ? WHERE id = ?')
         .run(sent.data.id, sent.data.threadId, req.user.id, msgId);
       saveDb();
@@ -255,6 +280,15 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const refs = lastIn ? JSON.parse(lastIn.reference_ids || '[]').concat(lastIn.provider_message_id) : [];
   db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, in_reply_to, reference_ids, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(msgId, req.params.id, fromAddr, JSON.stringify(extP), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), lastIn?.provider_message_id || null, JSON.stringify(refs), req.user.id, Date.now());
+
+  // Save reply attachments to DB
+  if (replyAttachments && replyAttachments.length > 0) {
+    const insAtt = db.prepare('INSERT INTO attachments (id, ticket_id, filename, data, message_id, mime_type, size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const att of replyAttachments) {
+      insAtt.run(uuid(), req.params.id, att.name, att.data, msgId, att.mimeType || 'application/octet-stream', att.size || 0);
+    }
+  }
+
   db.prepare("UPDATE tickets SET status = 'WAITING_ON_EXTERNAL', last_activity_at = ?, has_unread = 0 WHERE id = ?").run(Date.now(), req.params.id);
   saveDb();
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { api } from '../api';
 import Icon from './Icons';
 import { TagPill } from './ui';
@@ -11,6 +11,8 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
   const [selectedTags, setSelectedTags] = useState([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const fileInputRef = useRef(null);
 
   const userRegions = regions.filter(r => currentUser.regionIds.includes(r.id));
   const canSend = toEmail.trim() && subject.trim() && body.trim() && regionId;
@@ -19,7 +21,7 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
     if (!canSend || sending) return;
     setSending(true);
     try {
-      const data = await api.createTicket({ toEmail, subject, body, regionId, tagIds: selectedTags });
+      const data = await api.createTicket({ toEmail, subject, body, regionId, tagIds: selectedTags, attachments: attachments.length > 0 ? attachments : undefined });
       showToast('Ticket created — message sent');
       onCreated(data.ticket.id);
     } catch (e) {
@@ -31,6 +33,20 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
 
   const toggleTag = (tagId) => {
     setSelectedTags(prev => prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]);
+  };
+
+  const handleAttachFile = (e) => {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) { showToast('File too large (max 10MB)'); continue; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        setAttachments(prev => [...prev, { name: file.name, data: base64, mimeType: file.type || 'application/octet-stream', size: file.size }]);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
   };
 
   return (
@@ -121,6 +137,27 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
             <div style={{ fontSize: 11, color: '#8a9fb0', marginTop: 4 }}>
               Your signature ({currentUser.name} — {regions.find(r => r.id === regionId)?.name || 'Region'}) will be appended automatically.
             </div>
+          </div>
+
+          {/* Attachments */}
+          <div>
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                {attachments.map((a, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#c8d8ec', borderRadius: 6, fontSize: 11, color: '#1a5e9a' }}>
+                    <Icon name="file" size={10} />
+                    {a.name} ({a.size > 1048576 ? (a.size/1048576).toFixed(1)+'MB' : Math.round(a.size/1024)+'KB'})
+                    <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#d94040', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input type="file" ref={fileInputRef} onChange={handleAttachFile} multiple style={{ display: 'none' }} />
+            <button onClick={() => fileInputRef.current?.click()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, color: '#6b8299' }}>
+              <Icon name="paperclip" size={12} /> Attach Files
+            </button>
           </div>
         </div>
 
