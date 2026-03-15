@@ -474,11 +474,35 @@ router.post('/personal/send', requireAuth, async (req, res) => {
     if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
     const gmail = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
     const senderEmail = userAuth ? userAuth.email : toStr(t.email);
-    const { to, cc, subject, body: b, threadId } = req.body;
-    let raw = ['From: '+senderEmail,'To: '+to]; if(cc)raw.push('Cc: '+cc);
-    raw.push('Subject: '+(subject||''),'MIME-Version: 1.0','Content-Type: text/html; charset=utf-8','',b);
-    const enc = Buffer.from(raw.join('\r\n')).toString('base64url');
-    const p = { userId:'me', requestBody:{ raw: enc } }; if(threadId)p.requestBody.threadId=threadId;
+    const { to, cc, subject, body: b, threadId, attachments } = req.body;
+    const CRLF = '\r\n';
+    let raw;
+
+    if (attachments && attachments.length > 0) {
+      const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const headers = ['From: ' + senderEmail, 'To: ' + to];
+      if (cc) headers.push('Cc: ' + cc);
+      headers.push('Subject: ' + (subject || ''), 'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"');
+      let mime = headers.join(CRLF) + CRLF + CRLF;
+      mime += '--' + boundary + CRLF + 'Content-Type: text/html; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + b + CRLF + CRLF;
+      for (const att of attachments) {
+        mime += '--' + boundary + CRLF;
+        mime += 'Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + att.name + '"' + CRLF;
+        mime += 'Content-Disposition: attachment; filename="' + att.name + '"' + CRLF;
+        mime += 'Content-Transfer-Encoding: base64' + CRLF + CRLF;
+        mime += att.data + CRLF + CRLF;
+      }
+      mime += '--' + boundary + '--' + CRLF;
+      raw = Buffer.from(mime).toString('base64url');
+    } else {
+      const lines = ['From: ' + senderEmail, 'To: ' + to];
+      if (cc) lines.push('Cc: ' + cc);
+      lines.push('Subject: ' + (subject || ''), 'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', '', b);
+      raw = Buffer.from(lines.join(CRLF)).toString('base64url');
+    }
+
+    const p = { userId: 'me', requestBody: { raw } };
+    if (threadId) p.requestBody.threadId = threadId;
     const r = await gmail.users.messages.send(p);
     res.json({ id: r.data.id, threadId: r.data.threadId });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -729,6 +753,69 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
   saveDb();
   console.log('[Queue] Bulk pushed', pushed, 'emails');
   res.json({ pushed });
+});
+
+// ── Modify / Trash / Untrash ──
+router.post('/personal/modify', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const { messageId, addLabelIds, removeLabelIds } = req.body;
+    if (!messageId) return res.status(400).json({ error: 'messageId required' });
+    await gm.users.messages.modify({ userId: 'me', id: messageId, requestBody: { addLabelIds: addLabelIds || [], removeLabelIds: removeLabelIds || [] } });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/personal/trash', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const { messageId } = req.body;
+    await gm.users.messages.trash({ userId: 'me', id: messageId });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/personal/untrash', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const { messageId } = req.body;
+    await gm.users.messages.untrash({ userId: 'me', id: messageId });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Label management ──
+router.post('/labels/create', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Label name required' });
+    const r = await gm.users.labels.create({ userId: 'me', requestBody: { name: name.trim(), labelListVisibility: 'labelShow', messageListVisibility: 'show' } });
+    res.json({ label: { id: r.data.id, name: r.data.name, type: r.data.type } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    await gm.users.labels.delete({ userId: 'me', id: req.params.labelId });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Filters ──

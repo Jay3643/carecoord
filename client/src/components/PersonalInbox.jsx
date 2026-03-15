@@ -49,6 +49,10 @@ const ICON_PATHS = {
   reply: "M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z",
   compose: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
   label: "M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z",
+  archive: "M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z",
+  markRead: "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z",
+  moveTo: "M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 14H4V8h16v12z",
+  plus: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
 };
 
 export default function PersonalInbox({ currentUser, showToast, refreshCounts }) {
@@ -75,8 +79,15 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeSending, setComposeSending] = useState(false);
+  const [composeAttachments, setComposeAttachments] = useState([]);
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const [showNewLabel, setShowNewLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
   const ran = useRef(false);
   const listRef = useRef(null);
+  const composeFileRef = useRef(null);
+  const replyFileRef = useRef(null);
 
   useEffect(() => {
     if (ran.current) return; ran.current = true;
@@ -114,12 +125,26 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     finally { setDetailLoading(false); }
   };
 
+  const handleFileAttach = (e, setter) => {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      if (file.size > 25 * 1024 * 1024) { showToast?.('File too large (max 25MB)'); continue; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        setter(prev => [...prev, { name: file.name, data: base64, mimeType: file.type || 'application/octet-stream', size: file.size }]);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
   const sendReply = async () => {
     if (!replyBody.trim() || !detail) return;
     setSending(true);
     try {
-      await api.gmailPersonalSend({ to: detail.from, subject: 'Re: ' + (detail.subject || ''), body: replyBody, threadId: detail.threadId });
-      showToast?.('Sent'); setShowReply(false); setReplyBody('');
+      await api.gmailPersonalSend({ to: detail.from, subject: 'Re: ' + (detail.subject || ''), body: replyBody, threadId: detail.threadId, attachments: replyAttachments.length > 0 ? replyAttachments : undefined });
+      showToast?.('Sent'); setShowReply(false); setReplyBody(''); setReplyAttachments([]);
     } catch (e) { showToast?.(e.message); }
     setSending(false);
   };
@@ -128,11 +153,75 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     if (!composeTo.trim() || !composeBody.trim()) return;
     setComposeSending(true);
     try {
-      await api.gmailPersonalSend({ to: composeTo, subject: composeSubject, body: composeBody });
+      await api.gmailPersonalSend({ to: composeTo, subject: composeSubject, body: composeBody, attachments: composeAttachments.length > 0 ? composeAttachments : undefined });
       showToast?.('Message sent');
-      setShowCompose(false); setComposeTo(''); setComposeSubject(''); setComposeBody('');
+      setShowCompose(false); setComposeTo(''); setComposeSubject(''); setComposeBody(''); setComposeAttachments([]);
     } catch(e) { showToast?.(e.message); }
     setComposeSending(false);
+  };
+
+  const toggleStar = async (m, e) => {
+    e.stopPropagation();
+    const isStarred = m.labels?.includes('STARRED');
+    try {
+      await api.gmailModify(m.id, isStarred ? [] : ['STARRED'], isStarred ? ['STARRED'] : []);
+      setMessages(prev => prev.map(x => x.id === m.id ? { ...x, labels: isStarred ? (x.labels||[]).filter(l => l !== 'STARRED') : [...(x.labels||[]), 'STARRED'] } : x));
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const archiveMsg = async (msgId) => {
+    try {
+      await api.gmailModify(msgId, [], ['INBOX']);
+      showToast?.('Archived');
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      if (selected?.id === msgId) { setSelected(null); setDetail(null); }
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const trashMsg = async (msgId) => {
+    try {
+      await api.gmailTrash(msgId);
+      showToast?.('Moved to Trash');
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      if (selected?.id === msgId) { setSelected(null); setDetail(null); }
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const toggleRead = async (msgId, isUnread) => {
+    try {
+      await api.gmailModify(msgId, isUnread ? [] : ['UNREAD'], isUnread ? ['UNREAD'] : []);
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isUnread: !isUnread } : m));
+      showToast?.(isUnread ? 'Marked as read' : 'Marked as unread');
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const moveToLabel = async (msgId, labelId) => {
+    try {
+      await api.gmailModify(msgId, [labelId], ['INBOX']);
+      showToast?.('Moved');
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      if (selected?.id === msgId) { setSelected(null); setDetail(null); }
+      setShowMoveMenu(false);
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const createLabel = async () => {
+    if (!newLabelName.trim()) return;
+    try {
+      const d = await api.gmailCreateLabel(newLabelName.trim());
+      setLabels(prev => [...prev, { ...d.label, unread: 0, total: 0 }]);
+      showToast?.('Label created: ' + d.label.name);
+      setNewLabelName(''); setShowNewLabel(false);
+    } catch(e2) { showToast?.(e2.message); }
+  };
+
+  const deleteLabel = async (labelId, labelName) => {
+    if (!confirm('Delete label "' + labelName + '"? Messages will not be deleted.')) return;
+    try {
+      await api.gmailDeleteLabel(labelId);
+      setLabels(prev => prev.filter(l => l.id !== labelId));
+      showToast?.('Label deleted');
+    } catch(e2) { showToast?.(e2.message); }
   };
 
   const bulkPushToQueue = async () => {
@@ -225,19 +314,36 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
         ))}
 
         {/* User Labels */}
-        {userLabels.length > 0 && (
-          <>
-            <div style={{ padding:'16px 24px 4px',fontSize:11,fontWeight:500,color:'#444746',letterSpacing:0.4,textTransform:'uppercase' }}>Labels</div>
-            {userLabels.map(l => (
-              <div key={l.id} onClick={() => { setFolder(l.id); setSelected(null); setDetail(null); load('ALL', 'label:' + l.name.replace(/ /g, '-')); }}
-                className="gi-sb"
-                style={{ display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:32,cursor:'pointer',color:'#444746',fontSize:14,marginRight:8 }}>
-                <SvgIcon d={ICON_PATHS.label} size={18} color="#444746" />
-                <span style={{ flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{l.name}</span>
-                {l.unread > 0 && <span style={{ fontSize:12,fontWeight:700 }}>{l.unread}</span>}
-              </div>
-            ))}
-          </>
+        <div style={{ display:'flex',alignItems:'center',padding:'16px 24px 4px',gap:4 }}>
+          <span style={{ flex:1,fontSize:11,fontWeight:500,color:'#444746',letterSpacing:0.4,textTransform:'uppercase' }}>Labels</span>
+          <div onClick={() => setShowNewLabel(!showNewLabel)} style={{ cursor:'pointer',display:'flex',padding:2,borderRadius:4 }} className="gi-row" title="Create label">
+            <SvgIcon d={ICON_PATHS.plus} size={16} color="#444746" />
+          </div>
+        </div>
+        {showNewLabel && (
+          <div style={{ display:'flex',gap:4,padding:'2px 16px 6px 24px',alignItems:'center' }}>
+            <input value={newLabelName} onChange={e => setNewLabelName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createLabel(); if (e.key === 'Escape') { setShowNewLabel(false); setNewLabelName(''); } }}
+              placeholder="Label name" autoFocus
+              style={{ flex:1,border:'1px solid #dadce0',borderRadius:4,padding:'4px 8px',fontSize:12,outline:'none' }} />
+            <div onClick={createLabel} style={{ padding:'3px 10px',background:'#0b57d0',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500 }}>Create</div>
+          </div>
+        )}
+        {userLabels.map(l => (
+          <div key={l.id} onClick={() => { setFolder(l.id); setSelected(null); setDetail(null); load('ALL', 'label:' + l.name.replace(/ /g, '-')); }}
+            className="gi-sb"
+            style={{ display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:32,cursor:'pointer',color:'#444746',fontSize:14,marginRight:8 }}>
+            <SvgIcon d={ICON_PATHS.label} size={18} color="#444746" />
+            <span style={{ flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{l.name}</span>
+            {l.unread > 0 && <span style={{ fontSize:12,fontWeight:700 }}>{l.unread}</span>}
+            <div onClick={e => { e.stopPropagation(); deleteLabel(l.id, l.name); }} style={{ padding:2,borderRadius:4,display:'flex',opacity:0.5 }}
+              onMouseEnter={e => e.currentTarget.style.opacity=1} onMouseLeave={e => e.currentTarget.style.opacity=0.5} title="Delete label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </div>
+          </div>
+        ))}
+        {userLabels.length === 0 && !showNewLabel && (
+          <div style={{ padding:'4px 24px',fontSize:12,color:'#5f6368',fontStyle:'italic' }}>No labels</div>
         )}
       </div>
 
@@ -277,15 +383,47 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
           <div onClick={() => load(folder, search)} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
             <SvgIcon d={ICON_PATHS.refresh} />
           </div>
-          {checkedIds.size > 0 && isSupervisorOrAdmin && (
-            <div style={{ display:'flex',alignItems:'center',gap:8,marginLeft:8 }}>
-              <span style={{ fontSize:13,color:'#202124',fontWeight:500 }}>{checkedIds.size} selected</span>
-              <div onClick={bulkPushToQueue}
-                style={{ display:'flex',alignItems:'center',gap:6,padding:'4px 16px',background:'#1a73e8',color:'#fff',borderRadius:16,cursor:'pointer',fontSize:13,fontWeight:500 }}>
-                Push to Queue
+          {checkedIds.size > 0 && (
+            <div style={{ display:'flex',alignItems:'center',gap:4,marginLeft:8 }}>
+              <span style={{ fontSize:13,color:'#202124',fontWeight:500,marginRight:4 }}>{checkedIds.size} selected</span>
+              <div onClick={() => { Array.from(checkedIds).forEach(id => archiveMsg(id)); setCheckedIds(new Set()); }}
+                title="Archive" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.archive} size={18} />
               </div>
-              <div onClick={() => setCheckedIds(new Set())}
-                style={{ padding:'4px 12px',border:'1px solid #dadce0',borderRadius:16,cursor:'pointer',fontSize:13,color:'#5f6368' }}>
+              <div onClick={() => { Array.from(checkedIds).forEach(id => trashMsg(id)); setCheckedIds(new Set()); }}
+                title="Delete" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.trash} size={18} />
+              </div>
+              <div onClick={() => { Array.from(checkedIds).forEach(id => toggleRead(id, true)); setCheckedIds(new Set()); }}
+                title="Mark as read" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.markRead} size={18} />
+              </div>
+              <div style={{ position:'relative' }}>
+                <div onClick={() => setShowMoveMenu(!showMoveMenu)}
+                  title="Move to" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                  <SvgIcon d={ICON_PATHS.moveTo} size={18} />
+                </div>
+                {showMoveMenu && (
+                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:180,maxHeight:240,overflowY:'auto' }}>
+                    {userLabels.map(l => (
+                      <div key={l.id} onClick={() => { Array.from(checkedIds).forEach(id => moveToLabel(id, l.id)); setCheckedIds(new Set()); }}
+                        style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
+                        onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                        <SvgIcon d={ICON_PATHS.label} size={16} color="#444746" /> {l.name}
+                      </div>
+                    ))}
+                    {userLabels.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
+                  </div>
+                )}
+              </div>
+              {isSupervisorOrAdmin && (
+                <div onClick={bulkPushToQueue}
+                  style={{ display:'flex',alignItems:'center',gap:6,padding:'4px 16px',background:'#1a73e8',color:'#fff',borderRadius:16,cursor:'pointer',fontSize:13,fontWeight:500,marginLeft:4 }}>
+                  Push to Queue
+                </div>
+              )}
+              <div onClick={() => { setCheckedIds(new Set()); setShowMoveMenu(false); }}
+                style={{ padding:'4px 12px',border:'1px solid #dadce0',borderRadius:16,cursor:'pointer',fontSize:13,color:'#5f6368',marginLeft:4 }}>
                 Cancel
               </div>
             </div>
@@ -319,7 +457,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   style={{ width:18,height:18,border:checkedIds.has(m.id)?'none':'2px solid #c4c7c5',borderRadius:2,background:checkedIds.has(m.id)?'#1a73e8':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,marginRight:8 }}>
                   {checkedIds.has(m.id) && <span style={{ color:'#fff',fontSize:11,fontWeight:700 }}>&#10003;</span>}
                 </div>
-                <div onClick={e => e.stopPropagation()} style={{ color:m.labels?.includes('STARRED')?'#f4b400':'#dadce0',cursor:'pointer',marginRight:8,fontSize:18,lineHeight:1,flexShrink:0 }}>
+                <div onClick={e => toggleStar(m, e)} style={{ color:m.labels?.includes('STARRED')?'#f4b400':'#dadce0',cursor:'pointer',marginRight:8,fontSize:18,lineHeight:1,flexShrink:0 }}>
                   {m.labels?.includes('STARRED') ? '\u2605' : '\u2606'}
                 </div>
                 <span style={{ width:200,flexShrink:0,fontSize:14,fontWeight:m.isUnread?700:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingRight:8 }}>
@@ -337,11 +475,37 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
           </div>
         ) : (
           <div style={{ flex:1,overflowY:'auto' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:8,padding:'8px 16px',borderBottom:'1px solid #f1f3f4' }}>
-              <div onClick={() => { setSelected(null); setDetail(null); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+            <div style={{ display:'flex',alignItems:'center',gap:4,padding:'8px 16px',borderBottom:'1px solid #f1f3f4' }}>
+              <div onClick={() => { setSelected(null); setDetail(null); setShowMoveMenu(false); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                 <SvgIcon d={ICON_PATHS.back} />
               </div>
-              <span style={{ fontSize:14,color:'#5f6368' }}>Back</span>
+              <span style={{ fontSize:14,color:'#5f6368',marginRight:8 }}>Back</span>
+              <div onClick={() => archiveMsg(selected.id)} title="Archive" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.archive} size={18} />
+              </div>
+              <div onClick={() => trashMsg(selected.id)} title="Delete" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.trash} size={18} />
+              </div>
+              <div onClick={() => toggleRead(selected.id, !selected.isUnread)} title={selected.isUnread ? 'Mark as read' : 'Mark as unread'} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <SvgIcon d={ICON_PATHS.markRead} size={18} />
+              </div>
+              <div style={{ position:'relative' }}>
+                <div onClick={() => setShowMoveMenu(!showMoveMenu)} title="Move to" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                  <SvgIcon d={ICON_PATHS.moveTo} size={18} />
+                </div>
+                {showMoveMenu && (
+                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:180,maxHeight:240,overflowY:'auto' }}>
+                    {userLabels.map(l => (
+                      <div key={l.id} onClick={() => moveToLabel(selected.id, l.id)}
+                        style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
+                        onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                        <SvgIcon d={ICON_PATHS.label} size={16} color="#444746" /> {l.name}
+                      </div>
+                    ))}
+                    {userLabels.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
+                  </div>
+                )}
+              </div>
             </div>
             {detailLoading ? (
               <div style={{ padding:40,textAlign:'center',color:'#5f6368' }}>Loading...</div>
@@ -393,9 +557,24 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     <div style={{ padding:'8px 16px',borderBottom:'1px solid #f1f3f4',fontSize:12,color:'#5f6368' }}>To: {detail.from}</div>
                     <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={6} autoFocus
                       style={{ width:'100%',border:'none',outline:'none',padding:'12px 16px',fontSize:14,lineHeight:1.5,resize:'vertical',boxSizing:'border-box',fontFamily:'inherit' }} placeholder="Type your reply..." />
-                    <div style={{ padding:'8px 16px',background:'#f6f8fc',display:'flex',gap:8 }}>
+                    {replyAttachments.length > 0 && (
+                      <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px' }}>
+                        {replyAttachments.map((a, i) => (
+                          <span key={i} style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'3px 8px',background:'#e8eaed',borderRadius:6,fontSize:12,color:'#202124' }}>
+                            <SvgIcon d={ICON_PATHS.attach} size={12} color="#5f6368" />
+                            {a.name} ({a.size > 1048576 ? (a.size/1048576).toFixed(1)+'MB' : Math.round(a.size/1024)+'KB'})
+                            <span onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))} style={{ cursor:'pointer',color:'#d93025',fontSize:14,lineHeight:1,marginLeft:2 }}>&times;</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ padding:'8px 16px',background:'#f6f8fc',display:'flex',gap:8,alignItems:'center' }}>
                       <button onClick={sendReply} disabled={sending} style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:sending?'default':'pointer',fontSize:14,fontWeight:500,opacity:sending?.7:1 }}>{sending ? 'Sending...' : 'Send'}</button>
-                      <div onClick={() => { setShowReply(false); setReplyBody(''); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                      <input type="file" ref={replyFileRef} onChange={e => handleFileAttach(e, setReplyAttachments)} multiple style={{ display:'none' }} />
+                      <div onClick={() => replyFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                        <SvgIcon d={ICON_PATHS.attach} size={18} />
+                      </div>
+                      <div onClick={() => { setShowReply(false); setReplyBody(''); setReplyAttachments([]); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                         <SvgIcon d={ICON_PATHS.trash} size={18} />
                       </div>
                     </div>
@@ -426,12 +605,27 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
           </div>
           <textarea value={composeBody} onChange={e => setComposeBody(e.target.value)} rows={8}
             style={{ flex:1,border:'none',outline:'none',padding:'12px',fontSize:14,lineHeight:1.5,resize:'none',fontFamily:'inherit' }} placeholder="Compose email" />
-          <div style={{ padding:'8px 12px',display:'flex',gap:8,borderTop:'1px solid #f1f3f4' }}>
+          {composeAttachments.length > 0 && (
+            <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 12px',borderTop:'1px solid #f1f3f4' }}>
+              {composeAttachments.map((a, i) => (
+                <span key={i} style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'3px 8px',background:'#e8eaed',borderRadius:6,fontSize:12,color:'#202124' }}>
+                  <SvgIcon d={ICON_PATHS.attach} size={12} color="#5f6368" />
+                  {a.name} ({a.size > 1048576 ? (a.size/1048576).toFixed(1)+'MB' : Math.round(a.size/1024)+'KB'})
+                  <span onClick={() => setComposeAttachments(prev => prev.filter((_, j) => j !== i))} style={{ cursor:'pointer',color:'#d93025',fontSize:14,lineHeight:1,marginLeft:2 }}>&times;</span>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ padding:'8px 12px',display:'flex',gap:8,borderTop:'1px solid #f1f3f4',alignItems:'center' }}>
             <button onClick={sendCompose} disabled={composeSending}
               style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:composeSending?'default':'pointer',fontSize:14,fontWeight:500 }}>
               {composeSending ? 'Sending...' : 'Send'}
             </button>
-            <div onClick={() => setShowCompose(false)} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex',marginLeft:'auto' }}>
+            <input type="file" ref={composeFileRef} onChange={e => handleFileAttach(e, setComposeAttachments)} multiple style={{ display:'none' }} />
+            <div onClick={() => composeFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+              <SvgIcon d={ICON_PATHS.attach} size={18} color="#5f6368" />
+            </div>
+            <div onClick={() => { setShowCompose(false); setComposeAttachments([]); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex',marginLeft:'auto' }}>
               <SvgIcon d={ICON_PATHS.trash} size={18} color="#5f6368" />
             </div>
           </div>
