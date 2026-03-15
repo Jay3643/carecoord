@@ -177,6 +177,41 @@ Guidelines:
 - When referencing tickets, include the ticket ID so the user can navigate to it
 - You can see all tickets, not just the one currently open`;
 
+// ── Clinical Snapshot from chart scan data ──
+router.post('/clinical-snapshot', requireAuth, async (req, res) => {
+  const client = getClient();
+  if (!client) return res.status(500).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY in environment.' });
+
+  const { chartData } = req.body;
+  if (!chartData) return res.status(400).json({ error: 'chartData required' });
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 3000,
+      system: `You are a clinical documentation assistant for Seniority Healthcare. Generate a comprehensive but concise Clinical Snapshot from EHR chart data. Structure it clearly with these sections:
+
+**PATIENT SUMMARY**: Name, DOB, age, gender, PRN, insurance, phone
+**ACTIVE DIAGNOSES**: List all with ICD-10 codes
+**CURRENT MEDICATIONS**: List all with dosages
+**ALLERGIES**: Drug, food, environmental
+**RECENT ENCOUNTERS**: Summarize each encounter with date, type, and key findings
+**CARE TEAM**: Who is involved in this patient's care
+**HEALTH CONCERNS & NOTES**: Key clinical notes, social history, behavioral health
+**ADVANCE DIRECTIVES**: DNR/DNI status, healthcare proxy
+**SCREENINGS**: Recent assessments with dates and results
+**ACTION ITEMS**: Based on the chart, what follow-ups or actions are needed
+
+Be thorough but concise. Use bullet points. Include dates where available. Flag anything urgent.`,
+      messages: [{ role: 'user', content: `Generate a Clinical Snapshot from this Practice Fusion chart data:\n\n${JSON.stringify(chartData, null, 2)}` }],
+    });
+    res.json({ snapshot: response.content[0]?.text || '' });
+  } catch (e) {
+    console.error('[AI] Snapshot error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── General AI chat (full system access) ──
 router.post('/chat', requireAuth, async (req, res) => {
   const client = getClient();

@@ -6,12 +6,15 @@ let state = {
   serverUrl: '',
   tab: 'patient',
   patientData: null,
+  clinicalSnapshot: null,
   tickets: [],
   aiMessages: [],
   aiLoading: false,
   loading: false,
-  deepScraping: false,
+  chartScanning: false,
   scrapeProgress: '',
+  scanStartDate: '',
+  scanEndDate: '',
 };
 
 const app = document.getElementById('app');
@@ -132,12 +135,34 @@ async function scrapePatient() {
   });
 }
 
-// ── Deep scrape — navigates through all chart sections ──
-async function deepScrapePatient() {
-  state.deepScraping = true;
-  state.scrapeProgress = 'Starting full chart scan...';
+// ── Chart Scan — reads summary + encounters within date range ──
+async function startChartScan() {
+  state.chartScanning = true;
+  state.clinicalSnapshot = null;
+  state.scrapeProgress = 'Starting chart scan...';
   render();
-  chrome.runtime.sendMessage({ type: 'DEEP_SCRAPE' });
+  chrome.runtime.sendMessage({
+    type: 'CHART_SCAN',
+    startDate: state.scanStartDate || null,
+    endDate: state.scanEndDate || null,
+  });
+}
+
+// ── Generate clinical snapshot from chart data ──
+async function generateSnapshot(chartData) {
+  state.scrapeProgress = 'Generating clinical snapshot...';
+  render();
+  try {
+    const d = await apiRequest('/ai/clinical-snapshot', { method: 'POST', body: { chartData } });
+    state.clinicalSnapshot = d.snapshot;
+    // Also inject into AI context
+    state.aiMessages = [];
+  } catch(e) {
+    state.clinicalSnapshot = 'Error generating snapshot: ' + (e.message || 'Failed');
+  }
+  state.chartScanning = false;
+  state.scrapeProgress = '';
+  render();
 }
 
 // ── Push patient data to CareCoord (create note on a ticket) ──
@@ -174,6 +199,15 @@ async function pushToTicket(ticketId) {
   } catch(e) { showToast(e.message); }
 }
 
+// ── Push snapshot to ticket as note ──
+async function pushSnapshotToTicket(ticketId) {
+  if (!state.clinicalSnapshot) { showToast('No snapshot to push'); return; }
+  try {
+    await apiRequest('/tickets/' + ticketId + '/notes', { method: 'POST', body: { body: 'Clinical Snapshot from Practice Fusion:\n\n' + state.clinicalSnapshot } });
+    showToast('Snapshot pushed to ticket');
+  } catch(e) { showToast(e.message); }
+}
+
 // ── AI Chat ──
 async function aiChat(message) {
   if (!message.trim() || state.aiLoading) return;
@@ -191,8 +225,9 @@ async function aiChat(message) {
     if (pd.insurance) ctx += 'Insurance: ' + pd.insurance + '\n';
     if (pd.medications) ctx += 'Medications: ' + pd.medications.join(', ') + '\n';
     if (pd.diagnoses) ctx += 'Diagnoses: ' + pd.diagnoses.join(', ') + '\n';
-    if (pd._fullChartContext) ctx += '\nFull chart data:\n' + pd._fullChartContext.substring(0, 8000) + '\n';
-    else if (pd._pageContext) ctx += '\nVisible page text:\n' + pd._pageContext.substring(0, 2000) + '\n';
+    if (state.clinicalSnapshot) ctx += '\nClinical Snapshot:\n' + state.clinicalSnapshot + '\n';
+    if (pd.encounterDetails) ctx += '\nEncounter details available: ' + pd.encounterDetails.length + ' encounters scanned\n';
+    if (pd._pageContext) ctx += '\nPage context:\n' + pd._pageContext.substring(0, 2000) + '\n';
     fullMsg = ctx + '\n---\n\nUser request: ' + message;
   }
 
@@ -290,9 +325,19 @@ function render2FA(email) {
 function renderPatientTab() {
   let html = '';
   html += '<div class="action-bar">';
-  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Quick Read</button>';
-  html += '<button class="btn btn-primary btn-small" id="deep-scrape-btn" style="background:#3d8ba8">Full Chart Scan</button>';
+  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Patient Overview</button>';
   html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
+  html += '</div>';
+
+  // Chart Scan section
+  html += '<div class="card" style="margin-bottom:8px">';
+  html += '<div class="card-title">Chart Scan</div>';
+  html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
+  html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+  html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+  html += '</div>';
+  html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Chart Scan</button>';
+  html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads summary + clicks into each encounter within the date range. Generates an AI clinical snapshot.</div>';
   html += '</div>';
 
   if (state.loading) {
@@ -300,14 +345,26 @@ function renderPatientTab() {
     return html;
   }
 
-  if (state.deepScraping) {
+  if (state.chartScanning) {
     html += '<div class="card" style="text-align:center;padding:24px">';
     html += '<img src="icons/icon128.jpg" style="width:40px;height:40px;border-radius:50%;animation:pulse 1.5s ease-in-out infinite;margin-bottom:8px">';
-    html += '<div style="font-size:13px;font-weight:600;color:#3d8ba8">Scanning Full Chart</div>';
+    html += '<div style="font-size:13px;font-weight:600;color:#3d8ba8">Chart Scan in Progress</div>';
     html += '<div style="font-size:11px;color:#6b8299;margin-top:4px">' + (state.scrapeProgress || 'Working...') + '</div>';
-    html += '<div style="font-size:10px;color:#8a9fb0;margin-top:8px">The extension is clicking through each section of the patient chart. Please don\'t navigate away.</div>';
+    html += '<div style="font-size:10px;color:#8a9fb0;margin-top:8px">Reading encounters — please don\'t navigate away.</div>';
     html += '</div>';
     return html;
+  }
+
+  // Clinical Snapshot
+  if (state.clinicalSnapshot) {
+    html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
+    html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:50%">Clinical Snapshot</div>';
+    html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word">' + escapeHtml(state.clinicalSnapshot) + '</div>';
+    html += '<div style="margin-top:8px;display:flex;gap:4px">';
+    html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
+    html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
+    html += '</div>';
+    html += '</div>';
   }
 
   const pd = state.patientData;
@@ -504,11 +561,27 @@ function bindEvents() {
   const scrapeBtn = document.getElementById('scrape-btn');
   if (scrapeBtn) scrapeBtn.addEventListener('click', scrapePatient);
 
-  const deepScrapeBtn = document.getElementById('deep-scrape-btn');
-  if (deepScrapeBtn) deepScrapeBtn.addEventListener('click', deepScrapePatient);
+  const chartScanBtn = document.getElementById('chart-scan-btn');
+  if (chartScanBtn) chartScanBtn.addEventListener('click', () => {
+    state.scanStartDate = document.getElementById('scan-start')?.value || '';
+    state.scanEndDate = document.getElementById('scan-end')?.value || '';
+    startChartScan();
+  });
 
   const refreshBtn = document.getElementById('refresh-btn');
   if (refreshBtn) refreshBtn.addEventListener('click', () => { loadTickets(); scrapePatient(); });
+
+  // Snapshot actions
+  document.querySelectorAll('[data-copy-snapshot]').forEach(el => {
+    el.addEventListener('click', () => { if (state.clinicalSnapshot) { navigator.clipboard.writeText(state.clinicalSnapshot); showToast('Snapshot copied'); } });
+  });
+  document.querySelectorAll('[data-push-snapshot]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (state.clinicalSnapshot && state.tickets.length > 0) {
+        pushSnapshotToTicket(state.tickets[0].id);
+      } else { showToast('No tickets to push to'); }
+    });
+  });
 
   // Push to ticket
   document.querySelectorAll('[data-push]').forEach(el => {
@@ -592,13 +665,12 @@ chrome.runtime.onMessage.addListener((msg) => {
     state.scrapeProgress = msg.status;
     render();
   }
-  if (msg.type === 'DEEP_SCRAPE_COMPLETE') {
+  if (msg.type === 'CHART_SCAN_COMPLETE') {
     state.patientData = msg.data;
-    state.deepScraping = false;
-    state.scrapeProgress = '';
     if (msg.data.patientName) searchTickets(msg.data.patientName);
-    showToast('Full chart scan complete — ' + (msg.data._sectionsFound || 0) + ' sections read');
-    render();
+    showToast('Chart scan complete — ' + (msg.data._encountersScanned || 0) + ' encounters read');
+    // Generate clinical snapshot via AI
+    generateSnapshot(msg.data);
   }
 });
 

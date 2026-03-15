@@ -9,30 +9,24 @@
   function sel(s) { return document.querySelector(s); }
   function selAll(s) { return Array.from(document.querySelectorAll(s)); }
 
-  // ── Scrape patient banner ──
+  // ── Parse patient banner ──
   function parseBanner() {
     const data = {};
     data.patientName = txt(sel('[data-element="patient-ribbon-patient-name"]'));
     data.prn = txt(sel('[data-element="patient-ribbon-prn"]'));
     data.dob = txt(sel('[data-element="patient-ribbon-dob"]'));
     data.insurance = txt(sel('[data-element="patient-ribbon-plan-name"]'));
-
     const ageGender = txt(sel('[data-element="patient-ribbon-age-gender"]'));
     if (ageGender) {
       const m = ageGender.match(/(\d+)\s*yrs?\s*([MF])/i);
       if (m) { data.age = m[1] + ' yrs'; data.gender = m[2] === 'M' ? 'Male' : 'Female'; }
     }
-
     const phoneEl = sel('[data-element="patient-ribbon-mobile-phone"]');
-    if (phoneEl) {
-      const phoneText = phoneEl.textContent.replace(/M:\s*/i, '').trim();
-      if (phoneText) data.phone = phoneText;
-    }
-
+    if (phoneEl) { const p = phoneEl.textContent.replace(/M:\s*/i, '').trim(); if (p) data.phone = p; }
     return data;
   }
 
-  // ── Scrape Summary page sections ──
+  // ── Scrape Summary page ──
   function scrapeSummary() {
     const data = {};
 
@@ -40,178 +34,179 @@
     const allergyCard = sel('[data-element="allergies-list"]');
     if (allergyCard) {
       data.allergies = [];
-      if (allergyCard.textContent.includes('no known drug allergies')) data.allergies.push('NKDA (No known drug allergies)');
-      const drugList = allergyCard.querySelectorAll('[data-element="drug"] .list li');
-      drugList.forEach(li => { const t = txt(li); if (t) data.allergies.push('Drug: ' + t); });
-      const foodList = allergyCard.querySelectorAll('[data-element="food"] .list li');
-      foodList.forEach(li => { const t = txt(li); if (t) data.allergies.push('Food: ' + t); });
+      if (allergyCard.textContent.includes('no known drug allergies')) data.allergies.push('NKDA');
+      selAll('[data-element="drug"] .list li').forEach(li => { const t = txt(li); if (t) data.allergies.push('Drug: ' + t); });
       if (allergyCard.textContent.includes('No food allergies')) data.allergies.push('No food allergies');
       if (allergyCard.textContent.includes('No environmental allergies')) data.allergies.push('No environmental allergies');
     }
 
     // Medications
-    data.medications = selAll('[data-element^="medication-summary-list-item"] [data-element="medication-name"]')
-      .map(el => {
-        const li = el.closest('li');
-        return li ? li.textContent.trim().replace(/\s+/g, ' ') : txt(el);
-      }).filter(Boolean);
+    data.medications = selAll('[data-element^="medication-summary-list-item"]').map(li => li.textContent.trim().replace(/\s+/g, ' ')).filter(Boolean);
 
     // Diagnoses
     data.diagnoses = selAll('[data-element^="diagnosis-item-text"]').map(el => txt(el)).filter(Boolean);
 
     // Health concerns
     const hcNote = sel('[data-element="current-health-concern-note"]');
-    if (hcNote) {
-      data.healthConcerns = hcNote.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
-    }
+    if (hcNote) data.healthConcerns = hcNote.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
 
-    // Encounters
-    data.encounters = selAll('[data-element^="encounter-item-"]').map(li => {
-      return txt(li)?.replace(/\s+/g, ' ');
-    }).filter(Boolean);
+    // Encounters (summary list)
+    data.encounters = selAll('[data-element^="encounter-item-"]').map(li => txt(li)?.replace(/\s+/g, ' ')).filter(Boolean);
 
     // Social history
     const shCard = sel('[data-element="social-history-card"]');
     if (shCard) {
       data.socialHistory = {};
-      const tobacco = shCard.querySelector('[data-element="tobaccoUse-section"]');
-      if (tobacco) data.socialHistory.tobacco = txt(tobacco.querySelector('a')) || txt(tobacco);
-      const socialFree = shCard.querySelector('[data-element="socialHistory-section"]');
-      if (socialFree) data.socialHistory.freeText = socialFree.querySelector('a')?.innerHTML?.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
-      const genderEl = shCard.querySelector('[data-element="genderIdentity-section"]');
-      if (genderEl) data.socialHistory.genderIdentity = txt(genderEl.querySelector('a'));
-      const nutrition = shCard.querySelector('[data-element="nutritionHistory-section"]');
-      if (nutrition) data.socialHistory.nutrition = txt(nutrition.querySelector('a'));
+      const tobacco = shCard.querySelector('[data-element="tobaccoUse-section"] a');
+      if (tobacco) data.socialHistory.tobacco = txt(tobacco);
+      const socialFree = shCard.querySelector('[data-element="socialHistory-section"] a');
+      if (socialFree) data.socialHistory.freeText = socialFree.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
+      const genderEl = shCard.querySelector('[data-element="genderIdentity-section"] a');
+      if (genderEl) data.socialHistory.genderIdentity = txt(genderEl);
     }
 
     // Past medical history
     const pmhCard = sel('[data-element="past-medical-history-card"]');
     if (pmhCard) {
       data.pastMedicalHistory = {};
-      const events = pmhCard.querySelector('[data-element="events-section"]');
-      if (events) data.pastMedicalHistory.majorEvents = txt(events.querySelector('a'));
-      const ongoing = pmhCard.querySelector('[data-element="ongoingMedicalProblems-section"]');
-      if (ongoing) data.pastMedicalHistory.ongoingProblems = txt(ongoing.querySelector('a'));
-      const preventive = pmhCard.querySelector('[data-element="preventativeCare-section"]');
-      if (preventive) data.pastMedicalHistory.preventiveCare = preventive.querySelector('a')?.innerHTML?.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
+      const ev = pmhCard.querySelector('[data-element="events-section"] a');
+      if (ev) data.pastMedicalHistory.majorEvents = txt(ev);
+      const ongoing = pmhCard.querySelector('[data-element="ongoingMedicalProblems-section"] a');
+      if (ongoing) data.pastMedicalHistory.ongoingProblems = txt(ongoing);
+      const prev = pmhCard.querySelector('[data-element="preventativeCare-section"] a');
+      if (prev) data.pastMedicalHistory.preventiveCare = prev.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
     }
 
-    // Family health history
+    // Family history, advance directives
     data.familyHistory = txt(sel('[data-element="family-history-text"]'));
-
-    // Advance directives
     data.advanceDirectives = txt(sel('[data-element="advanced-directive-comments"]'));
-    const adDate = txt(sel('[data-element="advanced-directive-recorded-date"]'));
-    if (adDate) data.advanceDirectivesDate = adDate;
 
-    // Screenings/Interventions/Assessments
-    const siaList = sel('[data-element="sia-list"]');
-    if (siaList) {
-      data.screenings = selAll('[data-element^="sia-name-"]').map((el, i) => {
-        const name = txt(el);
-        const date = txt(sel(`[data-element="sia-start-date-${i}"]`));
-        const status = txt(sel(`[data-element="sia-status-${i}"]`));
-        return [name, date, status].filter(Boolean).join(' | ');
-      }).filter(Boolean);
-    }
+    // Screenings
+    data.screenings = selAll('[data-element^="sia-name-"]').map((el, i) => {
+      return [txt(el), txt(sel(`[data-element="sia-start-date-${i}"]`)), txt(sel(`[data-element="sia-status-${i}"]`))].filter(Boolean).join(' | ');
+    }).filter(Boolean);
 
     // Flowsheets
     data.flowsheets = selAll('[data-element="summary-flowsheet-list-item"] a').map(a => txt(a)).filter(Boolean);
 
-    // Implantable devices
-    const devCard = sel('[data-element="implantable-devices-card"]');
-    if (devCard) {
-      if (devCard.textContent.includes('no implantable device')) data.implantableDevices = 'None';
-    }
-
-    // Messages
-    const msgCard = sel('[data-element="messages-card"]');
-    if (msgCard) data.messages = msgCard.textContent.includes('No messages') ? 'None' : txt(msgCard.querySelector('.card__content'));
-
-    // Appointments
-    const aptCard = sel('[data-element="appointment-list-card"]');
-    if (aptCard) data.appointments = aptCard.textContent.includes('No appointments') ? 'None' : txt(aptCard.querySelector('.card__content'));
-
-    // Patient risk score
-    const riskEl = sel('[data-element="patient-risk-score-placeholder-text"]');
-    if (riskEl) data.riskScore = txt(riskEl);
-
     return data;
   }
 
-  // ── Quick scrape ──
+  // ── Patient Overview (quick read) ──
   function scrapePatientData() {
-    const banner = parseBanner();
-    const summary = scrapeSummary();
-    const data = { ...banner, ...summary };
+    const data = { ...parseBanner(), ...scrapeSummary() };
     data._pageContext = document.body.innerText.substring(0, 12000);
     return data;
   }
 
-  // ── Deep Chart Scrape ──
-  async function deepScrapeChart(progressCallback) {
-    const fullChart = {};
+  // ── Parse a date string like "03/31/2026" to a Date ──
+  function parseDate(str) {
+    if (!str) return null;
+    const m = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    return m ? new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2])) : null;
+  }
+
+  // ── Chart Scan: Summary + encounters within date range ──
+  async function chartScan(startDate, endDate, progressCallback) {
+    const chart = {};
 
     // Step 1: Scrape Summary
-    progressCallback?.('Reading Summary...');
-    Object.assign(fullChart, scrapePatientData());
-    fullChart._sections = { Summary: document.body.innerText.substring(0, 10000) };
-
-    // Step 2: Click through tabs using exact PF selectors
-    const tabs = [
-      { name: 'Timeline', selector: '[data-element="patient-header-tab-Timeline"]' },
-      { name: 'Documents', selector: '[data-element="patient-header-tab-Documents"]' },
-      { name: 'Profile', selector: '[data-element="patient-header-tab-Profile"]' },
-    ];
-
-    for (const tab of tabs) {
-      progressCallback?.('Reading ' + tab.name + '...');
-      const link = sel(tab.selector);
-      if (link) {
-        link.click();
-        await sleep(2500);
-        fullChart._sections[tab.name] = document.body.innerText.substring(0, 10000);
-
-        // Extract extra data from Profile
-        if (tab.name === 'Profile') {
-          const text = document.body.innerText;
-          const extract = (pattern) => { const m = text.match(pattern); return m ? m[1].trim() : null; };
-          if (!fullChart.address) fullChart.address = extract(/(?:Address|Street)[:\s]*([^\n]+)/i);
-          if (!fullChart.email) fullChart.email = extract(/(?:Email)[:\s]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
-          fullChart.emergencyContact = extract(/(?:Emergency Contact|Emergency)[:\s]*([^\n]+)/i);
-          fullChart.language = extract(/(?:Language|Preferred Language)[:\s]*([^\n]+)/i);
-          fullChart.race = extract(/(?:Race|Ethnicity)[:\s]*([^\n]+)/i);
-          fullChart.maritalStatus = extract(/(?:Marital|Marital Status)[:\s]*([^\n]+)/i);
-          fullChart.pharmacy = extract(/(?:Pharmacy|Preferred Pharmacy)[:\s]*([^\n]+)/i);
-        }
-
-        // Extract encounters from Timeline
-        if (tab.name === 'Timeline') {
-          const lines = document.body.innerText.split('\n');
-          const encounters = lines.filter(l => l.match(/\d{2}\/\d{2}\/\d{4}/) && l.length > 10 && l.length < 300).map(l => l.trim());
-          if (encounters.length > (fullChart.encounters?.length || 0)) fullChart.encounters = encounters.slice(0, 50);
-        }
-      } else {
-        fullChart._sections[tab.name] = null;
-      }
-    }
-
-    // Step 3: Go back to Summary
-    progressCallback?.('Returning to Summary...');
+    progressCallback?.('Reading Summary page...');
+    // Make sure we're on Summary tab
     const summaryTab = sel('[data-element="patient-header-tab-Summary"]');
-    if (summaryTab) { summaryTab.click(); await sleep(1500); }
+    if (summaryTab && !summaryTab.classList.contains('active')) { summaryTab.click(); await sleep(2000); }
+    Object.assign(chart, scrapePatientData());
 
-    // Build full context
-    let ctx = '';
-    for (const [name, text] of Object.entries(fullChart._sections)) {
-      if (text) ctx += '\n\n== ' + name.toUpperCase() + ' ==\n' + text;
+    // Step 2: Go to Timeline to find encounters
+    progressCallback?.('Opening Timeline...');
+    const timelineTab = sel('[data-element="patient-header-tab-Timeline"]');
+    if (timelineTab) {
+      timelineTab.click();
+      await sleep(2500);
+
+      // Look for "View all encounters" link first
+      const viewAll = Array.from(document.querySelectorAll('a')).find(a => a.textContent.includes('View all encounters'));
+      if (viewAll) { viewAll.click(); await sleep(2000); }
+
+      // Find all encounter rows in the timeline
+      const encounterLinks = selAll('[data-element^="encounter-item-"] .text-color-link, .encounter-list a.text-color-link, [data-element^="encounter-item-"] span.text-color-link');
+
+      // Also try broader selector for timeline items
+      let encounterItems = selAll('[data-element^="encounter-item-"]');
+      if (encounterItems.length === 0) {
+        encounterItems = selAll('.encounter-list li, .timeline-item');
+      }
+
+      chart.encounterDetails = [];
+      let scanned = 0;
+
+      for (const item of encounterItems) {
+        const dateText = item.querySelector('.text-color-link, span')?.textContent?.trim();
+        const encounterDate = parseDate(dateText);
+
+        // Check if within date range
+        if (encounterDate) {
+          const start = startDate ? new Date(startDate) : new Date(0);
+          const end = endDate ? new Date(endDate) : new Date();
+          if (encounterDate < start || encounterDate > end) continue;
+        }
+
+        // Click into the encounter
+        const clickable = item.querySelector('.text-color-link, a') || item;
+        progressCallback?.('Reading encounter ' + (dateText || '') + '...');
+
+        try {
+          clickable.click();
+          await sleep(2500);
+
+          // Scrape the encounter content
+          const encounterContent = document.body.innerText.substring(0, 8000);
+          const encounterSummary = item.textContent.trim().replace(/\s+/g, ' ');
+
+          chart.encounterDetails.push({
+            date: dateText,
+            summary: encounterSummary,
+            content: encounterContent,
+          });
+
+          scanned++;
+
+          // Go back to timeline
+          const backBtn = sel('.composable-header__back-button, [data-element="encounter-back-button"]')
+            || Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.trim() === 'Back' || el.textContent.includes('←'));
+
+          if (backBtn) {
+            backBtn.click();
+            await sleep(2000);
+          } else {
+            // Try browser back or re-click timeline tab
+            const tl = sel('[data-element="patient-header-tab-Timeline"]');
+            if (tl) { tl.click(); await sleep(2000); }
+          }
+
+          // Cap at 10 encounters to avoid excessive scanning
+          if (scanned >= 10) {
+            progressCallback?.('Reached 10 encounter limit');
+            break;
+          }
+        } catch(e) {
+          console.log('[CareCoord] Error reading encounter:', e);
+        }
+      }
+
+      progressCallback?.('Scanned ' + scanned + ' encounters');
     }
-    fullChart._fullChartContext = ctx.substring(0, 40000);
-    fullChart._sectionsFound = Object.values(fullChart._sections).filter(Boolean).length;
-    fullChart._sectionsTotal = Object.keys(fullChart._sections).length;
 
-    progressCallback?.('Done — ' + fullChart._sectionsFound + ' sections read');
-    return fullChart;
+    // Step 3: Return to Summary
+    progressCallback?.('Returning to Summary...');
+    const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+    if (sumTab) { sumTab.click(); await sleep(1500); }
+
+    chart._scanComplete = true;
+    chart._encountersScanned = chart.encounterDetails?.length || 0;
+    progressCallback?.('Done — ' + chart._encountersScanned + ' encounters scanned');
+
+    return chart;
   }
 
   // ── Message Handling ──
@@ -219,11 +214,11 @@
     if (msg.type === 'SCRAPE_PATIENT') {
       sendResponse({ success: true, data: scrapePatientData() });
     }
-    if (msg.type === 'DEEP_SCRAPE') {
-      deepScrapeChart((status) => {
+    if (msg.type === 'CHART_SCAN') {
+      chartScan(msg.startDate, msg.endDate, (status) => {
         chrome.runtime.sendMessage({ type: 'SCRAPE_PROGRESS', status });
       }).then(data => {
-        chrome.runtime.sendMessage({ type: 'DEEP_SCRAPE_COMPLETE', data });
+        chrome.runtime.sendMessage({ type: 'CHART_SCAN_COMPLETE', data });
       });
       sendResponse({ success: true, started: true });
     }
@@ -241,7 +236,7 @@
 
   // Watch for SPA navigation
   let lastUrl = location.href;
-  const observer = new MutationObserver(() => {
+  new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       setTimeout(() => {
@@ -249,8 +244,7 @@
         if (data.patientName) chrome.runtime.sendMessage({ type: 'PATIENT_DATA', data });
       }, 2000);
     }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  }).observe(document.body, { childList: true, subtree: true });
 
-  console.log('[CareCoord] Content script loaded — PF data-element selectors active');
+  console.log('[CareCoord] Content script loaded — chart scan ready');
 })();

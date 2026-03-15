@@ -27,7 +27,8 @@
       "matches": [
         "https://www.practicefusion.com/*",
         "https://app.practicefusion.com/*",
-        "https://static.practicefusion.com/*"
+        "https://static.practicefusion.com/*",
+        "https://*.practicefusion.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

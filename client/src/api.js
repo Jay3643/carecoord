@@ -124,6 +124,7 @@ export const api = {
   driveShared: () => request('/gmail/drive/shared'),
   aiGeneralChat: (message, history) => request('/ai/chat', { method: 'POST', body: { message, history } }),
   aiSuggestions: () => request('/ai/suggestions', { method: 'POST' }),
+  aiClinicalSnapshot: (chartData) => request('/ai/clinical-snapshot', { method: 'POST', body: { chartData } }),
   aiDraftEmail: (instructions, to, subject) => request('/ai/draft-email', { method: 'POST', body: { instructions, to, subject } }),
   aiDraftEmailReply: (from, subject, body, instructions) => request('/ai/draft-email-reply', { method: 'POST', body: { from, subject, body, instructions } }),
   aiChat: (ticketId, message, history) => request('/ai/ticket/' + ticketId + '/chat', { method: 'POST', body: { message, history } }),

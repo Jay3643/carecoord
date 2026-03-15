@@ -13,13 +13,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Message routing between content script and side panel
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Forward patient data updates to side panel
-  if (msg.type === 'PATIENT_DATA' || msg.type === 'SCRAPE_PROGRESS' || msg.type === 'DEEP_SCRAPE_COMPLETE') {
+  if (msg.type === 'PATIENT_DATA' || msg.type === 'SCRAPE_PROGRESS' || msg.type === 'DEEP_SCRAPE_COMPLETE' || msg.type === 'CHART_SCAN_COMPLETE') {
     // Re-broadcast to all extension pages (side panel will pick it up)
     chrome.runtime.sendMessage(msg).catch(() => {});
   }
 
   // Forward scrape requests to the active tab's content script
-  if (msg.type === 'SCRAPE_PATIENT' || msg.type === 'DEEP_SCRAPE' || msg.type === 'FILL_FIELD' || msg.type === 'CLICK_TEXT' || msg.type === 'GET_PAGE_TEXT' || msg.type === 'GET_CLICKABLE') {
+  if (msg.type === 'SCRAPE_PATIENT' || msg.type === 'CHART_SCAN' || msg.type === 'DEEP_SCRAPE' || msg.type === 'FILL_FIELD' || msg.type === 'CLICK_TEXT' || msg.type === 'GET_PAGE_TEXT' || msg.type === 'GET_CLICKABLE') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
         chrome.tabs.sendMessage(tabs[0].id, msg, (response) => {
