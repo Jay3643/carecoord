@@ -249,6 +249,26 @@ router.post('/suggestions', requireAuth, async (req, res) => {
   }
 });
 
+// ── Draft email reply based on email content ──
+router.post('/draft-email-reply', requireAuth, async (req, res) => {
+  const client = getClient();
+  if (!client) return res.status(500).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY in environment.' });
+
+  const db = getDb();
+  const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
+  const { from, subject, body, instructions } = req.body;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Draft a professional reply email for ${toStr(user.name)} at Seniority Healthcare.\n\nOriginal email:\nFrom: ${from || '(unknown)'}\nSubject: ${subject || '(no subject)'}\nBody:\n${body || '(empty)'}\n\n${instructions ? 'Special instructions: ' + instructions + '\n\n' : ''}Write ONLY the reply body. Be professional, empathetic, and concise. Do not include a signature.` }],
+    });
+    res.json({ result: response.content[0]?.text || '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Draft email from scratch (for compose) ──
 router.post('/draft-email', requireAuth, async (req, res) => {
   const client = getClient();

@@ -53,6 +53,7 @@ const ICON_PATHS = {
   markRead: "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z",
   moveTo: "M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 14H4V8h16v12z",
   plus: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+  sparkle: "M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z",
 };
 
 export default function PersonalInbox({ currentUser, showToast, refreshCounts }) {
@@ -84,6 +85,8 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [showNewLabel, setShowNewLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
+  const [aiDraftingReply, setAiDraftingReply] = useState(false);
+  const [aiDraftingCompose, setAiDraftingCompose] = useState(false);
   const ran = useRef(false);
   const listRef = useRef(null);
   const composeFileRef = useRef(null);
@@ -233,6 +236,30 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
       setCheckedIds(new Set());
       if (refreshCounts) refreshCounts();
     } catch(e) { showToast?.(e.message || 'Failed'); }
+  };
+
+  const aiDraftReply = async () => {
+    if (!detail) return;
+    setAiDraftingReply(true);
+    try {
+      // Strip HTML for the AI context
+      const plainBody = detail.body ? detail.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000) : '';
+      const d = await api.aiDraftEmailReply(detail.from, detail.subject, plainBody, replyBody.trim() || undefined);
+      setReplyBody(d.result);
+      showToast?.('AI draft inserted');
+    } catch (e) { showToast?.(e.message || 'AI draft failed'); }
+    setAiDraftingReply(false);
+  };
+
+  const aiDraftCompose = async () => {
+    if (!composeTo.trim() && !composeSubject.trim()) { showToast?.('Add a recipient or subject first'); return; }
+    setAiDraftingCompose(true);
+    try {
+      const d = await api.aiDraftEmail(composeBody.trim() || 'Write an appropriate professional email', composeTo, composeSubject);
+      setComposeBody(d.result);
+      showToast?.('AI draft inserted');
+    } catch (e) { showToast?.(e.message || 'AI draft failed'); }
+    setAiDraftingCompose(false);
   };
 
   const getLabelCount = (id) => {
@@ -570,6 +597,10 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     )}
                     <div style={{ padding:'8px 16px',background:'#f6f8fc',display:'flex',gap:8,alignItems:'center' }}>
                       <button onClick={sendReply} disabled={sending} style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:sending?'default':'pointer',fontSize:14,fontWeight:500,opacity:sending?.7:1 }}>{sending ? 'Sending...' : 'Send'}</button>
+                      <button onClick={aiDraftReply} disabled={aiDraftingReply}
+                        style={{ padding:'6px 16px',backgroundImage:'linear-gradient(135deg,#7c3aed,#4f46e5)',border:'none',borderRadius:18,cursor:aiDraftingReply?'default':'pointer',fontSize:13,fontWeight:500,color:'#fff',opacity:aiDraftingReply?.7:1,display:'flex',alignItems:'center',gap:4 }}>
+                        <SvgIcon d={ICON_PATHS.sparkle} size={14} color="#fff" /> {aiDraftingReply ? 'Drafting...' : 'AI Draft'}
+                      </button>
                       <input type="file" ref={replyFileRef} onChange={e => handleFileAttach(e, setReplyAttachments)} multiple style={{ display:'none' }} />
                       <div onClick={() => replyFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                         <SvgIcon d={ICON_PATHS.attach} size={18} />
@@ -620,6 +651,10 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             <button onClick={sendCompose} disabled={composeSending}
               style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:composeSending?'default':'pointer',fontSize:14,fontWeight:500 }}>
               {composeSending ? 'Sending...' : 'Send'}
+            </button>
+            <button onClick={aiDraftCompose} disabled={aiDraftingCompose}
+              style={{ padding:'6px 16px',backgroundImage:'linear-gradient(135deg,#7c3aed,#4f46e5)',border:'none',borderRadius:18,cursor:aiDraftingCompose?'default':'pointer',fontSize:13,fontWeight:500,color:'#fff',opacity:aiDraftingCompose?.7:1,display:'flex',alignItems:'center',gap:4 }}>
+              <SvgIcon d={ICON_PATHS.sparkle} size={14} color="#fff" /> {aiDraftingCompose ? 'Drafting...' : 'AI Draft'}
             </button>
             <input type="file" ref={composeFileRef} onChange={e => handleFileAttach(e, setComposeAttachments)} multiple style={{ display:'none' }} />
             <div onClick={() => composeFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">

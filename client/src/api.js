@@ -125,6 +125,7 @@ export const api = {
   aiGeneralChat: (message, history) => request('/ai/chat', { method: 'POST', body: { message, history } }),
   aiSuggestions: () => request('/ai/suggestions', { method: 'POST' }),
   aiDraftEmail: (instructions, to, subject) => request('/ai/draft-email', { method: 'POST', body: { instructions, to, subject } }),
+  aiDraftEmailReply: (from, subject, body, instructions) => request('/ai/draft-email-reply', { method: 'POST', body: { from, subject, body, instructions } }),
   aiChat: (ticketId, message, history) => request('/ai/ticket/' + ticketId + '/chat', { method: 'POST', body: { message, history } }),
   aiSummarize: (ticketId) => request('/ai/ticket/' + ticketId + '/summarize', { method: 'POST' }),
   aiExtractPatient: (ticketId) => request('/ai/ticket/' + ticketId + '/extract-patient', { method: 'POST' }),
