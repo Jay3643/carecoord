@@ -208,6 +208,12 @@ router.get('/:id', requireAuth, (req, res) => {
   const db = getDb();
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
+  // Mark as read when opened
+  if (ticket.has_unread) {
+    db.prepare('UPDATE tickets SET has_unread = 0 WHERE id = ?').run(req.params.id);
+    saveDb();
+    ticket.has_unread = 0;
+  }
   res.json({ ticket: enrichTicket(db, ticket) });
 });
 
