@@ -5,6 +5,7 @@ let state = {
   user: null,
   serverUrl: '',
   tab: 'patient',
+  patientSubTab: 'overview', // 'overview' or 'chartscan'
   patientData: null,
   clinicalSnapshot: null,
   tickets: [],
@@ -32,6 +33,21 @@ async function loadSettings() {
 }
 async function saveSettings() {
   return new Promise(r => chrome.storage.local.set({ serverUrl: state.serverUrl }, r));
+}
+function savePatientData() {
+  chrome.storage.local.set({
+    patientData: state.patientData,
+    clinicalSnapshot: state.clinicalSnapshot,
+  });
+}
+async function loadPatientData() {
+  return new Promise(r => {
+    chrome.storage.local.get(['patientData', 'clinicalSnapshot'], (d) => {
+      if (d.patientData) state.patientData = d.patientData;
+      if (d.clinicalSnapshot) state.clinicalSnapshot = d.clinicalSnapshot;
+      r();
+    });
+  });
 }
 
 // ── API ──
@@ -124,7 +140,7 @@ async function scrapePatient() {
     state.loading = false;
     if (response && response.success) {
       state.patientData = response.data;
-      // Auto-search for matching tickets
+      savePatientData();
       if (response.data.patientName) {
         searchTickets(response.data.patientName);
       }
@@ -155,7 +171,7 @@ async function generateSnapshot(chartData) {
   try {
     const d = await apiRequest('/ai/clinical-snapshot', { method: 'POST', body: { chartData } });
     state.clinicalSnapshot = d.snapshot;
-    // Also inject into AI context
+    savePatientData();
     state.aiMessages = [];
   } catch(e) {
     state.clinicalSnapshot = 'Error generating snapshot: ' + (e.message || 'Failed');
@@ -324,26 +340,12 @@ function render2FA(email) {
 
 function renderPatientTab() {
   let html = '';
-  html += '<div class="action-bar">';
-  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Patient Overview</button>';
-  html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
-  html += '</div>';
 
-  // Chart Scan section
-  html += '<div class="card" style="margin-bottom:8px">';
-  html += '<div class="card-title">Chart Scan</div>';
-  html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
-  html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
-  html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+  // Sub-tabs: Patient Overview | Chart Scan
+  html += '<div style="display:flex;border-bottom:1px solid #dde8f2;margin-bottom:8px">';
+  html += '<div class="' + (state.patientSubTab === 'overview' ? 'tab active' : 'tab') + '" data-subtab="overview">Patient Overview</div>';
+  html += '<div class="' + (state.patientSubTab === 'chartscan' ? 'tab active' : 'tab') + '" data-subtab="chartscan">Chart Scan</div>';
   html += '</div>';
-  html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Chart Scan</button>';
-  html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads summary + clicks into each encounter within the date range. Generates an AI clinical snapshot.</div>';
-  html += '</div>';
-
-  if (state.loading) {
-    html += '<div class="loading">Reading patient data...</div>';
-    return html;
-  }
 
   if (state.chartScanning) {
     html += '<div class="card" style="text-align:center;padding:24px">';
@@ -355,16 +357,46 @@ function renderPatientTab() {
     return html;
   }
 
-  // Clinical Snapshot
-  if (state.clinicalSnapshot) {
-    html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
-    html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:50%">Clinical Snapshot</div>';
-    html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word">' + escapeHtml(state.clinicalSnapshot) + '</div>';
-    html += '<div style="margin-top:8px;display:flex;gap:4px">';
-    html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
-    html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
+  // ── Chart Scan sub-tab ──
+  if (state.patientSubTab === 'chartscan') {
+    html += '<div class="card" style="margin-bottom:8px">';
+    html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
+    html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
+    html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
     html += '</div>';
+    html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Start Chart Scan</button>';
+    html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads summary + clicks into each encounter. Generates an AI clinical snapshot.</div>';
     html += '</div>';
+
+    // Clinical Snapshot
+    if (state.clinicalSnapshot) {
+      html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
+      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:50%">Clinical Snapshot</div>';
+      html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto">' + escapeHtml(state.clinicalSnapshot) + '</div>';
+      html += '<div style="margin-top:8px;display:flex;gap:4px">';
+      html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
+      html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
+      html += '<button class="btn btn-secondary btn-small" id="clear-snapshot-btn">Clear</button>';
+      html += '</div>';
+      html += '</div>';
+    } else {
+      html += '<div style="text-align:center;color:#8a9fb0;padding:24px;font-size:12px">';
+      html += '<img src="icons/icon128.jpg" style="width:32px;height:32px;border-radius:50%;margin-bottom:8px;opacity:0.5">';
+      html += '<div>Select a date range and run a Chart Scan to generate a clinical snapshot.</div>';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  // ── Patient Overview sub-tab ──
+  html += '<div class="action-bar">';
+  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Read from PF</button>';
+  html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
+  html += '</div>';
+
+  if (state.loading) {
+    html += '<div class="loading">Reading patient data...</div>';
+    return html;
   }
 
   const pd = state.patientData;
@@ -553,9 +585,16 @@ function escapeHtml(text) {
 // ── Event Binding ──
 function bindEvents() {
   // Tab switching
-  document.querySelectorAll('.tab').forEach(t => {
+  document.querySelectorAll('.tab[data-tab]').forEach(t => {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; render(); });
   });
+  // Sub-tab switching
+  document.querySelectorAll('[data-subtab]').forEach(t => {
+    t.addEventListener('click', () => { state.patientSubTab = t.dataset.subtab; render(); });
+  });
+  // Clear snapshot
+  const clearSnap = document.getElementById('clear-snapshot-btn');
+  if (clearSnap) clearSnap.addEventListener('click', () => { state.clinicalSnapshot = null; savePatientData(); render(); });
 
   // Scrape buttons
   const scrapeBtn = document.getElementById('scrape-btn');
@@ -658,6 +697,7 @@ function bindEvents() {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'PATIENT_DATA_UPDATE' || msg.type === 'PATIENT_DATA') {
     state.patientData = msg.data;
+    savePatientData();
     if (state.tab === 'patient') render();
     if (msg.data.patientName) searchTickets(msg.data.patientName);
   }
@@ -667,6 +707,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg.type === 'CHART_SCAN_COMPLETE') {
     state.patientData = msg.data;
+    savePatientData();
     if (msg.data.patientName) searchTickets(msg.data.patientName);
     showToast('Chart scan complete — ' + (msg.data._encountersScanned || 0) + ' encounters read');
     // Generate clinical snapshot via AI
@@ -677,6 +718,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 // ── Init ──
 (async function init() {
   await loadSettings();
+  await loadPatientData();
   const authed = await checkAuth();
   render();
   if (authed) loadTickets();
