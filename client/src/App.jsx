@@ -23,7 +23,6 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
   const [showCompose, setShowCompose] = useState(false);
-  const [showGemini, setShowGemini] = useState(false);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [workStatus, setWorkStatus] = useState('active');
@@ -287,13 +286,11 @@ export default function App() {
                 { label: 'Meet', url: 'https://meet.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" fill="#00897b"/><path d="M16 10l6-4v12l-6-4z" fill="#00897b"/><rect x="5" y="9" width="3" height="2" rx="1" fill="#fff"/><rect x="10" y="9" width="3" height="2" rx="1" fill="#fff"/></svg> },
                 { label: 'Chat', url: 'https://chat.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" fill="#1a73e8"/><path d="M7 8h10M7 12h7" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/></svg> },
                 { label: 'Voice', url: 'https://voice.google.com', icon: <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="#0f9d58"/><path d="M15.5 17.5c-3.6 0-6.5-2.9-6.5-6.5 0-.6.4-1 1-1h1.5c.5 0 .9.4 1 .9l.4 1.7c0 .4-.1.7-.3.9l-1.1 1.1c.8 1.5 2 2.7 3.5 3.5l1.1-1.1c.2-.2.6-.3.9-.3l1.7.4c.5.1.9.5.9 1V16c0 .6-.4 1-1 1h-.6z" fill="#fff"/></svg> },
-                { label: 'Gemini', url: 'gemini', icon: <svg width="16" height="16" viewBox="0 0 24 24"><defs><linearGradient id="gmSub" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stopColor="#4285f4"/><stop offset="25%" stopColor="#9b72cb"/><stop offset="50%" stopColor="#d96570"/><stop offset="75%" stopColor="#9b72cb"/><stop offset="100%" stopColor="#4285f4"/></linearGradient></defs><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="url(#gmSub)"/><path d="M12 6l1.5 3.5L17 11l-3.5 1.5L12 16l-1.5-3.5L7 11l3.5-1.5z" fill="#fff"/></svg> },
               ];
               return (
                 <div key="_wsa" style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: sidebarCollapsed ? 0 : 12 }}>
                   {apps.map(a => (
-                    <a key={a.label} href={a.url === 'gemini' ? '#' : a.url} target={a.url === 'gemini' ? undefined : '_blank'} rel="noopener noreferrer"
-                      onClick={a.url === 'gemini' ? (e) => { e.preventDefault(); const w=420,h=window.innerHeight-40,left=window.screenX+window.innerWidth-w-10,top=window.screenY+20; window.open('https://gemini.google.com/app','gemini-ai','width='+w+',height='+h+',left='+left+',top='+top+',menubar=no,toolbar=no,location=yes,scrollbars=yes,resizable=yes'); } : undefined}
+                    <a key={a.label} href={a.url} target="_blank" rel="noopener noreferrer"
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '8px 14px' : '8px 12px',
                         borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
                         cursor: 'pointer', fontSize: 12, fontWeight: 400, justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
@@ -360,8 +357,7 @@ export default function App() {
               </a>
             );
             if (item.url) return (
-              <a key={item.key} href={item.url === 'gemini' ? '#' : item.url} target={item.url === 'gemini' ? undefined : '_blank'} rel="noopener noreferrer"
-                onClick={item.url === 'gemini' ? (e) => { e.preventDefault(); const w=420,h=window.innerHeight-40; const left=window.screenX+window.innerWidth-w-10; const top=window.screenY+20; window.open('https://gemini.google.com/app','gemini-ai','width='+w+',height='+h+',left='+left+',top='+top+',menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes'); } : undefined}
+              <a key={item.key} href={item.url} target="_blank" rel="noopener noreferrer"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
@@ -384,8 +380,8 @@ export default function App() {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                 borderRadius: 8, border: 'none',
-                background: (screen === item.key || (screen === 'ticketDetail' && item.key === 'regionQueue') || (item.key === 'gemini' && showGemini)) ? '#102f54' : 'transparent',
-                color: (screen === item.key || (item.key === 'gemini' && showGemini)) ? '#ffffff' : '#143d6b',
+                background: (screen === item.key || (screen === 'ticketDetail' && item.key === 'regionQueue')) ? '#102f54' : 'transparent',
+                color: screen === item.key ? '#ffffff' : '#143d6b',
                 cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               }} title={item.label}>

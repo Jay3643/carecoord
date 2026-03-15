@@ -36,6 +36,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [discussionText, setDiscussionText] = useState('');
   const [discussionChannelId, setDiscussionChannelId] = useState(null);
   const [discussionLoading, setDiscussionLoading] = useState(false);
+  const [discussionMembers, setDiscussionMembers] = useState([]);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState(new Set());
   const discussionEndRef = useRef(null);
   const socketRef = useRef(null);
   const [aiMessages, setAiMessages] = useState([]);
@@ -69,17 +72,28 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   }, [ticket?.region_id]);
 
-  // Discussion channel
+  // Discussion channel — check if one exists already
   useEffect(() => {
     if (activeTab !== 'discussion') return;
     setDiscussionLoading(true);
-    api.chatTicketChannel(ticketId).then(d => {
-      setDiscussionChannelId(d.channelId);
-      return api.chatMessages(d.channelId);
-    }).then(d => {
-      setDiscussionMsgs(d.messages || []);
-      setDiscussionLoading(false);
-    }).catch(() => setDiscussionLoading(false));
+    // Try to get existing channel
+    fetch('/api/chat/channels', { credentials: 'include' }).then(r => r.json()).then(d => {
+      const existing = (d.channels || []).find(ch => ch.ticketId === ticketId);
+      if (existing) {
+        setDiscussionChannelId(existing.id);
+        setShowMemberPicker(false);
+        return api.chatMessages(existing.id).then(md => {
+          setDiscussionMsgs(md.messages || []);
+          // Load members
+          setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
+        });
+      } else {
+        // No channel yet — show member picker
+        setShowMemberPicker(true);
+        setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
+        setSelectedMemberIds(new Set());
+      }
+    }).catch(() => {}).finally(() => setDiscussionLoading(false));
   }, [activeTab, ticketId]);
 
   // Socket for real-time discussion
@@ -99,6 +113,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   useEffect(() => {
     if (activeTab === 'discussion') discussionEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [discussionMsgs, activeTab]);
+
+  const startDiscussion = async () => {
+    if (selectedMemberIds.size === 0) { showToast('Select at least one person to discuss with'); return; }
+    setDiscussionLoading(true);
+    try {
+      const d = await api.chatCreateChannel({ name: ticket?.subject || 'Ticket Discussion', type: 'ticket', ticketId, memberIds: Array.from(selectedMemberIds) });
+      setDiscussionChannelId(d.channelId);
+      setShowMemberPicker(false);
+      const md = await api.chatMessages(d.channelId);
+      setDiscussionMsgs(md.messages || []);
+    } catch(e) { showToast?.(e.message); }
+    setDiscussionLoading(false);
+  };
 
   const sendDiscussion = async () => {
     if (!discussionText.trim() || !discussionChannelId) return;
@@ -464,10 +491,30 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               </div>
             ) : activeTab === 'discussion' ? (
               <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 300 }}>
+                {/* Member picker for new discussions */}
+                {showMemberPicker && !discussionLoading && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 6 }}>Select team members to discuss with:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8, maxHeight: 120, overflowY: 'auto' }}>
+                      {discussionMembers.map(u => (
+                        <button key={u.id} onClick={() => setSelectedMemberIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: selectedMemberIds.has(u.id) ? '#1a5e9a20' : '#f0f4f9', border: '1px solid', borderColor: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#c0d0e4', borderRadius: 6, fontSize: 11, color: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#5a7a8a', cursor: 'pointer', fontWeight: selectedMemberIds.has(u.id) ? 600 : 400 }}>
+                          <Avatar user={u} size={18} />
+                          {u.name}
+                          {selectedMemberIds.has(u.id) && <span style={{ fontWeight: 700 }}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={startDiscussion} disabled={selectedMemberIds.size === 0}
+                      style={{ padding: '6px 18px', background: selectedMemberIds.size > 0 ? '#1a5e9a' : '#dde8f2', color: selectedMemberIds.size > 0 ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: selectedMemberIds.size > 0 ? 'pointer' : 'default' }}>
+                      Start Discussion ({selectedMemberIds.size} selected)
+                    </button>
+                  </div>
+                )}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 120, maxHeight: 200 }}>
                   {discussionLoading && <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>Loading discussion...</div>}
-                  {!discussionLoading && discussionMsgs.length === 0 && (
-                    <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>No discussion yet. Start the conversation about this ticket.</div>
+                  {!discussionLoading && !showMemberPicker && discussionMsgs.length === 0 && (
+                    <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>No messages yet. Start the conversation about this ticket.</div>
                   )}
                   {discussionMsgs.map(m => (
                     <div key={m.id} style={{ display: 'flex', gap: 8, padding: '4px 0', alignItems: 'flex-start' }}>
