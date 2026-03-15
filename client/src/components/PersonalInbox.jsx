@@ -200,10 +200,9 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
 
   const moveToLabel = async (msgId, labelId) => {
     try {
-      await api.gmailModify(msgId, [labelId], ['INBOX']);
-      showToast?.('Moved');
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-      if (selected?.id === msgId) { setSelected(null); setDetail(null); }
+      // Add the label (like Gmail's label behavior — keeps in inbox too)
+      await api.gmailModify(msgId, [labelId], []);
+      showToast?.('Label applied');
       setShowMoveMenu(false);
     } catch(e2) { showToast?.(e2.message); }
   };
@@ -427,7 +426,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
               </div>
               <div style={{ position:'relative' }}>
                 <div onClick={() => setShowMoveMenu(!showMoveMenu)}
-                  title="Move to" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                  title="Apply label" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                   <SvgIcon d={ICON_PATHS.moveTo} size={18} />
                 </div>
                 {showMoveMenu && (
@@ -517,7 +516,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                 <SvgIcon d={ICON_PATHS.markRead} size={18} />
               </div>
               <div style={{ position:'relative' }}>
-                <div onClick={() => setShowMoveMenu(!showMoveMenu)} title="Move to" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                <div onClick={() => setShowMoveMenu(!showMoveMenu)} title="Apply label" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                   <SvgIcon d={ICON_PATHS.moveTo} size={18} />
                 </div>
                 {showMoveMenu && (

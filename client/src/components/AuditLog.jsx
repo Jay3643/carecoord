@@ -41,8 +41,10 @@ export default function AuditLog({ showToast }) {
         {!loading && entries.length === 0 && <div style={{ padding: 20, color: '#8a9fb0', textAlign: 'center' }}>No audit entries found</div>}
         {entries.map(entry => (
           <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #dde8f260' }}>
-            <div style={{ width: 100, fontSize: 10, color: '#6b8299', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>
-              {fmt.full(entry.ts)}
+            <div style={{ width: 140, fontSize: 10, color: '#6b8299', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0, lineHeight: 1.4 }}>
+              {entry.ts ? new Date(typeof entry.ts === 'number' ? entry.ts : Number(entry.ts)).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+              <br />
+              {entry.ts ? new Date(typeof entry.ts === 'number' ? entry.ts : Number(entry.ts)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : ''}
             </div>
             {entry.actor_user_id ? (
               <Avatar user={{ id: entry.actor_user_id, name: entry.actor_name, avatar: entry.actor_avatar }} size={22} />
