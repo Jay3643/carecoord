@@ -12,6 +12,7 @@ import ComposeModal from './components/ComposeModal';
 import PersonalInbox from './components/PersonalInbox';
 import ChatScreen from './components/ChatScreen';
 import { GmailConnectButton } from './components/GmailPanel';
+import AiPanel from './components/AiPanel';
 import SetupAccount from './components/SetupAccount';
 import io from 'socket.io-client';
 
@@ -26,6 +27,7 @@ export default function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [workStatus, setWorkStatus] = useState('active');
+  const [aiOpen, setAiOpen] = useState(false);
 
   // Reference data (loaded once after login)
   const [regions, setRegions] = useState([]);
@@ -216,6 +218,7 @@ export default function App() {
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
             { key: '_chat_toggle' },
+            { key: '_ai_toggle' },
             ...((currentUser.role === 'admin' || currentUser.role === 'supervisor') ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
@@ -242,6 +245,19 @@ export default function App() {
                 {sidebarCollapsed && chatUnread > 0 && (
                   <span style={{ position: 'absolute', top: 2, right: 2, background: '#d94040', color: '#fff', fontSize: 9, fontWeight: 700, padding: '0 5px', borderRadius: 99, animation: 'chatPulse 2s ease infinite' }}>{chatUnread}</span>
                 )}
+              </button>
+            );
+            if (item.key === '_ai_toggle') return (
+              <button key="_ai_toggle" onClick={() => setAiOpen(a => !a)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, border: 'none', background: aiOpen ? '#102f54' : 'transparent',
+                  color: aiOpen ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                  width: '100%', textAlign: 'left', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
+                onMouseEnter={e => { if (!aiOpen) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; } }}
+                onMouseLeave={e => { if (!aiOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; } }}
+                title="AI Assistant">
+                <Icon name="sparkle" size={18} />
+                {!sidebarCollapsed && <span>AI Assistant</span>}
               </button>
             );
             if (item.key === '_workspace_toggle') return (
@@ -480,6 +496,13 @@ export default function App() {
       {chatOpen && (
         <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', transition: 'width 0.2s ease', overflow: 'hidden' }}>
           <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} />
+        </div>
+      )}
+
+      {/* AI Assistant Panel */}
+      {aiOpen && (
+        <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+          <AiPanel currentUser={currentUser} onClose={() => setAiOpen(false)} showToast={showToast} activeTicketId={selectedTicketId} />
         </div>
       )}
       </div>
