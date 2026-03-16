@@ -12,7 +12,7 @@ function fmtTime(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose, onRead }) {
+export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose, onRead, onOpenTicket }) {
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -182,7 +182,12 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                 {ch.type === 'direct' && ch.members.length > 0 && (
                   <Avatar user={ch.members.find(m => m.id !== currentUser.id) || ch.members[0]} size={36} />
                 )}
-                {ch.type !== 'direct' && (
+                {ch.type === 'ticket' && (
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a73e8', fontSize: 16 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+                  </div>
+                )}
+                {ch.type !== 'direct' && ch.type !== 'ticket' && (
                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1a5e9a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 600 }}>
                     {ch.members.length}
                   </div>
@@ -279,6 +284,13 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
             <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10, background: '#fafbfc' }}>
               <button onClick={() => setActiveChannel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4, display: isPanel ? 'block' : 'none' }}>←</button>
               <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>{activeChannel.name}</span>
+              {activeChannel.type === 'ticket' && activeChannel.ticketId && onOpenTicket && (
+                <button onClick={() => onOpenTicket(activeChannel.ticketId)}
+                  style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d7f2', borderRadius: 12, padding: '2px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#d2e3fc'} onMouseLeave={e => e.currentTarget.style.background='#e8f0fe'}>
+                  View Ticket
+                </button>
+              )}
               <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>{activeChannel.members.length} members</span>
             </div>
 

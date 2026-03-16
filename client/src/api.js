@@ -87,6 +87,7 @@ export const api = {
   changeRegion: (id, regionId) => request('/tickets/' + id + '/region', { method: 'POST', body: { regionId } }),
   bulkPushToQueue: (gmailMessageIds, regionId) => request('/gmail/bulk-push', { method: 'POST', body: { gmailMessageIds, regionId } }),
   bulkPullFromQueue: (ticketIds) => request('/gmail/bulk-pull', { method: 'POST', body: { ticketIds } }),
+  bulkReassignSelected: (ticketIds, toUserId) => request('/tickets/bulk/reassign-selected', { method: 'POST', body: { ticketIds, toUserId } }),
   pushToQueue: (gmailMessageId, regionId) => request('/gmail/push-to-queue', { method: 'POST', body: { gmailMessageId, regionId } }),
   pullFromQueue: (ticketId) => request('/gmail/pull-from-queue', { method: 'POST', body: { ticketId } }),
   sendInvite: (data) => request('/auth/invite', { method: 'POST', body: data }),

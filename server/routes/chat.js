@@ -177,8 +177,8 @@ router.post('/ticket-channel', requireAuth, (req, res) => {
   db.prepare('INSERT INTO chat_channels (id, name, type, ticket_id, created_by, created_at) VALUES (?,?,?,?,?,?)')
     .run(id, ticket ? toStr(ticket.subject) : 'Ticket Discussion', 'ticket', ticketId, req.user.id, Date.now());
 
-  // Add all active users as members (they can see ticket discussions)
-  const users = db.prepare('SELECT id FROM users WHERE is_active = 1').all();
+  // Add all active users as members (exclude users with inactive work_status)
+  const users = db.prepare("SELECT id FROM users WHERE is_active = 1 AND COALESCE(work_status,'active') != 'inactive'").all();
   for (const u of users) {
     db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id, joined_at, last_read_at) VALUES (?,?,?,0)').run(id, toStr(u.id), Date.now());
   }

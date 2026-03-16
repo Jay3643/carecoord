@@ -4,7 +4,7 @@ import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
 
-export default function QueueScreen({ title, mode, currentUser, regions, onOpenTicket }) {
+export default function QueueScreen({ title, mode, currentUser, regions, allUsers, onOpenTicket }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,6 +38,13 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
 
   useEffect(() => { fetchTickets(); }, [selectedRegion, searchQuery]);
 
+  // Auto-expand all groups when searching so results are visible
+  useEffect(() => {
+    if (searchQuery && groupedTickets.length > 0) {
+      setExpandedGroups(new Set(groupedTickets.map(g => g.key)));
+    }
+  }, [searchQuery, groupedTickets.length]);
+
   // Polling for near-real-time
 
   // Collect all unique tags across tickets for the tag dropdown
@@ -69,6 +76,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
     if (selectedTicketIds.size === paginatedTickets?.length) setSelectedTicketIds(new Set());
     else setSelectedTicketIds(new Set((paginatedTickets||[]).map(t => t.id)));
   };
+  const [showReassignDropdown, setShowReassignDropdown] = useState(false);
+
   const bulkPullFromQueue = async () => {
     if (selectedTicketIds.size === 0) return;
     try {
@@ -79,6 +88,21 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
     fetchTickets();
     if (refreshCounts) refreshCounts();
   };
+
+  const bulkReassign = async (toUserId) => {
+    if (selectedTicketIds.size === 0) return;
+    try {
+      const d = await api.bulkReassignSelected(Array.from(selectedTicketIds), toUserId || null);
+      const target = toUserId ? (allUsers || []).find(u => u.id === toUserId)?.name || 'user' : 'unassigned';
+      showToast?.(d.reassigned + ' tickets reassigned to ' + target);
+    } catch(e) { showToast?.(e.message || 'Error'); }
+    setShowReassignDropdown(false);
+    setSelectedTicketIds(new Set());
+    fetchTickets();
+    if (refreshCounts) refreshCounts();
+  };
+
+  const reassignableUsers = (allUsers || []).filter(u => u.id !== currentUser.id && u.role === 'coordinator');
 
   const toggleGroup = (key) => {
     setExpandedGroups(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -281,13 +305,41 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
         )}
         {/* Bulk action bar */}
         {selectedTicketIds.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', marginBottom: 8, background: '#e8f0fe', borderRadius: 8, border: '1px solid #c0d0e4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', marginBottom: 8, background: '#e8f0fe', borderRadius: 8, border: '1px solid #c0d0e4', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#1a5e9a' }}>{selectedTicketIds.size} selected</span>
             <button onClick={bulkPullFromQueue}
               style={{ padding: '4px 14px', background: '#c96a1b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
               Pull from Queue
             </button>
-            <button onClick={() => setSelectedTicketIds(new Set())}
+            {mode === 'region' && (currentUser.role === 'supervisor' || currentUser.role === 'admin') && (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowReassignDropdown(!showReassignDropdown)}
+                  style={{ padding: '4px 14px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                  Reassign To...
+                </button>
+                {showReassignDropdown && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 100, minWidth: 220, maxHeight: 300, overflowY: 'auto' }}>
+                    <div onClick={() => bulkReassign(null)}
+                      style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 12, color: '#c96a1b', fontWeight: 600, borderBottom: '1px solid #f0f4f9' }}
+                      onMouseEnter={e => e.currentTarget.style.background='#fef8ec'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                      Return to Queue (Unassign)
+                    </div>
+                    {reassignableUsers.map(u => (
+                      <div key={u.id} onClick={() => bulkReassign(u.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f0f4f9' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#e8f0f8'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                        <Avatar user={u} size={24} />
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{u.name}</div>
+                          <div style={{ fontSize: 10, color: '#6b8299' }}>{u.email}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <button onClick={() => { setSelectedTicketIds(new Set()); setShowReassignDropdown(false); }}
               style={{ padding: '4px 14px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
               Cancel
             </button>

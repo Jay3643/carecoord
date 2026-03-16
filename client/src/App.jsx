@@ -469,7 +469,7 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         {screen === 'regionQueue' && (
-          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
+          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'personalQueue' && (
           <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
@@ -533,7 +533,7 @@ export default function App() {
             onMouseEnter={e => e.currentTarget.style.background = '#c0d0e4'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #dde8f2', overflow: 'hidden' }}>
-            <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} />
+            <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} onOpenTicket={(id) => { setChatOpen(false); openTicket(id); }} />
           </div>
         </div>
       )}

@@ -719,8 +719,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
           <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', marginBottom: 8 }}>Details</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6b8299' }}>Created</span><span>{fmt.full(ticket.created_at)}</span>
+              <span style={{ color: '#6b8299' }}>Received</span><span>{fmt.full(ticket.created_at)}</span>
             </div>
+            {ticket.assigned_at && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b8299' }}>Assigned</span><span>{fmt.full(ticket.assigned_at)}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#6b8299' }}>Last activity</span><span>{fmt.time(ticket.last_activity_at)}</span>
             </div>

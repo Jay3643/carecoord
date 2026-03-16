@@ -288,7 +288,8 @@ router.post('/:id/assign', requireAuth, (req, res) => {
   const assigneeUser = userId ? db.prepare('SELECT work_status FROM users WHERE id = ?').get(userId) : null;
   if (assigneeUser && assigneeUser.work_status === 'inactive' && req.user.role === 'coordinator')
     return res.status(400).json({ error: 'You are currently inactive. Set your status to Active to claim tickets.' });
-  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ? WHERE id = ?').run(userId || null, Date.now(), req.params.id);
+  const now = Date.now();
+  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ? WHERE id = ?').run(userId || null, now, userId ? now : null, req.params.id);
   saveDb();
   const assignee = userId ? db.prepare('SELECT name FROM users WHERE id = ?').get(userId) : null;
   addAudit(db, req.user.id, 'assignee_changed', 'ticket', req.params.id, userId ? 'Assigned to ' + assignee.name : 'Unassigned / returned to queue');
@@ -399,7 +400,7 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const ticketCheck = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(req.params.id);
   const replierStatus = db.prepare('SELECT work_status FROM users WHERE id = ?').get(req.user.id);
   if (ticketCheck && !ticketCheck.assignee_user_id && (!replierStatus || replierStatus.work_status !== 'inactive')) {
-    db.prepare('UPDATE tickets SET assignee_user_id = ? WHERE id = ?').run(req.user.id, req.params.id);
+    db.prepare('UPDATE tickets SET assignee_user_id = ?, assigned_at = ? WHERE id = ?').run(req.user.id, Date.now(), req.params.id);
     addAudit(db, req.user.id, 'auto_assigned', 'ticket', req.params.id, 'Auto-assigned on reply');
   }
   res.json({ message });
@@ -450,6 +451,23 @@ router.post('/bulk/reassign', requireAuth, requireSupervisor, (req, res) => {
   const toUser = toUserId ? db.prepare('SELECT name FROM users WHERE id = ?').get(toUserId) : null;
   addAudit(db, req.user.id, 'bulk_reassign', 'user', fromUserId, affected.length + ' tickets from ' + fromUser.name + ' -> ' + (toUser ? toUser.name : 'region queue'));
   res.json({ reassigned: affected.length });
+});
+
+// Bulk reassign specific tickets by ID (supervisor/admin)
+router.post('/bulk/reassign-selected', requireAuth, requireSupervisor, (req, res) => {
+  const db = getDb();
+  const { ticketIds, toUserId } = req.body;
+  if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
+  let count = 0;
+  for (const tid of ticketIds) {
+    const now = Date.now();
+    const r = db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ? WHERE id = ? AND status != 'CLOSED'").run(toUserId || null, now, toUserId ? now : null, tid);
+    if (r.changes) count++;
+  }
+  saveDb();
+  const toUser = toUserId ? db.prepare('SELECT name FROM users WHERE id = ?').get(toUserId) : null;
+  addAudit(db, req.user.id, 'bulk_reassign', 'tickets', ticketIds.join(','), count + ' tickets -> ' + (toUser ? toStr(toUser.name) : 'unassigned'));
+  res.json({ reassigned: count });
 });
 
 router.get('/:id/attachments', requireAuth, (req, res) => {

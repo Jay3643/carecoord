@@ -281,9 +281,11 @@ async function syncUser(db, row) {
   const gm = google.gmail({version:'v1',auth});
 
   // Role-based routing: admin and supervisor skip sync entirely
-  const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(uid);
+  // Also skip inactive users
+  const userRow = db.prepare('SELECT role, is_active, work_status FROM users WHERE id = ?').get(uid);
   const role = userRow ? toStr(userRow.role) : 'coordinator';
   if (role === 'admin' || role === 'supervisor') return 0;
+  if (userRow && (!userRow.is_active || toStr(userRow.work_status) === 'inactive')) return 0;
 
   const regions = db.prepare('SELECT region_id FROM user_regions WHERE user_id=?').all(uid);
   if (!regions.length) return 0;
@@ -376,8 +378,8 @@ async function syncUser(db, row) {
       } else {
         // Brand new email — create ticket, auto-assign to this coordinator
         const tid = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,?,1)')
-          .run(tid, subj, from, rid, 'OPEN', uid, ts, ts, JSON.stringify([from]));
+        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
+          .run(tid, subj, from, rid, 'OPEN', uid, ts, ts, JSON.stringify([from]), ts);
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
@@ -786,10 +788,8 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
       } catch(e) {}
     }
   }
-  db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
-  db.prepare('DELETE FROM messages WHERE ticket_id = ?').run(ticketId);
-  db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ?').run(ticketId);
-  db.prepare('DELETE FROM tickets WHERE id = ?').run(ticketId);
+  // Restore ticket: unassign and reopen (don't delete — preserve history)
+  db.prepare("UPDATE tickets SET assignee_user_id = NULL, status = 'OPEN', last_activity_at = ? WHERE id = ?").run(Date.now(), ticketId);
   saveDb();
   console.log('[Queue] Pulled:', ticketId);
   res.json({ ok: true, ticketId });
@@ -821,11 +821,8 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
       }
     }
 
-    // Remove from queue
-    db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
-    db.prepare('DELETE FROM messages WHERE ticket_id = ?').run(ticketId);
-    db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ?').run(ticketId);
-    db.prepare('DELETE FROM tickets WHERE id = ?').run(ticketId);
+    // Restore ticket: unassign and reopen (don't delete — preserve history)
+    db.prepare("UPDATE tickets SET assignee_user_id = NULL, status = 'OPEN', last_activity_at = ? WHERE id = ?").run(Date.now(), ticketId);
     pulled++;
   }
 
