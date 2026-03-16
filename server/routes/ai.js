@@ -187,7 +187,7 @@ router.post('/clinical-snapshot', requireAuth, async (req, res) => {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 3000,
       system: `You are a care coordinator at Seniority Healthcare writing a brief clinical overview of a patient. Write it as a short, readable narrative — the kind of summary you'd give a colleague in 60 seconds.
 
@@ -237,7 +237,7 @@ router.post('/chat', requireAuth, async (req, res) => {
     }
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: msgs,
@@ -261,7 +261,7 @@ router.post('/suggestions', requireAuth, async (req, res) => {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 512,
       system: `You generate brief, actionable suggestions for a care coordination platform user. Based on their role and the current system state, suggest 3-5 specific actions they should take right now. Each suggestion should be one short sentence (under 15 words) that the user can click to ask you about. Format: return ONLY a JSON array of strings, nothing else. Example: ["Review 3 unassigned tickets in Northern PA","Follow up on the Smith referral from last week","Check unread email from Dr. Johnson"]`,
       messages: [{ role: 'user', content: `Here is the system state. Generate suggestions for this user.\n\nUser role: ${req.user.role}\n\n${sysCtx}` }],
@@ -293,7 +293,7 @@ router.post('/draft-email-reply', requireAuth, async (req, res) => {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft a professional reply email for ${toStr(user.name)} at Seniority Healthcare.\n\nOriginal email:\nFrom: ${from || '(unknown)'}\nSubject: ${subject || '(no subject)'}\nBody:\n${body || '(empty)'}\n\n${instructions ? 'Special instructions: ' + instructions + '\n\n' : ''}Write ONLY the reply body. Be professional, empathetic, and concise. Do not include a signature.` }],
@@ -313,7 +313,7 @@ router.post('/draft-email', requireAuth, async (req, res) => {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft a professional email for ${toStr(user.name)} at Seniority Healthcare.\n\nTo: ${to || '(not specified)'}\nSubject: ${subject || '(not specified)'}\nInstructions: ${instructions || 'Write an appropriate professional email'}\n\nWrite ONLY the email body (no greeting header like "Dear..." unless appropriate, no signature — it's added automatically). Be professional, empathetic, and concise.` }],
@@ -352,7 +352,7 @@ router.post('/ticket/:ticketId/chat', requireAuth, async (req, res) => {
     }
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: msgs,
@@ -375,7 +375,7 @@ router.post('/ticket/:ticketId/summarize', requireAuth, async (req, res) => {
   if (!ticketData) return res.status(404).json({ error: 'Ticket not found' });
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Summarize this ticket thread concisely. Include: key issue, current status, who's involved, and any pending actions.\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -405,7 +405,7 @@ router.post('/ticket/:ticketId/extract-patient', requireAuth, async (req, res) =
       }
     }
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Extract ALL patient information from this ticket thread and any related tickets. Structure it as:\n\n**Patient Name:**\n**DOB:**\n**Insurance:**\n**Member ID:**\n**Phone:**\n**Address:**\n**Diagnoses/Conditions:**\n**Medications:**\n**Providers/Facilities:**\n**Referrals:**\n**Other relevant details:**\n\nIf a field is not mentioned, write "Not found". Only include information explicitly stated in the messages.\n\n${ticketData.context}${crossRef}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -423,7 +423,7 @@ router.post('/ticket/:ticketId/draft-reply', requireAuth, async (req, res) => {
   const { instructions } = req.body;
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft a professional reply email for this ticket. The reply is from ${toStr(user.name)}, Care Coordinator at ${region ? toStr(region.name) : 'Seniority Healthcare'}.\n\n${instructions ? 'Special instructions: ' + instructions + '\n\n' : ''}Write ONLY the email body (no signature — it's added automatically). Be professional, empathetic, and concise.\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -440,7 +440,7 @@ router.post('/ticket/:ticketId/suggest-tags', requireAuth, async (req, res) => {
   const tagNames = allTags.map(t => toStr(t.name));
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 256, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-4-6', max_tokens: 256, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Based on this ticket, which of these existing tags should be applied? Available tags: ${tagNames.join(', ')}\n\nReturn ONLY a comma-separated list of applicable tag names. If none apply, say "None".\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });

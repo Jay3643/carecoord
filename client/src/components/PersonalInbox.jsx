@@ -303,7 +303,8 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
 
       {/* Sidebar */}
       <div style={{ width:256,flexShrink:0,background:'#f6f8fc',paddingTop:4,overflowY:'auto',overflowX:'hidden',display:'flex',flexDirection:'column' }}>
-        {/* Compose Button */}
+        {/* Compose Button — hidden for coordinators */}
+        {isSupervisorOrAdmin && (
         <div style={{ padding:'8px 12px 12px' }}>
           <button onClick={() => setShowCompose(true)}
             style={{ display:'flex',alignItems:'center',gap:10,padding:'14px 24px',background:'#c2e7ff',border:'none',borderRadius:16,cursor:'pointer',fontSize:14,fontWeight:500,color:'#001d35',boxShadow:'0 1px 3px rgba(0,0,0,.1)',width:'auto' }}
@@ -313,6 +314,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             Compose
           </button>
         </div>
+        )}
 
         {/* System Folders */}
         {SYSTEM_FOLDERS.map(f => {
