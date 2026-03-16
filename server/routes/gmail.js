@@ -31,7 +31,7 @@ function getServiceAuth(userEmail) {
   const auth = new google.auth.JWT({
     email: serviceAccountKey.client_email,
     key: serviceAccountKey.private_key,
-    scopes: ['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'],
+    scopes: ['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'],
     subject: userEmail,
   });
   return auth;
@@ -77,7 +77,7 @@ async function getOrCreateLabel(gm, name) {
 // ── OAuth ──
 router.get('/auth', requireAuth, (req, res) => {
   res.json({ authUrl: oauth2().generateAuthUrl({ access_type:'offline', prompt:'consent', state:req.user.id,
-    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'] }) });
+    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'] }) });
 });
 router.get('/callback', async (req, res) => {
   try {
@@ -104,7 +104,7 @@ router.get('/admin-auth/:userId', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ authUrl: oauth2().generateAuthUrl({ access_type:'offline', prompt:'consent', state: targetUserId,
-    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'] }) });
+    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'] }) });
 });
 
 // ── Admin checks workspace status for any user ──
@@ -551,6 +551,32 @@ router.post('/personal/send', requireAuth, async (req, res) => {
 const contactsCache = {}; // userId -> { data, ts }
 const CONTACTS_TTL = 10 * 60 * 1000; // 10 min cache
 
+// Get auth specifically for contacts — uses separate scope to avoid breaking main Gmail auth
+function getContactsAuth(userId) {
+  const db = getDb();
+  const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
+  if (!user) return null;
+  const email = toStr(user.email);
+
+  // Try service account with contacts scope
+  if (serviceAccountKey) {
+    try {
+      const auth = new google.auth.JWT({
+        email: serviceAccountKey.client_email,
+        key: serviceAccountKey.private_key,
+        scopes: ['https://www.googleapis.com/auth/contacts.readonly'],
+        subject: email,
+      });
+      return auth;
+    } catch(e) {}
+  }
+
+  // Fall back to OAuth tokens (if user granted contacts scope)
+  const t = getTokens(userId);
+  if (t) return authClient(t);
+  return null;
+}
+
 router.get('/contacts', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -559,10 +585,8 @@ router.get('/contacts', requireAuth, async (req, res) => {
       return res.json({ contacts: contactsCache[userId].data });
     }
 
-    const userAuth = getAuthForUser(userId);
-    const t = getTokens(userId);
-    if (!userAuth && !t) return res.json({ contacts: [] });
-    const auth = userAuth ? userAuth.auth : authClient(t);
+    const auth = getContactsAuth(userId);
+    if (!auth) return res.json({ contacts: [] });
     const people = google.people({ version: 'v1', auth });
 
     // Fetch contacts with email addresses
