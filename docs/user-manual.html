@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CareCoord User Manual — Seniority Healthcare</title>
+<style>
+  @page { margin: 0.75in 0.85in; size: letter; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1e3a4f; }
+  h1 { font-size: 28pt; font-weight: 800; color: #143d6b; margin-bottom: 6px; }
+  h2 { font-size: 18pt; font-weight: 700; color: #1a5e9a; margin-top: 32px; margin-bottom: 10px; border-bottom: 2px solid #dde8f2; padding-bottom: 6px; page-break-after: avoid; }
+  h3 { font-size: 13pt; font-weight: 700; color: #143d6b; margin-top: 18px; margin-bottom: 6px; page-break-after: avoid; }
+  h4 { font-size: 11pt; font-weight: 700; color: #1a5e9a; margin-top: 12px; margin-bottom: 4px; }
+  p, li { margin-bottom: 6px; }
+  ul, ol { margin-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  th { background: #143d6b; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 6px 10px; border-bottom: 1px solid #dde8f2; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .cover { text-align: center; padding-top: 200px; page-break-after: always; }
+  .cover h1 { font-size: 36pt; margin-bottom: 12px; }
+  .cover .subtitle { font-size: 16pt; color: #6b8299; margin-bottom: 40px; }
+  .cover .org { font-size: 14pt; color: #1a5e9a; font-weight: 600; }
+  .cover .date { font-size: 11pt; color: #8a9fb0; margin-top: 20px; }
+  .toc { page-break-after: always; }
+  .toc h2 { border-bottom: none; }
+  .toc ul { list-style: none; margin-left: 0; }
+  .toc li { padding: 4px 0; border-bottom: 1px dotted #c0d0e4; }
+  .toc li a { text-decoration: none; color: #1a5e9a; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 9pt; font-weight: 600; }
+  .badge-admin { background: #e8f5e9; color: #2e7d32; }
+  .badge-super { background: #e3f2fd; color: #1565c0; }
+  .badge-coord { background: #fff3e0; color: #e65100; }
+  .badge-all { background: #f3e5f5; color: #7b1fa2; }
+  .tip { background: #e8f6fa; border-left: 4px solid #52a8c7; padding: 8px 12px; margin: 10px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .warn { background: #fff8e1; border-left: 4px solid #f9a825; padding: 8px 12px; margin: 10px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .section { page-break-inside: avoid; }
+  code { background: #f0f4f9; padding: 1px 5px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 10pt; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .dot-green { background: #4ade80; }
+  .dot-yellow { background: #fbbf24; }
+  .dot-gray { background: #d1d5db; }
+  .dot-red { background: #f87171; }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <h1>CareCoord</h1>
+  <div class="subtitle">User Instructional Manual</div>
+  <div class="org">Seniority Healthcare</div>
+  <div class="date">Version 1.0 &mdash; March 2026</div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ul>
+    <li><a href="#getting-started">1. Getting Started</a></li>
+    <li><a href="#navigation">2. Navigation &amp; Layout</a></li>
+    <li><a href="#roles">3. User Roles &amp; Permissions</a></li>
+    <li><a href="#login">4. Logging In &amp; Account Setup</a></li>
+    <li><a href="#queues">5. Ticket Queues</a></li>
+    <li><a href="#tickets">6. Working with Tickets</a></li>
+    <li><a href="#compose">7. Creating New Messages</a></li>
+    <li><a href="#email">8. Personal Email Inbox</a></li>
+    <li><a href="#labels">9. Gmail Labels</a></li>
+    <li><a href="#chat">10. Team Chat</a></li>
+    <li><a href="#ai">11. Seniority AI Assistant</a></li>
+    <li><a href="#dashboard">12. Supervisor Dashboard</a></li>
+    <li><a href="#activity">13. Activity Dashboard</a></li>
+    <li><a href="#audit">14. Audit Log</a></li>
+    <li><a href="#admin">15. Admin Panel</a></li>
+    <li><a href="#workspace">16. Google Workspace Integration</a></li>
+    <li><a href="#external">17. External Application Links</a></li>
+    <li><a href="#tips">18. Tips &amp; Best Practices</a></li>
+  </ul>
+</div>
+
+<!-- 1. GETTING STARTED -->
+<h2 id="getting-started">1. Getting Started</h2>
+<p>CareCoord is a care coordination platform built for Seniority Healthcare. It provides a centralized workspace for managing patient communications, team collaboration, email, and AI-powered assistance.</p>
+
+<h3>What CareCoord Does</h3>
+<ul>
+  <li><strong>Ticket Management</strong> &mdash; Track and manage all patient and provider communications as tickets with statuses, tags, assignments, and regions.</li>
+  <li><strong>Email Integration</strong> &mdash; Full Gmail inbox access with label management, compose, reply, and AI-assisted drafting.</li>
+  <li><strong>Team Chat</strong> &mdash; Real-time internal messaging between team members.</li>
+  <li><strong>AI Assistant</strong> &mdash; Powered by Claude, the AI can summarize tickets, extract patient data, draft replies, and answer questions about your caseload.</li>
+  <li><strong>Dashboards &amp; Analytics</strong> &mdash; Supervisors get real-time dashboards showing team workload, ticket aging, activity tracking, and online presence.</li>
+  <li><strong>Administration</strong> &mdash; Manage users, regions, tags, and system settings.</li>
+</ul>
+
+<!-- 2. NAVIGATION -->
+<h2 id="navigation">2. Navigation &amp; Layout</h2>
+<p>The application has a left sidebar for navigation, a main content area, and optional right-side panels for Chat and AI.</p>
+
+<h3>Sidebar Menu</h3>
+<table>
+  <tr><th>Menu Item</th><th>Description</th><th>Who Sees It</th></tr>
+  <tr><td><strong>New Message</strong></td><td>Create a new outbound ticket/message</td><td>All roles</td></tr>
+  <tr><td><strong>Region Queue</strong></td><td>All tickets in your assigned regions</td><td>All roles</td></tr>
+  <tr><td><strong>My Queue</strong></td><td>Tickets assigned to you personally</td><td>All roles</td></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Real-time KPIs and Bird's Eye View</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Activity</strong></td><td>Activity dashboard with online presence</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Audit Log</strong></td><td>Full audit trail of all system actions</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Email</strong></td><td>Personal Gmail inbox</td><td>All roles</td></tr>
+  <tr><td><strong>Chat</strong></td><td>Internal team messaging</td><td>All roles</td></tr>
+  <tr><td><strong>Seniority AI</strong></td><td>AI assistant panel</td><td>All roles</td></tr>
+  <tr><td><strong>Admin</strong></td><td>User, region, tag management</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Google Workspace</strong></td><td>Links to Calendar, Drive, Docs, etc.</td><td>All roles</td></tr>
+  <tr><td><strong>Practice Fusion</strong></td><td>Link to Practice Fusion EHR</td><td>All roles</td></tr>
+  <tr><td><strong>Updox</strong></td><td>Link to Updox portal</td><td>All roles</td></tr>
+  <tr><td><strong>CareLink</strong></td><td>Link to CareLink platform</td><td>All roles</td></tr>
+  <tr><td><strong>Prompted</strong></td><td>Link to Prompted AI tool</td><td>All roles</td></tr>
+</table>
+
+<div class="tip"><strong>Tip:</strong> You can collapse the sidebar by clicking the arrow icon at the top to give more space to the main content area.</div>
+
+<h3>Right-Side Panels</h3>
+<p>Chat and Seniority AI open as resizable panels on the right side. You can drag the panel edge to resize, and both can be open simultaneously.</p>
+
+<!-- 3. ROLES -->
+<h2 id="roles">3. User Roles &amp; Permissions</h2>
+<p>CareCoord has three user roles with escalating permissions:</p>
+
+<table>
+  <tr><th>Feature</th><th><span class="badge badge-coord">Coordinator</span></th><th><span class="badge badge-super">Supervisor</span></th><th><span class="badge badge-admin">Admin</span></th></tr>
+  <tr><td>View &amp; manage own tickets</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Create new messages</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Access Email inbox</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Use Team Chat</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Use Seniority AI</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Set Active/Inactive status</td><td>Yes</td><td>No</td><td>No</td></tr>
+  <tr><td>Compose email in inbox</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Push emails to queue</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Dashboard</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Activity Dashboard</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Audit Log</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Manage Tags</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Bulk Reassign tickets</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Manage Users</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Manage Regions</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Invite New Users</td><td>No</td><td>No</td><td>Yes</td></tr>
+</table>
+
+<!-- 4. LOGIN -->
+<h2 id="login">4. Logging In &amp; Account Setup</h2>
+
+<h3>New User Setup</h3>
+<ol>
+  <li>You will receive an invitation email with a setup link.</li>
+  <li>Click the link to open the setup wizard.</li>
+  <li>Create a password (minimum 8 characters).</li>
+  <li>Set up Two-Factor Authentication (2FA) by scanning the QR code with an authenticator app (Google Authenticator, Authy, etc.).</li>
+  <li>Enter the 6-digit code from your authenticator to confirm.</li>
+  <li>You're ready to log in!</li>
+</ol>
+
+<h3>Logging In</h3>
+<ol>
+  <li>Enter your email address and password.</li>
+  <li>Enter the 6-digit 2FA code from your authenticator app.</li>
+  <li>You will be taken to the Region Queue.</li>
+</ol>
+
+<div class="warn"><strong>Note:</strong> If you are logging in for the first time with a temporary password, you will be prompted to change your password before proceeding.</div>
+
+<h3>Work Status (Coordinators)</h3>
+<p>Coordinators can toggle their status between <strong>Active</strong> and <strong>Inactive</strong> using the button at the bottom of the sidebar.</p>
+<ul>
+  <li><span class="dot dot-green"></span><strong>Active</strong> &mdash; You can receive new ticket assignments.</li>
+  <li><span class="dot dot-red"></span><strong>Inactive</strong> &mdash; Your assigned tickets are returned to the region queue. You will not receive new assignments.</li>
+</ul>
+
+<!-- 5. QUEUES -->
+<h2 id="queues">5. Ticket Queues</h2>
+
+<h3>Region Queue</h3>
+<p>The Region Queue shows all tickets across your assigned regions, grouped by assignee. Unassigned tickets appear first.</p>
+<ul>
+  <li><strong>Click a group header</strong> to expand/collapse that assignee's tickets.</li>
+  <li><strong>Filter by status:</strong> Active, Unassigned, Open, Waiting, Closed.</li>
+  <li><strong>Filter by region:</strong> Use the region dropdown (if you belong to multiple regions).</li>
+  <li><strong>Search:</strong> Type in the search box to find tickets by subject, email, or ticket ID.</li>
+</ul>
+
+<h3>My Queue</h3>
+<p>My Queue shows only tickets assigned to you. It uses a flat list (no grouping). The same filters and search apply.</p>
+
+<h3>Sorting by Tags</h3>
+<p>When tickets have tags, a tag dropdown appears next to the status filters. Select a tag and choose a mode:</p>
+<ul>
+  <li><strong>Filter</strong> &mdash; Show only tickets with the selected tag.</li>
+  <li><strong>Sort</strong> &mdash; All tickets visible, but tagged ones appear first.</li>
+  <li><strong>Group</strong> (Region Queue only) &mdash; Groups tickets by tag instead of assignee.</li>
+</ul>
+
+<h3>Bulk Actions</h3>
+<p>Use the checkboxes to select multiple tickets, then use the <strong>Pull from Queue</strong> button to assign selected tickets to yourself.</p>
+
+<!-- 6. TICKETS -->
+<h2 id="tickets">6. Working with Tickets</h2>
+
+<h3>Ticket Detail View</h3>
+<p>Click any ticket in a queue to open the full detail view. You'll see:</p>
+<ul>
+  <li><strong>Header</strong> &mdash; Ticket ID, status badge, subject, from/to emails, assignee, region.</li>
+  <li><strong>Message Thread</strong> &mdash; All inbound and outbound messages in chronological order.</li>
+  <li><strong>Notes</strong> &mdash; Internal team notes (not visible to external parties).</li>
+  <li><strong>Attachments</strong> &mdash; Download files attached to messages.</li>
+</ul>
+
+<h3>Replying to a Ticket</h3>
+<ol>
+  <li>Click the <strong>Reply</strong> tab in the ticket detail.</li>
+  <li>Type your message in the text area.</li>
+  <li>Optionally click <strong>AI Draft</strong> to have the AI write a reply for you.</li>
+  <li>Attach files if needed (max 10MB per file).</li>
+  <li>Click <strong>Send</strong>.</li>
+</ol>
+
+<h3>Adding Internal Notes</h3>
+<ol>
+  <li>Click the <strong>Notes</strong> tab.</li>
+  <li>Type your note in the text area.</li>
+  <li>Click <strong>Add Note</strong>.</li>
+</ol>
+<div class="tip"><strong>Tip:</strong> Notes are only visible to your team &mdash; they are never sent to external parties.</div>
+
+<h3>Managing Ticket Properties</h3>
+<table>
+  <tr><th>Action</th><th>How</th></tr>
+  <tr><td>Change assignee</td><td>Use the assignee dropdown in the ticket sidebar.</td></tr>
+  <tr><td>Change region</td><td>Use the region dropdown.</td></tr>
+  <tr><td>Add/remove tags</td><td>Click the tag pills area to add or remove tags.</td></tr>
+  <tr><td>Change status</td><td>Use the status dropdown (Open, Waiting on External, Closed).</td></tr>
+  <tr><td>Close ticket</td><td>Set status to Closed, select a close reason, and optionally add a comment.</td></tr>
+</table>
+
+<!-- 7. COMPOSE -->
+<h2 id="compose">7. Creating New Messages</h2>
+<p>Click the <strong>New Message</strong> button in the left sidebar to open the compose modal.</p>
+
+<h3>Compose Fields</h3>
+<ul>
+  <li><strong>To (Email)</strong> &mdash; The recipient's email address (required).</li>
+  <li><strong>Subject</strong> &mdash; The email subject line (required).</li>
+  <li><strong>Send from Region</strong> &mdash; Select which region this ticket belongs to (required).</li>
+  <li><strong>Tags</strong> &mdash; Optionally tag the new ticket.</li>
+  <li><strong>Message Body</strong> &mdash; Write your message or click <strong>AI Draft</strong> to have the AI generate one.</li>
+  <li><strong>Attachments</strong> &mdash; Upload files (max 10MB each).</li>
+</ul>
+<p>Sending creates a new ticket assigned to you with the outbound message as the first entry.</p>
+
+<!-- 8. EMAIL -->
+<h2 id="email">8. Personal Email Inbox</h2>
+<p>The Email screen provides full access to your Gmail inbox directly within CareCoord.</p>
+
+<h3>Navigation</h3>
+<ul>
+  <li><strong>Left sidebar</strong> &mdash; System folders (Inbox, Starred, Sent, Drafts, etc.), Categories (Primary, Social, Promotions, Updates), and your Gmail Labels.</li>
+  <li><strong>Search bar</strong> &mdash; Search across all mail.</li>
+  <li><strong>Category tabs</strong> &mdash; Quick switch between Primary, Social, Promotions, and Updates.</li>
+</ul>
+
+<h3>Reading Email</h3>
+<p>Click any message to open the full view with sender details, body, and attachments. From the detail view you can:</p>
+<ul>
+  <li><strong>Reply</strong> &mdash; Click Reply to compose a response.</li>
+  <li><strong>AI Draft</strong> &mdash; Click the teal AI Draft button to have the AI write a reply.</li>
+  <li><strong>Archive / Delete</strong> &mdash; Use the toolbar icons.</li>
+  <li><strong>Apply Labels</strong> &mdash; Click the label icon to toggle labels on/off with checkboxes.</li>
+  <li><strong>Star / Mark Unread</strong> &mdash; Use the toolbar icons.</li>
+</ul>
+
+<h3>Composing Email</h3>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span> can click the <strong>Compose</strong> button in the email sidebar to write a new email. Fill in the recipient, subject, body, and optionally attach files or use AI Draft.</p>
+<div class="tip"><strong>Note:</strong> Coordinators do not have the Compose button in the email inbox. Instead, use the <strong>New Message</strong> button in the main sidebar to create ticket-based communications.</div>
+
+<h3>Push to Queue</h3>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span> can push individual emails or bulk-selected emails to the CareCoord ticket queue using the <strong>Push to Queue</strong> button.</p>
+
+<!-- 9. LABELS -->
+<h2 id="labels">9. Gmail Labels</h2>
+<p>All of your Gmail labels are synced into CareCoord, including nested labels and label colors.</p>
+
+<h3>Viewing by Label</h3>
+<p>Click any label in the email sidebar to view all messages with that label.</p>
+
+<h3>Applying Labels to Messages</h3>
+<ol>
+  <li>Open a message or select messages with checkboxes.</li>
+  <li>Click the label/folder icon in the toolbar.</li>
+  <li>A dropdown appears with all your labels and checkboxes.</li>
+  <li>Check a label to apply it; uncheck to remove it.</li>
+</ol>
+
+<h3>Creating Labels</h3>
+<ol>
+  <li>In the email sidebar, click the <strong>+</strong> icon next to "Labels".</li>
+  <li>Type the label name and press Enter or click Create.</li>
+</ol>
+
+<h3>Renaming &amp; Deleting Labels</h3>
+<p>Right-click any label in the sidebar to see a context menu with <strong>Rename</strong> and <strong>Delete</strong> options.</p>
+<div class="warn"><strong>Note:</strong> Deleting a label does not delete the messages &mdash; it only removes the label.</div>
+
+<h3>Nested Labels</h3>
+<p>Labels containing a <code>/</code> (e.g., <code>Work/Urgent</code>) appear indented under their parent. This mirrors Gmail's label hierarchy.</p>
+
+<!-- 10. CHAT -->
+<h2 id="chat">10. Team Chat</h2>
+<p>Click <strong>Chat</strong> in the sidebar to open the real-time messaging panel.</p>
+
+<h3>Starting a Conversation</h3>
+<ol>
+  <li>Click the <strong>+</strong> button at the top of the chat panel.</li>
+  <li>Search for and select team members.</li>
+  <li>Optionally name the conversation (for groups).</li>
+  <li>Click <strong>Start</strong>.</li>
+</ol>
+
+<h3>Sending Messages</h3>
+<ul>
+  <li>Type your message and press <strong>Enter</strong> to send.</li>
+  <li>Attach files using the paperclip icon.</li>
+  <li>Messages appear in real-time for all participants.</li>
+</ul>
+
+<h3>Notifications</h3>
+<p>Unread message count appears as a red badge on the Chat sidebar item. The badge pulses to draw attention.</p>
+
+<!-- 11. AI -->
+<h2 id="ai">11. Seniority AI Assistant</h2>
+<p>Click <strong>Seniority AI</strong> in the sidebar to open the AI panel. The AI has access to all tickets, team data, regions, audit logs, and your recent emails.</p>
+
+<h3>General Chat</h3>
+<p>Ask the AI anything about your caseload:</p>
+<ul>
+  <li>"How many unassigned tickets are in Northern PA?"</li>
+  <li>"Summarize the recent activity for patient John Smith"</li>
+  <li>"What should I work on next?"</li>
+</ul>
+
+<h3>Suggestions</h3>
+<p>When you open the AI panel without a ticket selected, it shows proactive suggestions based on your role and current system state. Click any suggestion to ask the AI about it.</p>
+
+<h3>Ticket-Specific Actions</h3>
+<p>When you have a ticket open, the AI panel shows quick action buttons:</p>
+<table>
+  <tr><th>Action</th><th>What It Does</th></tr>
+  <tr><td><strong>Summarize</strong></td><td>Creates a concise summary of the ticket thread.</td></tr>
+  <tr><td><strong>Patient Info</strong></td><td>Extracts structured patient data (name, DOB, insurance, medications, etc.).</td></tr>
+  <tr><td><strong>Draft Reply</strong></td><td>Generates a professional reply email.</td></tr>
+  <tr><td><strong>Suggest Tags</strong></td><td>Recommends which tags to apply based on ticket content.</td></tr>
+</table>
+
+<h3>AI Draft in Email</h3>
+<p>When replying to an email or composing a new one, click the teal <strong>AI Draft</strong> button to have the AI generate the email body for you. You can edit the draft before sending.</p>
+
+<!-- 12. DASHBOARD -->
+<h2 id="dashboard">12. Supervisor Dashboard</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+
+<h3>Overview Tab</h3>
+<p>Shows four KPI cards at the top:</p>
+<ul>
+  <li><strong>Total Open</strong> &mdash; All non-closed tickets in your regions.</li>
+  <li><strong>Unassigned</strong> &mdash; Tickets without an assignee.</li>
+  <li><strong>Closed Today</strong> &mdash; Tickets closed since midnight.</li>
+  <li><strong>Triage Queue</strong> &mdash; Tickets in the triage/unrouted region.</li>
+</ul>
+<p>Below the KPIs you'll find <strong>Open Tickets by Region</strong> and <strong>Coordinator Workload</strong> sections. Click any region or coordinator to drill down into their specific tickets.</p>
+
+<h3>Bird's Eye View Tab</h3>
+<p>A real-time operational view showing:</p>
+<ul>
+  <li><strong>Aging cards</strong> &mdash; Tickets grouped by age: Fresh (&lt;1hr), 1-4 hours, 4-24 hours, 24+ hours. Color-coded green to red.</li>
+  <li><strong>Team status</strong> &mdash; Each coordinator with online indicator, open ticket count.</li>
+  <li><strong>Region bars</strong> &mdash; Visual progress bars showing ticket distribution per region.</li>
+  <li><strong>Full ticket table</strong> &mdash; Filterable by aging bucket, coordinator, region, or status. Includes a Reassign button per ticket.</li>
+  <li><strong>Bulk Reassign</strong> &mdash; Reassign all of one coordinator's tickets to another (does not move closed tickets).</li>
+</ul>
+
+<!-- 13. ACTIVITY DASHBOARD -->
+<h2 id="activity">13. Activity Dashboard</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>The Activity Dashboard provides detailed analytics and real-time presence tracking. It has four tabs:</p>
+
+<h3>Who's Online Tab</h3>
+<p>Shows all team members with real-time presence status:</p>
+<ul>
+  <li><span class="dot dot-green"></span><strong>Online</strong> &mdash; Active within the last 5 minutes.</li>
+  <li><span class="dot dot-yellow"></span><strong>Away</strong> &mdash; Has a session but inactive for 5-30 minutes.</li>
+  <li><span class="dot dot-gray"></span><strong>Offline</strong> &mdash; No active session or inactive for 30+ minutes.</li>
+</ul>
+<p><strong>Drill-Down:</strong> Click any team member to see their recent activity. Use the time range selector to view:</p>
+<ul>
+  <li><strong>15 minutes</strong> / <strong>30 minutes</strong> / <strong>1 hour</strong> / <strong>4 hours</strong> / <strong>1 day</strong> / <strong>1 week</strong></li>
+</ul>
+<p>The drill-down shows:</p>
+<ul>
+  <li>Summary cards: total actions, emails sent, notes added, tickets touched.</li>
+  <li>Action breakdown by type (with colored badges).</li>
+  <li>List of tickets the user worked on.</li>
+  <li>Full chronological activity timeline.</li>
+</ul>
+
+<h3>Overview Tab</h3>
+<ul>
+  <li><strong>KPI Cards</strong> &mdash; Tickets Closed, Currently Open, Emails Sent, Total Actions, Avg Resolution Time.</li>
+  <li><strong>Ticket Volume Chart</strong> &mdash; Daily bar chart of tickets created vs. closed.</li>
+  <li><strong>Activity Heatmap</strong> &mdash; Day-of-week by hour grid showing when the team is busiest.</li>
+  <li><strong>Tag Distribution</strong> &mdash; Bar chart showing which tags are most used.</li>
+</ul>
+
+<h3>Team Tab</h3>
+<p>Performance table for all coordinators showing: open tickets, closed tickets, emails sent, notes added, total actions, average resolution time, and a visual activity bar.</p>
+
+<h3>Activity Feed Tab</h3>
+<p>A filterable event stream showing all system actions. Filter by:</p>
+<ul>
+  <li>Specific user</li>
+  <li>Action type (e.g., Created ticket, Sent email, Reassigned, etc.)</li>
+  <li>Time period (24 hours to 30 days)</li>
+</ul>
+
+<!-- 14. AUDIT LOG -->
+<h2 id="audit">14. Audit Log</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>The Audit Log shows a detailed record of every action taken in the system. Each entry includes:</p>
+<ul>
+  <li>Date and time</li>
+  <li>Who performed the action</li>
+  <li>Action type (e.g., ticket_created, outbound_sent, assignee_changed)</li>
+  <li>Details and affected entity</li>
+</ul>
+<p>Use the action type dropdown to filter for specific types of activity.</p>
+
+<!-- 15. ADMIN PANEL -->
+<h2 id="admin">15. Admin Panel</h2>
+
+<h3>Users Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li><strong>View all users</strong> with their role, email, assigned regions, and workspace connection status.</li>
+  <li><strong>Edit user</strong> &mdash; Change name, email, or role.</li>
+  <li><strong>Manage regions</strong> &mdash; Assign or remove region access per user.</li>
+  <li><strong>Reset password</strong> &mdash; Generates a temporary password shown in a modal.</li>
+  <li><strong>Deactivate user</strong> &mdash; Disables the account and returns their tickets to the queue.</li>
+  <li><strong>Reactivate user</strong> &mdash; Re-enables a deactivated account.</li>
+  <li><strong>Connect Workspace</strong> &mdash; Manage Google Workspace connection for the user.</li>
+</ul>
+
+<h3>Invitations Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li>Send invitations to new users with name, email (@seniorityhealthcare.com), role, and region assignments.</li>
+  <li>View pending, accepted, and expired invitations.</li>
+  <li>Resend or revoke pending invitations.</li>
+</ul>
+
+<h3>Regions Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li>Create, edit, and deactivate regions.</li>
+  <li>Set routing email aliases for each region.</li>
+  <li>View which users are assigned to each region.</li>
+</ul>
+<div class="warn"><strong>Note:</strong> A region can only be deactivated if it has no open tickets.</div>
+
+<h3>Tags Tab <span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></h3>
+<ul>
+  <li>Create new tags with a name and color (10 color options).</li>
+  <li>Edit existing tag names and colors.</li>
+  <li>Delete tags.</li>
+</ul>
+
+<!-- 16. WORKSPACE -->
+<h2 id="workspace">16. Google Workspace Integration</h2>
+<p>CareCoord integrates with Google Workspace for email access. The connection is managed per user.</p>
+
+<h3>Connecting Your Account</h3>
+<ol>
+  <li>Click the Google Workspace connect button in the sidebar (or have an admin connect it for you).</li>
+  <li>Choose a sync start date (emails before this date will not be synced).</li>
+  <li>Complete the Google OAuth authorization in the popup window.</li>
+  <li>Your Gmail inbox will become available in the Email section.</li>
+</ol>
+
+<h3>Sidebar Quick Links</h3>
+<p>Expand the <strong>Google Workspace</strong> section in the sidebar to access:</p>
+<ul>
+  <li>Google Calendar, Drive, Docs, Sheets, Meet, Chat, and Voice.</li>
+</ul>
+
+<!-- 17. EXTERNAL -->
+<h2 id="external">17. External Application Links</h2>
+<p>The sidebar includes direct links to frequently used external systems:</p>
+<table>
+  <tr><th>Application</th><th>Purpose</th></tr>
+  <tr><td><strong>Practice Fusion</strong></td><td>Electronic Health Records (EHR) system.</td></tr>
+  <tr><td><strong>Updox</strong></td><td>Patient communication and fax portal.</td></tr>
+  <tr><td><strong>CareLink</strong></td><td>Care management platform.</td></tr>
+  <tr><td><strong>Prompted</strong></td><td>AI-powered documentation tool.</td></tr>
+</table>
+<p>Each link opens in a new browser tab.</p>
+
+<!-- 18. TIPS -->
+<h2 id="tips">18. Tips &amp; Best Practices</h2>
+
+<h3>Keyboard Shortcuts</h3>
+<ul>
+  <li><strong>Enter</strong> &mdash; Send message in Chat or AI panel.</li>
+  <li><strong>Escape</strong> &mdash; Close modals, clear search, cancel label creation.</li>
+</ul>
+
+<h3>Working Efficiently</h3>
+<ul>
+  <li>Use the AI assistant to draft replies and summarize long ticket threads &mdash; it saves significant time.</li>
+  <li>Tag your tickets consistently so the tag filter in the queue is useful for your team.</li>
+  <li>Check the Activity Dashboard's "Who's Online" tab to see which team members are available before reassigning tickets.</li>
+  <li>Use the Bird's Eye View to quickly identify aging tickets that need attention.</li>
+  <li>Add internal notes to tickets to keep your team informed without emailing external parties.</li>
+</ul>
+
+<h3>For Supervisors</h3>
+<ul>
+  <li>Review the Activity Dashboard daily to monitor team performance and identify bottlenecks.</li>
+  <li>Use the drill-down feature on the Who's Online tab to see what each coordinator is working on in real time.</li>
+  <li>The Audit Log is your source of truth for tracking who did what and when.</li>
+  <li>Bulk Reassign is useful when a coordinator is out &mdash; it moves all their open tickets to another person or back to the queue (closed tickets are not affected).</li>
+</ul>
+
+<h3>Getting Help</h3>
+<p>If you have questions or need assistance, use the <strong>Seniority AI</strong> assistant &mdash; it can answer questions about tickets, patients, team workload, and more. For technical issues, contact your system administrator.</p>
+
+<div style="margin-top: 60px; text-align: center; color: #8a9fb0; font-size: 10pt; border-top: 1px solid #dde8f2; padding-top: 16px;">
+  CareCoord User Manual &mdash; Seniority Healthcare &mdash; March 2026<br>
+  Confidential &mdash; For internal use only
+</div>
+
+</body>
+</html>
