@@ -341,9 +341,12 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     setShowLabelPicker(null);
   };
 
-  const loadMore = () => {
-    if (!nextPage || loadingRef.current) return;
-    load(folder, search, nextPage, activeLabelId || undefined);
+  const onScroll = () => {
+    if (!listRef.current || !nextPage || loadingRef.current) return;
+    const el = listRef.current;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+      load(activeLabelId ? 'ALL' : folder, search, nextPage, activeLabelId || undefined);
+    }
   };
 
   const isSupervisorOrAdmin = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
@@ -573,7 +576,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
 
         {/* Message List or Detail */}
         {!selected ? (
-          <div ref={listRef} style={{ flex:1,overflowY:'auto' }}>
+          <div ref={listRef} onScroll={onScroll} style={{ flex:1,overflowY:'auto' }}>
             {loading && Array.from({length:12}).map((_,i) => (
               <div key={i} style={{ display:'flex',alignItems:'center',gap:12,padding:'0 16px',height:40,borderBottom:'1px solid #f6f6f6' }}>
                 <div className="gi-skel" style={{ width:18,height:18 }} />
@@ -619,17 +622,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                 <span style={{ flexShrink:0,marginLeft:12,fontSize:12,color:m.isUnread?'#202124':'#5f6368',fontWeight:m.isUnread?700:400,whiteSpace:'nowrap' }}>{fmtDate(m.date)}</span>
               </div>
             ))}
-            {loadingMore && <div style={{ padding:16,textAlign:'center',color:'#5f6368',fontSize:13 }}>Loading...</div>}
-            {!loadingMore && nextPage && (
-              <div style={{ padding:12,textAlign:'center' }}>
-                <button onClick={loadMore}
-                  style={{ padding:'8px 32px',background:'#fff',border:'1px solid #dadce0',borderRadius:20,cursor:'pointer',fontSize:13,fontWeight:500,color:'#1a73e8' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#f2f6fc'}
-                  onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                  Load more
-                </button>
-              </div>
-            )}
+            {loadingMore && <div style={{ padding:16,textAlign:'center',color:'#5f6368',fontSize:13 }}>Loading more emails...</div>}
           </div>
         ) : (
           <div style={{ flex:1,overflowY:'auto' }}>
