@@ -186,6 +186,49 @@ router.post('/ticket-channel', requireAuth, (req, res) => {
   res.json({ channelId: id });
 });
 
+// Delete a chat channel (only creator, admin, or supervisor can delete)
+router.delete('/channels/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const channel = db.prepare('SELECT * FROM chat_channels WHERE id = ?').get(req.params.id);
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  const isCreator = toStr(channel.created_by) === req.user.id;
+  const isAdminOrSup = req.user.role === 'admin' || req.user.role === 'supervisor';
+  const isMember = db.prepare('SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!isCreator && !isAdminOrSup && !isMember) return res.status(403).json({ error: 'Not authorized' });
+
+  // For regular users (coordinators), only allow deleting direct chats they are part of
+  if (!isCreator && !isAdminOrSup) return res.status(403).json({ error: 'Only the creator or admins can delete channels' });
+
+  db.prepare('DELETE FROM chat_messages WHERE channel_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM chat_members WHERE channel_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM chat_channels WHERE id = ?').run(req.params.id);
+  saveDb();
+
+  // Notify via socket
+  if (req.app.io) req.app.io.to('channel:' + req.params.id).emit('chat:deleted', { channelId: req.params.id });
+
+  res.json({ ok: true });
+});
+
+// Delete a single message (only sender, admin, or supervisor can delete)
+router.delete('/channels/:channelId/messages/:msgId', requireAuth, (req, res) => {
+  const db = getDb();
+  const msg = db.prepare('SELECT * FROM chat_messages WHERE id = ? AND channel_id = ?').get(req.params.msgId, req.params.channelId);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+  const isSender = toStr(msg.user_id) === req.user.id;
+  const isAdminOrSup = req.user.role === 'admin' || req.user.role === 'supervisor';
+  if (!isSender && !isAdminOrSup) return res.status(403).json({ error: 'Not authorized' });
+
+  db.prepare('DELETE FROM chat_messages WHERE id = ?').run(req.params.msgId);
+  saveDb();
+
+  if (req.app.io) req.app.io.to('channel:' + req.params.channelId).emit('chat:msg-deleted', { channelId: req.params.channelId, messageId: req.params.msgId });
+
+  res.json({ ok: true });
+});
+
 // Total unread count across all channels
 router.get('/unread', requireAuth, (req, res) => {
   const db = getDb();

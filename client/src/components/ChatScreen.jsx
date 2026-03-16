@@ -126,10 +126,45 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     } catch(e) { showToast?.(e.message); }
   };
 
+  const deleteChannel = async (ch, e) => {
+    e.stopPropagation();
+    if (!confirm('Delete this conversation? All messages will be permanently removed.')) return;
+    try {
+      await api.chatDeleteChannel(ch.id);
+      setChannels(prev => prev.filter(c => c.id !== ch.id));
+      if (activeChannel?.id === ch.id) { setActiveChannel(null); setMessages([]); }
+      showToast?.('Conversation deleted');
+    } catch(e) { showToast?.(e.message); }
+  };
+
+  const deleteMessage = async (msg) => {
+    if (!confirm('Delete this message?')) return;
+    try {
+      await api.chatDeleteMessage(activeChannel.id, msg.id);
+      setMessages(prev => prev.filter(m => m.id !== msg.id));
+    } catch(e) { showToast?.(e.message); }
+  };
+
+  // Listen for real-time delete events
+  useEffect(() => {
+    const onChannelDeleted = (data) => {
+      setChannels(prev => prev.filter(c => c.id !== data.channelId));
+      if (activeChannel?.id === data.channelId) { setActiveChannel(null); setMessages([]); }
+    };
+    const onMsgDeleted = (data) => {
+      setMessages(prev => prev.filter(m => m.id !== data.messageId));
+    };
+    socket.on('chat:deleted', onChannelDeleted);
+    socket.on('chat:msg-deleted', onMsgDeleted);
+    return () => { socket.off('chat:deleted', onChannelDeleted); socket.off('chat:msg-deleted', onMsgDeleted); };
+  }, [activeChannel?.id]);
+
   const otherUsers = (allUsers || []).filter(u => u.id !== currentUser.id);
   const filteredUsers = searchUser ? otherUsers.filter(u => u.name.toLowerCase().includes(searchUser.toLowerCase()) || u.email.toLowerCase().includes(searchUser.toLowerCase())) : otherUsers;
 
-  const css = `.chat-msg:hover{background:#f5f7fa}.chat-ch:hover{background:#e8edf3}`;
+  const canDeleteChannel = (ch) => currentUser.role === 'admin' || currentUser.role === 'supervisor' || ch.members.find(m => m.id === currentUser.id);
+
+  const css = `.chat-msg:hover{background:#f5f7fa}.chat-ch:hover{background:#e8edf3}.chat-del{opacity:0;transition:opacity .15s}.chat-ch:hover .chat-del,.chat-msg:hover .chat-del{opacity:1}`;
 
   return (
     <div style={{ display: 'flex', flexDirection: isPanel ? 'column' : 'row', height: '100%', background: '#fff', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
@@ -160,7 +195,16 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 14, fontWeight: ch.unread > 0 ? 700 : 500, color: '#1e3a4f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
-                    {ch.unread > 0 && <span style={{ background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, flexShrink: 0 }}>{ch.unread}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      {canDeleteChannel(ch) && (
+                        <button className="chat-del" onClick={(e) => deleteChannel(ch, e)} title="Delete conversation"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                          onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                        </button>
+                      )}
+                      {ch.unread > 0 && <span style={{ background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{ch.unread}</span>}
+                    </div>
                   </div>
                   {ch.lastMessage && (
                     <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
@@ -253,12 +297,19 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                     <div style={{ width: 32, flexShrink: 0 }}>
                       {showAvatar && <Avatar user={{ name: m.senderName, avatar: m.senderAvatar }} size={32} />}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
                       {showAvatar && (
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: isMe ? '#1a5e9a' : '#1e3a4f' }}>{m.senderName}</span>
                           <span style={{ fontSize: 11, color: '#94a3b8' }}>{fmtTime(m.createdAt)}</span>
                         </div>
+                      )}
+                      {(isMe || currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
+                        <button className="chat-del" onClick={() => deleteMessage(m)} title="Delete message"
+                          style={{ position: 'absolute', top: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                          onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                        </button>
                       )}
                       {m.type === 'file' ? (
                         <a href={'data:' + (m.fileMime || 'application/octet-stream') + ';base64,' + (m.fileData || '')} download={m.fileName || m.body}
