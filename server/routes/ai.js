@@ -201,7 +201,7 @@ Format: 2-4 short paragraphs, no headers, no bullet points, no markdown formatti
 - Advance directives if relevant
 
 Keep it under 300 words. Write like a person, not a template. If encounter details are provided, summarize what happened in those visits.`,
-      messages: [{ role: 'user', content: `Generate a Clinical Snapshot from this Practice Fusion chart data:\n\n${JSON.stringify(chartData, null, 2)}` }],
+      messages: [{ role: 'user', content: `Generate a Clinical Snapshot from this Practice Fusion chart data:\n\n${JSON.stringify(chartData, null, 2).substring(0, 8000)}` }],
     });
     res.json({ snapshot: response.content[0]?.text || '' });
   } catch (e) {

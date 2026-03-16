@@ -228,36 +228,26 @@ async function chartAiChat(message) {
   state.chartAiLoading = true;
   render();
 
-  // Build FULL context from ALL patient data
+  // Build concise context from patient data (stays under token limits)
   let ctx = '';
   if (state.patientData) {
     const pd = state.patientData;
-    if (pd.patientName) ctx += 'Patient: ' + pd.patientName + '\n';
-    if (pd.dob) ctx += 'DOB: ' + pd.dob + '\n';
-    if (pd.age) ctx += 'Age: ' + pd.age + '\n';
-    if (pd.gender) ctx += 'Gender: ' + pd.gender + '\n';
-    if (pd.prn) ctx += 'PRN: ' + pd.prn + '\n';
-    if (pd.phone) ctx += 'Phone: ' + pd.phone + '\n';
-    if (pd.insurance) ctx += 'Insurance: ' + pd.insurance + '\n';
+    ctx += 'Patient: ' + (pd.patientName||'?') + ' | DOB: ' + (pd.dob||'?') + ' | Age: ' + (pd.age||'?') + ' | ' + (pd.gender||'') + ' | PRN: ' + (pd.prn||'') + '\n';
+    ctx += 'Phone: ' + (pd.phone||'?') + ' | Insurance: ' + (pd.insurance||'?') + '\n';
     if (pd.allergies?.length) ctx += 'Allergies: ' + pd.allergies.join(', ') + '\n';
-    if (pd.diagnoses?.length) ctx += '\nDiagnoses:\n' + pd.diagnoses.join('\n') + '\n';
-    if (pd.medications?.length) ctx += '\nMedications:\n' + pd.medications.join('\n') + '\n';
-    if (pd.advanceDirectives) ctx += '\nAdvance Directives: ' + pd.advanceDirectives + '\n';
-    if (pd.familyHistory) ctx += 'Family History: ' + pd.familyHistory + '\n';
-    if (pd.healthConcerns) ctx += '\nHealth Concerns:\n' + pd.healthConcerns + '\n';
-    if (pd.socialHistory) ctx += '\nSocial History: ' + JSON.stringify(pd.socialHistory) + '\n';
-    if (pd.pastMedicalHistory) ctx += '\nPast Medical History: ' + JSON.stringify(pd.pastMedicalHistory) + '\n';
-    if (pd.screenings?.length) ctx += '\nScreenings:\n' + pd.screenings.join('\n') + '\n';
-    if (pd.flowsheets?.length) ctx += '\nFlowsheets: ' + pd.flowsheets.join(', ') + '\n';
-    if (pd.encounters?.length) ctx += '\nEncounter List:\n' + pd.encounters.join('\n') + '\n';
+    if (pd.advanceDirectives) ctx += 'Advance Directives: ' + pd.advanceDirectives + '\n';
+    if (pd.diagnoses?.length) ctx += 'Diagnoses: ' + pd.diagnoses.join('; ') + '\n';
+    if (pd.medications?.length) ctx += 'Medications: ' + pd.medications.map(m => m.split(' ').slice(0,3).join(' ')).join('; ') + '\n';
+    if (pd.healthConcerns) ctx += 'Health Concerns: ' + pd.healthConcerns.substring(0, 500) + '\n';
+    if (pd.encounters?.length) ctx += 'Recent encounters: ' + pd.encounters.slice(0,5).join('; ') + '\n';
     if (pd.encounterDetails?.length) {
-      ctx += '\nEncounter Details:\n';
+      ctx += '\nEncounter notes:\n';
       for (const enc of pd.encounterDetails) {
-        ctx += '\n=== ' + (enc.date || '?') + ' ===\n' + (enc.content || enc.summary || '') + '\n';
+        ctx += '--- ' + (enc.date||'?') + ' ---\n' + (enc.content||enc.summary||'').substring(0, 1500) + '\n';
       }
     }
   }
-  if (state.clinicalSnapshot) ctx += '\n\nClinical Overview:\n' + state.clinicalSnapshot + '\n';
+  if (state.clinicalSnapshot) ctx += '\nClinical Overview: ' + state.clinicalSnapshot.substring(0, 1000) + '\n';
 
   let fullMsg = message;
   if (state.chartAiMessages.length <= 1) {
