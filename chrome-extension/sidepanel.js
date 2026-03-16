@@ -203,14 +203,20 @@ async function chartAiChat(message) {
     state.chartAiMessages.push({ role: 'assistant', content: 'Error: ' + e.message });
   }
   state.chartAiLoading = false;
+  // Save scroll position before render
+  const contentEl = document.querySelector('.content');
+  const savedScroll = contentEl ? contentEl.scrollTop : 0;
   render();
   setTimeout(() => {
     const el = document.getElementById('chart-ai-messages');
     if (el) el.scrollTop = el.scrollHeight;
-    // Also scroll the content area to keep AI visible
-    const content = document.querySelector('.content');
-    if (content) content.scrollTop = content.scrollHeight;
-  }, 150);
+    // Restore content scroll — don't jump to top
+    const newContent = document.querySelector('.content');
+    if (newContent) {
+      // Scroll to bottom of content to show latest AI response
+      newContent.scrollTop = newContent.scrollHeight;
+    }
+  }, 50);
 }
 
 // ── Render ──
@@ -225,8 +231,22 @@ function render() {
   else if (state.tab === 'tickets') html += renderTicketsTab();
   else if (state.tab === 'settings') html += renderSettingsTab();
   html += '</div>';
+  // Preserve scroll position during re-renders
+  const prevContent = document.querySelector('.content');
+  const prevScroll = prevContent ? prevContent.scrollTop : 0;
   app.innerHTML = html;
   bindEvents();
+  // Restore scroll — if AI is loading or messages exist, scroll to bottom; otherwise restore position
+  const newContent = document.querySelector('.content');
+  if (newContent) {
+    if (state.chartAiLoading || (state.chartAiMessages && state.chartAiMessages.length > 0)) {
+      newContent.scrollTop = newContent.scrollHeight;
+      const aiEl = document.getElementById('chart-ai-messages');
+      if (aiEl) aiEl.scrollTop = aiEl.scrollHeight;
+    } else {
+      newContent.scrollTop = prevScroll;
+    }
+  }
 }
 
 function renderLogin() {

@@ -245,8 +245,37 @@
         report('Navigating to ' + section + '...');
         tab.click();
         await sleep(2500);
-        const text = document.body.innerText.substring(0, 6000);
-        // Return to summary
+
+        // For Timeline: also read encounter details from the Summary page encounter list
+        if (section.toLowerCase() === 'timeline') {
+          // Click "Encounters" filter if available
+          const encFilter = Array.from(document.querySelectorAll('a, button')).find(el =>
+            el.textContent.trim().toLowerCase() === 'encounters' || el.textContent.trim().toLowerCase() === 'encounter'
+          );
+          if (encFilter) { encFilter.click(); await sleep(2000); }
+
+          // Also try "View all encounters" link
+          const viewAll = Array.from(document.querySelectorAll('a')).find(a =>
+            a.textContent.includes('View all encounters') || (a.href && a.href.includes('timeline/encounter'))
+          );
+          if (viewAll) { viewAll.click(); await sleep(2000); }
+
+          // Read the full encounter list with more text
+          const text = document.body.innerText.substring(0, 10000);
+
+          // Also build structured encounter data
+          const encounterItems = selAll('[data-element^="encounter-item-"]');
+          let encounterText = '\n\nSTRUCTURED ENCOUNTERS (' + encounterItems.length + ' total):\n';
+          for (const item of encounterItems) {
+            encounterText += item.textContent.trim().replace(/\s+/g, ' ') + '\n';
+          }
+
+          const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+          if (sumTab) { sumTab.click(); await sleep(1000); }
+          return text + encounterText;
+        }
+
+        const text = document.body.innerText.substring(0, 8000);
         const sumTab = sel('[data-element="patient-header-tab-Summary"]');
         if (sumTab && section.toLowerCase() !== 'summary') { sumTab.click(); await sleep(1000); }
         return text;
