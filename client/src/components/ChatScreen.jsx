@@ -128,12 +128,12 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
 
   const deleteChannel = async (ch, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this conversation? All messages will be permanently removed.')) return;
+    if (!confirm('Remove this conversation from your list? Other participants will still have access.')) return;
     try {
       await api.chatDeleteChannel(ch.id);
       setChannels(prev => prev.filter(c => c.id !== ch.id));
       if (activeChannel?.id === ch.id) { setActiveChannel(null); setMessages([]); }
-      showToast?.('Conversation deleted');
+      showToast?.('Conversation removed');
     } catch(e) { showToast?.(e.message); }
   };
 
@@ -145,18 +145,13 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     } catch(e) { showToast?.(e.message); }
   };
 
-  // Listen for real-time delete events
+  // Listen for real-time message delete events
   useEffect(() => {
-    const onChannelDeleted = (data) => {
-      setChannels(prev => prev.filter(c => c.id !== data.channelId));
-      if (activeChannel?.id === data.channelId) { setActiveChannel(null); setMessages([]); }
-    };
     const onMsgDeleted = (data) => {
       setMessages(prev => prev.filter(m => m.id !== data.messageId));
     };
-    socket.on('chat:deleted', onChannelDeleted);
     socket.on('chat:msg-deleted', onMsgDeleted);
-    return () => { socket.off('chat:deleted', onChannelDeleted); socket.off('chat:msg-deleted', onMsgDeleted); };
+    return () => { socket.off('chat:msg-deleted', onMsgDeleted); };
   }, [activeChannel?.id]);
 
   const otherUsers = (allUsers || []).filter(u => u.id !== currentUser.id);
@@ -175,7 +170,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
         <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {isPanel && onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4 }}>✕</button>}
           <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Messages</span>
-          <button onClick={() => setShowNew(true)} style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
+          <button onClick={() => { setShowNew(true); setSearchUser(''); setSelectedMembers([]); setNewName(''); }} style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -197,7 +192,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                     <span style={{ fontSize: 14, fontWeight: ch.unread > 0 ? 700 : 500, color: '#1e3a4f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                       {canDeleteChannel(ch) && (
-                        <button className="chat-del" onClick={(e) => deleteChannel(ch, e)} title="Delete conversation"
+                        <button className="chat-del" onClick={(e) => deleteChannel(ch, e)} title="Remove conversation"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
                           onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
