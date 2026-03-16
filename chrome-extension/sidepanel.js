@@ -297,24 +297,39 @@ async function chartAiChat(message) {
   let ctx = buildPatientContext(freshData);
   if (state.clinicalSnapshot) ctx += '\nClinical Overview: ' + state.clinicalSnapshot.substring(0, 800) + '\n';
 
-  // Step 2: Ask the AI if it needs more info from a specific section
-  const planPrompt = 'You are a clinical assistant reading a patient chart in Practice Fusion. You have access to the patient Summary page data below. You can also request data from these additional sections: Timeline, Documents, Profile.\n\nBased on the user\'s question, do you need data from any of these sections to answer? If yes, respond with ONLY the section name (one of: timeline, documents, profile). If the Summary data below is sufficient, respond with ONLY the word "none".\n\nSummary data:\n' + ctx.substring(0, 2000) + '\n\nUser question: ' + message;
-
+  // Step 2: Detect which sections to check based on the question
+  const q = message.toLowerCase();
   let additionalCtx = '';
-  try {
-    const planResult = await apiRequest('/ai/chat', { method: 'POST', body: { message: planPrompt } });
-    const sectionNeeded = (planResult.reply || '').trim().toLowerCase();
+  const sectionsToCheck = [];
 
-    if (sectionNeeded && sectionNeeded !== 'none' && ['timeline', 'documents', 'profile'].includes(sectionNeeded)) {
-      state.scrapeProgress = 'Looking in ' + sectionNeeded + '...';
-      render();
-      const sectionText = await navigateAndRead(sectionNeeded);
-      if (sectionText) {
-        additionalCtx = '\n\nAdditional data from ' + sectionNeeded.toUpperCase() + ' section:\n' + sectionText.substring(0, 4000) + '\n';
-      }
+  // Keyword routing — figure out which PF sections might have the answer
+  if (q.includes('pharmacy') || q.includes('address') || q.includes('email') || q.includes('emergency contact') || q.includes('employer') || q.includes('language') || q.includes('race') || q.includes('marital') || q.includes('demographic') || q.includes('profile') || q.includes('contact')) {
+    sectionsToCheck.push('profile');
+  }
+  if (q.includes('document') || q.includes('lab result') || q.includes('imaging') || q.includes('report') || q.includes('file') || q.includes('scan result') || q.includes('xray') || q.includes('x-ray') || q.includes('mri')) {
+    sectionsToCheck.push('documents');
+  }
+  if (q.includes('timeline') || q.includes('history of visit') || q.includes('all encounter') || q.includes('visit history') || q.includes('appointment') || q.includes('when did') || q.includes('last visit') || q.includes('how many visit')) {
+    sectionsToCheck.push('timeline');
+  }
+  if (q.includes('payment') || q.includes('billing') || q.includes('copay') || q.includes('balance') || q.includes('charge')) {
+    sectionsToCheck.push('payment');
+  }
+  if (q.includes('ledger') || q.includes('account') || q.includes('financial')) {
+    sectionsToCheck.push('ledger');
+  }
+
+  for (const section of sectionsToCheck) {
+    state.scrapeProgress = 'Looking in ' + section + '...';
+    render();
+    const sectionText = await navigateAndRead(section);
+    if (sectionText) {
+      additionalCtx += '\n\nData from ' + section.toUpperCase() + ' section:\n' + sectionText.substring(0, 3000) + '\n';
     }
-  } catch(e) {
-    // Planning step failed — just answer with what we have
+  }
+  if (sectionsToCheck.length > 0) {
+    state.scrapeProgress = '';
+    render();
   }
 
   // Step 3: Answer the question with all available data
