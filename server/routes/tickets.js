@@ -3,7 +3,46 @@ const { v4: uuid } = require('uuid');
 const { getDb, saveDb } = require('../database');
 const { requireAuth, requireSupervisor, addAudit, toStr } = require('../middleware');
 const { google } = require('googleapis');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
+
+// Service account key (same as gmail.js)
+let serviceAccountKey = null;
+if (process.env.SA_CLIENT_EMAIL && process.env.SA_PRIVATE_KEY) {
+  serviceAccountKey = { client_email: process.env.SA_CLIENT_EMAIL, private_key: process.env.SA_PRIVATE_KEY.replace(/\\n/g, '\n') };
+} else {
+  try { serviceAccountKey = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'service-account.json'), 'utf8')); } catch(e) {}
+}
+
+// Get Gmail auth for a user — tries service account, then OAuth tokens
+function getGmailAuth(userId) {
+  const db = getDb();
+  const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
+  if (!user) return null;
+  const email = toStr(user.email);
+
+  // Try service account first
+  if (serviceAccountKey) {
+    const auth = new google.auth.JWT({
+      email: serviceAccountKey.client_email,
+      key: serviceAccountKey.private_key,
+      scopes: ['https://www.googleapis.com/auth/gmail.send'],
+      subject: email,
+    });
+    return { auth, email };
+  }
+
+  // Fall back to OAuth tokens
+  const t = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(userId);
+  if (t && t.access_token) {
+    const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+    oauth2.setCredentials({ access_token: toStr(t.access_token), refresh_token: toStr(t.refresh_token), expiry_date: t.expiry_date });
+    return { auth: oauth2, email: toStr(t.email) || email };
+  }
+
+  return null;
+}
 
 function sanitize(obj) {
   if (!obj) return obj;
@@ -76,12 +115,10 @@ router.post('/', requireAuth, async (req, res) => {
 
   // Actually send via Gmail
   try {
-    const tokenRow = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
-    if (tokenRow) {
-      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
-      oauth2.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token, expiry_date: tokenRow.expiry_date });
-      const gm = google.gmail({ version: 'v1', auth: oauth2 });
-      const senderEmail = tokenRow.email || fromAddr;
+    const gmailAuth = getGmailAuth(req.user.id);
+    if (gmailAuth) {
+      const gm = google.gmail({ version: 'v1', auth: gmailAuth.auth });
+      const senderEmail = gmailAuth.email || fromAddr;
       const CRLF = String.fromCharCode(13, 10);
       let raw;
 
@@ -116,7 +153,7 @@ router.post('/', requireAuth, async (req, res) => {
         .run(sent.data.id, sent.data.threadId, req.user.id, msgId);
       saveDb();
     } else {
-      console.log('[Gmail] No token — message saved but not sent');
+      console.log('[Gmail] No auth available — message saved but not sent via Gmail');
     }
   } catch (gmailErr) {
     console.error('[Gmail] Send failed:', gmailErr.message);
@@ -304,18 +341,16 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
 
   // Actually send via Gmail
   try {
-    const tokenRow = db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(req.user.id);
-    if (tokenRow) {
-      const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
-      oauth2.setCredentials({ access_token: tokenRow.access_token, refresh_token: tokenRow.refresh_token, expiry_date: tokenRow.expiry_date });
-      const gmail = google.gmail({ version: 'v1', auth: oauth2 });
+    const gmailAuth = getGmailAuth(req.user.id);
+    if (gmailAuth) {
+      const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
 
       const toAddr = extP[0] || '';
       const subject = 'Re: ' + ticket.subject;
       const replyTo = lastIn?.provider_message_id || '';
 
       // Build RFC 2822 email (with optional attachments)
-      const senderEmail = tokenRow.email || fromAddr;
+      const senderEmail = gmailAuth.email || fromAddr;
       const CRLF = String.fromCharCode(13, 10);
       let raw;
 
@@ -349,7 +384,7 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
       await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
       console.log('[Gmail] Reply sent to', toAddr);
     } else {
-      console.log('[Gmail] No token for user', req.user.id, '— message saved but not sent');
+      console.log('[Gmail] No auth for user', req.user.id, '— message saved but not sent via Gmail');
     }
   } catch (gmailErr) {
     console.error('[Gmail] Send failed:', gmailErr.message);

@@ -349,13 +349,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
             }
             if (item.type === 'outbound') {
               const m = item.data;
+              const toAddrs = m.to_addresses || [];
               return (
                 <div key={m.id} style={{ marginBottom: 20 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, justifyContent: 'flex-end' }}>
                     <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a5e9a', background: '#1a5e9a18', padding: '2px 6px', borderRadius: 4 }}>Outbound</span>
                     <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.full(m.sent_at)}</span>
                     {m.sender && <Avatar user={m.sender} size={24} />}
                   </div>
+                  {toAddrs.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, justifyContent: 'flex-end', fontSize: 11, color: '#6b8299' }}>
+                      <span style={{ fontWeight: 600 }}>To:</span> {toAddrs.join(', ')}
+                    </div>
+                  )}
                   <div style={{ padding: '14px 18px', background: '#e8f0f8', borderRadius: '12px 4px 12px 12px', border: '1px solid #a8c0dc', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
                     <MessageBody text={m.body_text} />
                     {m.attachments && m.attachments.length > 0 && (
