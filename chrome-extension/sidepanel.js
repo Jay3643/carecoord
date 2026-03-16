@@ -5,7 +5,8 @@ let state = {
   user: null,
   serverUrl: '',
   tab: 'patient',
-  patientSubTab: 'overview',
+  overviewOpen: true,
+  chartScanOpen: false,
   patientData: null,
   clinicalSnapshot: null,
   tickets: [],
@@ -227,21 +228,36 @@ async function chartAiChat(message) {
   state.chartAiLoading = true;
   render();
 
-  // Build context from snapshot + chart data
+  // Build FULL context from ALL patient data
   let ctx = '';
-  if (state.clinicalSnapshot) ctx += 'Clinical Overview:\n' + state.clinicalSnapshot + '\n\n';
   if (state.patientData) {
     const pd = state.patientData;
     if (pd.patientName) ctx += 'Patient: ' + pd.patientName + '\n';
-    if (pd.diagnoses?.length) ctx += 'Diagnoses: ' + pd.diagnoses.join('; ') + '\n';
-    if (pd.medications?.length) ctx += 'Medications: ' + pd.medications.join('; ') + '\n';
+    if (pd.dob) ctx += 'DOB: ' + pd.dob + '\n';
+    if (pd.age) ctx += 'Age: ' + pd.age + '\n';
+    if (pd.gender) ctx += 'Gender: ' + pd.gender + '\n';
+    if (pd.prn) ctx += 'PRN: ' + pd.prn + '\n';
+    if (pd.phone) ctx += 'Phone: ' + pd.phone + '\n';
+    if (pd.insurance) ctx += 'Insurance: ' + pd.insurance + '\n';
+    if (pd.allergies?.length) ctx += 'Allergies: ' + pd.allergies.join(', ') + '\n';
+    if (pd.diagnoses?.length) ctx += '\nDiagnoses:\n' + pd.diagnoses.join('\n') + '\n';
+    if (pd.medications?.length) ctx += '\nMedications:\n' + pd.medications.join('\n') + '\n';
+    if (pd.advanceDirectives) ctx += '\nAdvance Directives: ' + pd.advanceDirectives + '\n';
+    if (pd.familyHistory) ctx += 'Family History: ' + pd.familyHistory + '\n';
+    if (pd.healthConcerns) ctx += '\nHealth Concerns:\n' + pd.healthConcerns + '\n';
+    if (pd.socialHistory) ctx += '\nSocial History: ' + JSON.stringify(pd.socialHistory) + '\n';
+    if (pd.pastMedicalHistory) ctx += '\nPast Medical History: ' + JSON.stringify(pd.pastMedicalHistory) + '\n';
+    if (pd.screenings?.length) ctx += '\nScreenings:\n' + pd.screenings.join('\n') + '\n';
+    if (pd.flowsheets?.length) ctx += '\nFlowsheets: ' + pd.flowsheets.join(', ') + '\n';
+    if (pd.encounters?.length) ctx += '\nEncounter List:\n' + pd.encounters.join('\n') + '\n';
     if (pd.encounterDetails?.length) {
       ctx += '\nEncounter Details:\n';
       for (const enc of pd.encounterDetails) {
-        ctx += '\n--- ' + (enc.date || '?') + ' ---\n' + (enc.content || enc.summary || '') + '\n';
+        ctx += '\n=== ' + (enc.date || '?') + ' ===\n' + (enc.content || enc.summary || '') + '\n';
       }
     }
   }
+  if (state.clinicalSnapshot) ctx += '\n\nClinical Overview:\n' + state.clinicalSnapshot + '\n';
 
   let fullMsg = message;
   if (state.chartAiMessages.length <= 1) {
@@ -389,13 +405,9 @@ function render2FA(email) {
 
 function renderPatientTab() {
   let html = '';
+  const pd = state.patientData;
 
-  // Sub-tabs: Patient Overview | Chart Scan
-  html += '<div style="display:flex;border-bottom:1px solid #dde8f2;margin-bottom:8px">';
-  html += '<div class="' + (state.patientSubTab === 'overview' ? 'tab active' : 'tab') + '" data-subtab="overview">Patient Overview</div>';
-  html += '<div class="' + (state.patientSubTab === 'chartscan' ? 'tab active' : 'tab') + '" data-subtab="chartscan">Chart Scan</div>';
-  html += '</div>';
-
+  // ── Scanning in progress ──
   if (state.chartScanning) {
     html += '<div class="card" style="padding:16px">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
@@ -403,190 +415,115 @@ function renderPatientTab() {
     html += '<div><div style="font-size:13px;font-weight:600;color:#3d8ba8">Chart Scan in Progress</div>';
     html += '<div style="font-size:11px;color:#6b8299">' + (state.scrapeProgress || 'Starting...') + '</div></div>';
     html += '</div>';
-    // Progress log
     html += '<div style="background:#f8fafc;border:1px solid #e8f0f8;border-radius:6px;padding:8px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:10px;line-height:1.6;color:#5a7a8a">';
     for (const line of state.scrapeLog) {
-      const isError = line.includes('ERROR') || line.includes('WARNING');
-      html += '<div style="color:' + (isError ? '#d94040' : '#5a7a8a') + '">' + escapeHtml(line) + '</div>';
+      html += '<div style="color:' + (line.includes('ERROR') || line.includes('WARNING') ? '#d94040' : '#5a7a8a') + '">' + escapeHtml(line) + '</div>';
     }
-    html += '</div>';
-    html += '</div>';
+    html += '</div></div>';
     return html;
   }
 
-  // ── Chart Scan sub-tab ──
-  if (state.patientSubTab === 'chartscan') {
+  // ── 1. Patient Overview (collapsible) ──
+  html += '<div style="border:1px solid #dde8f2;border-radius:8px;margin-bottom:8px;overflow:hidden">';
+  html += '<button id="toggle-overview" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;background:#f0f4f9;border:none;cursor:pointer;text-align:left;font-size:13px;font-weight:600;color:#1e3a4f">';
+  html += '<span style="transform:rotate(' + (state.overviewOpen ? '90' : '0') + 'deg);transition:transform 0.2s;font-size:10px">▶</span>';
+  html += 'Patient Overview';
+  if (pd?.patientName) html += '<span style="font-size:10px;font-weight:400;color:#6b8299;margin-left:auto">' + pd.patientName + '</span>';
+  html += '</button>';
 
-    // If we have a completed scan, show the summary header instead of the date picker
+  if (state.overviewOpen) {
+    html += '<div style="padding:8px 12px">';
+    html += '<div style="display:flex;gap:4px;margin-bottom:8px">';
+    html += '<button class="btn btn-primary btn-small" id="scrape-btn">Read from PF</button>';
+    html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
+    html += '</div>';
+
+    if (state.loading) { html += '<div class="loading">Reading...</div>'; }
+    else if (!pd) {
+      html += '<div style="text-align:center;color:#8a9fb0;padding:12px;font-size:12px">Open a patient chart in PF and click "Read from PF"</div>';
+    } else {
+      // Patient info
+      const fields = [
+        ['Name', pd.patientName], ['DOB', pd.dob], ['Age', pd.age], ['Gender', pd.gender],
+        ['Phone', pd.phone], ['Insurance', pd.insurance], ['PRN', pd.prn],
+      ];
+      for (const [label, val] of fields) {
+        if (val) html += '<div class="field"><div class="field-label">' + label + '</div><div class="field-value">' + val + '</div></div>';
+      }
+      if (pd.medications?.length) html += '<div class="field"><div class="field-label">Medications</div><div class="field-value">' + pd.medications.length + ' active</div></div>';
+      if (pd.diagnoses?.length) html += '<div class="field"><div class="field-label">Diagnoses</div><div class="field-value">' + pd.diagnoses.length + ' active</div></div>';
+      if (pd.allergies?.length) html += '<div class="field"><div class="field-label">Allergies</div><div class="field-value">' + pd.allergies.join(', ') + '</div></div>';
+      if (pd.advanceDirectives) html += '<div class="field"><div class="field-label">Advance Directives</div><div class="field-value">' + pd.advanceDirectives + '</div></div>';
+      if (pd.healthConcerns) html += '<details style="margin-top:4px"><summary style="font-size:10px;font-weight:600;color:#6b8299;cursor:pointer">Health Concerns</summary><div style="font-size:11px;white-space:pre-wrap;color:#5a7a8a;padding:4px 0">' + escapeHtml(pd.healthConcerns) + '</div></details>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ── 2. Chart Scan (collapsible) ──
+  html += '<div style="border:1px solid #dde8f2;border-radius:8px;margin-bottom:8px;overflow:hidden">';
+  html += '<button id="toggle-chartscan" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;background:#f0f4f9;border:none;cursor:pointer;text-align:left;font-size:13px;font-weight:600;color:#1e3a4f">';
+  html += '<span style="transform:rotate(' + (state.chartScanOpen ? '90' : '0') + 'deg);transition:transform 0.2s;font-size:10px">▶</span>';
+  html += 'Chart Scan';
+  if (state.clinicalSnapshot) html += '<span style="width:8px;height:8px;border-radius:50%;background:#2e7d32;margin-left:auto;flex-shrink:0"></span>';
+  html += '</button>';
+
+  if (state.chartScanOpen) {
+    html += '<div style="padding:8px 12px">';
+
     if (state.clinicalSnapshot) {
-      // Scan complete header
-      const pd = state.patientData || {};
+      // Scan complete summary
       const fromDate = state.scanStartDate ? new Date(state.scanStartDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'All';
       const toDate = state.scanEndDate ? new Date(state.scanEndDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Present';
-      const encCount = pd._encountersScanned || 0;
-      const encSkipped = pd._encountersSkipped || 0;
-
-      html += '<div class="card" style="background:#f0f9fc;border-color:#52a8c7;margin-bottom:8px">';
-      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-      html += '<div style="width:8px;height:8px;border-radius:50%;background:#2e7d32;flex-shrink:0"></div>';
-      html += '<div style="font-size:13px;font-weight:700;color:#1e3a4f">Chart Scan Complete</div>';
-      html += '</div>';
-      html += '<div style="font-size:11px;color:#5a7a8a;line-height:1.6">';
-      html += '<div><strong>Patient:</strong> ' + (pd.patientName || '—') + '</div>';
-      html += '<div><strong>Date Range:</strong> ' + fromDate + ' — ' + toDate + '</div>';
-      html += '<div><strong>Encounters Scanned:</strong> ' + encCount + (encSkipped > 0 ? ' (' + encSkipped + ' outside range)' : '') + '</div>';
-      if (pd.medications?.length) html += '<div><strong>Medications:</strong> ' + pd.medications.length + '</div>';
-      if (pd.diagnoses?.length) html += '<div><strong>Diagnoses:</strong> ' + pd.diagnoses.length + '</div>';
-      html += '</div>';
-      html += '<button class="btn btn-secondary btn-small" id="rescan-btn" style="margin-top:8px;width:100%">Change Range & Rescan</button>';
+      html += '<div style="font-size:10px;color:#5a7a8a;margin-bottom:6px;line-height:1.5">';
+      html += '<strong>Range:</strong> ' + fromDate + ' — ' + toDate + ' | ';
+      html += '<strong>Encounters:</strong> ' + (pd?._encountersScanned || 0);
       html += '</div>';
 
       // Clinical Overview
-      html += '<div class="card" style="border-color:#52a8c7;border-width:2px">';
-      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:4px;object-fit:contain">Clinical Overview</div>';
-      html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow-y:auto">' + escapeHtml(state.clinicalSnapshot) + '</div>';
-      html += '<div style="margin-top:8px;display:flex;gap:4px">';
+      html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;margin-bottom:8px">' + escapeHtml(state.clinicalSnapshot) + '</div>';
+      html += '<div style="display:flex;gap:4px;margin-bottom:8px">';
       html += '<button class="btn btn-primary btn-small" data-copy-snapshot>Copy</button>';
       html += '<button class="btn btn-secondary btn-small" data-push-snapshot>Push to Ticket</button>';
-      html += '</div>';
-      html += '</div>';
-      // Chart AI — ask questions about the scanned data
-      html += '<div class="card" style="margin-top:8px">';
-      html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:14px;height:14px;border-radius:2px;object-fit:contain">Ask about this chart</div>';
-      html += '<div id="chart-ai-messages" style="max-height:200px;overflow-y:auto;margin-bottom:8px">';
-      if (state.chartAiMessages && state.chartAiMessages.length > 0) {
-        for (const m of state.chartAiMessages) {
-          const isUser = m.role === 'user';
-          html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:flex-start">';
-          html += '<div style="width:20px;height:20px;border-radius:' + (isUser ? '50%' : '3px') + ';background:' + (isUser ? '#1a5e9a' : '#52a8c7') + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">' + (isUser ? (state.user?.name?.[0] || 'U') : '<img src="icons/icon128.jpg" style="width:14px;height:14px;border-radius:2px">') + '</div>';
-          html += '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:' + (isUser ? '#1e3a4f' : '#3d8ba8') + '">' + (isUser ? 'You' : 'Seniority AI') + '</div>';
-          html += '<div style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content) + '</div></div></div>';
-        }
-      }
-      if (state.chartAiLoading) {
-        html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:center">';
-        html += '<img src="icons/icon128.jpg" style="width:20px;height:20px;border-radius:3px;animation:pulse 1.5s ease-in-out infinite">';
-        html += '<span style="font-size:11px;color:#8a9fb0;font-style:italic">Thinking...</span></div>';
-      }
-      html += '</div>';
-      html += '<div style="display:flex;gap:4px"><input type="text" id="chart-ai-input" placeholder="Ask about this patient\'s chart..." style="flex:1;padding:6px 10px;border:1px solid #c0d0e4;border-radius:16px;font-size:11px;outline:none">';
-      html += '<button class="btn btn-primary btn-small" id="chart-ai-send" style="background:#52a8c7;border-radius:16px;padding:6px 12px">Ask</button></div>';
+      html += '<button class="btn btn-secondary btn-small" id="rescan-btn">Rescan</button>';
       html += '</div>';
     } else {
-      // No scan yet — show date picker
-      html += '<div class="card" style="margin-bottom:8px">';
-      html += '<div class="card-title">Select Date Range</div>';
+      // Date picker
       html += '<div style="display:flex;gap:4px;margin-bottom:6px">';
       html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">From</label><input type="date" id="scan-start" value="' + state.scanStartDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
       html += '<div style="flex:1"><label style="font-size:9px;color:#8a9fb0">To</label><input type="date" id="scan-end" value="' + state.scanEndDate + '" style="width:100%;padding:4px 6px;border:1px solid #c0d0e4;border-radius:4px;font-size:11px"></div>';
       html += '</div>';
       html += '<button class="btn btn-primary btn-small" id="chart-scan-btn" style="width:100%;background:#3d8ba8">Start Chart Scan</button>';
-      html += '<div style="font-size:9px;color:#8a9fb0;margin-top:4px">Reads patient summary + clicks into each encounter within the date range. Generates an AI clinical overview.</div>';
-      html += '</div>';
     }
-    return html;
+    html += '</div>';
   }
-
-  // ── Patient Overview sub-tab ──
-  html += '<div class="action-bar">';
-  html += '<button class="btn btn-primary btn-small" id="scrape-btn">Read from PF</button>';
-  html += '<button class="btn btn-secondary btn-small" id="refresh-btn">Refresh</button>';
   html += '</div>';
 
-  if (state.loading) {
-    html += '<div class="loading">Reading patient data...</div>';
-    return html;
+  // ── 3. AI Chat (always visible, knows everything) ──
+  html += '<div class="card">';
+  html += '<div class="card-title" style="display:flex;align-items:center;gap:6px"><img src="icons/icon128.jpg" style="width:16px;height:16px;border-radius:3px;object-fit:contain">Ask about this patient</div>';
+  html += '<div id="chart-ai-messages" style="max-height:250px;overflow-y:auto;margin-bottom:8px">';
+  if (!state.chartAiMessages?.length && !state.chartAiLoading) {
+    html += '<div style="font-size:11px;color:#8a9fb0;padding:8px 0">Ask anything — the AI knows the patient\'s demographics, medications, diagnoses, insurance, encounters, and chart scan results.</div>';
   }
-
-  const pd = state.patientData;
-  if (!pd) {
-    html += '<div class="card"><div style="text-align:center;color:#8a9fb0;padding:20px">';
-    html += '<div style="margin-bottom:8px">Navigate to a patient chart in Practice Fusion, then:</div>';
-    html += '<div style="font-size:12px"><strong>Quick Read</strong> — reads the current screen</div>';
-    html += '<div style="font-size:12px"><strong>Full Chart Scan</strong> — navigates through every section and pulls the complete chart</div>';
-    html += '</div></div>';
-    return html;
+  if (state.chartAiMessages?.length > 0) {
+    for (const m of state.chartAiMessages) {
+      const isUser = m.role === 'user';
+      html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:flex-start">';
+      html += '<div style="width:20px;height:20px;border-radius:' + (isUser ? '50%' : '3px') + ';background:' + (isUser ? '#1a5e9a' : '#52a8c7') + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">' + (isUser ? (state.user?.name?.[0] || 'U') : '<img src="icons/icon128.jpg" style="width:14px;height:14px;border-radius:2px">') + '</div>';
+      html += '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:' + (isUser ? '#1e3a4f' : '#3d8ba8') + '">' + (isUser ? 'You' : 'Seniority AI') + '</div>';
+      html += '<div style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content) + '</div></div></div>';
+    }
   }
-
-  // Sections found indicator
-  if (pd._sectionsFound !== undefined) {
-    html += '<div style="font-size:10px;color:#3d8ba8;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:4px">';
-    html += '<span style="background:#e8f6fa;padding:2px 8px;border-radius:4px">Chart scan: ' + pd._sectionsFound + '/' + pd._sectionsTotal + ' sections</span>';
-    html += '</div>';
+  if (state.chartAiLoading) {
+    html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:center">';
+    html += '<img src="icons/icon128.jpg" style="width:20px;height:20px;border-radius:3px;animation:pulse 1.5s ease-in-out infinite">';
+    html += '<span style="font-size:11px;color:#8a9fb0;font-style:italic">Thinking...</span></div>';
   }
-
-  html += '<div class="card"><div class="card-title">Patient Information</div>';
-  const fields = [
-    ['Name', pd.patientName], ['DOB', pd.dob], ['Age', pd.age], ['Gender', pd.gender],
-    ['Phone', pd.phone], ['Email', pd.email], ['Address', pd.address], ['SSN (last 4)', pd.ssnLast4],
-    ['Insurance', pd.insurance], ['Member ID', pd.memberId], ['Group #', pd.groupNumber],
-    ['PCP', pd.pcp], ['Pharmacy', pd.pharmacy], ['Smoking', pd.smokingStatus],
-  ];
-  for (const [label, val] of fields) {
-    if (val) html += `<div class="field"><div class="field-label">${label}</div><div class="field-value">${val}</div></div>`;
-  }
-  // Show "not found" only for critical fields
-  if (!pd.patientName) html += '<div class="field"><div class="field-label">Name</div><div class="field-value empty">Not found</div></div>';
   html += '</div>';
-
-  if (pd.medications && pd.medications.length) {
-    html += '<div class="card"><div class="card-title">Medications</div>';
-    html += pd.medications.map(m => `<div style="font-size:12px;padding:2px 0;border-bottom:1px solid #f0f4f9">${m}</div>`).join('');
-    html += '</div>';
-  }
-  if (pd.allergies && pd.allergies.length) {
-    html += '<div class="card"><div class="card-title">Allergies</div>';
-    html += pd.allergies.map(a => `<div style="font-size:12px;padding:2px 0;color:#d94040">${a}</div>`).join('');
-    html += '</div>';
-  }
-  if (pd.diagnoses && pd.diagnoses.length) {
-    html += '<div class="card"><div class="card-title">Diagnoses / Problems</div>';
-    html += pd.diagnoses.map(d => `<div style="font-size:12px;padding:2px 0;border-bottom:1px solid #f0f4f9">${d}</div>`).join('');
-    html += '</div>';
-  }
-
-  // Push to ticket
-  if (state.tickets.length > 0) {
-    html += '<div class="card"><div class="card-title">Push to Ticket</div>';
-    html += '<div style="font-size:11px;color:#6b8299;margin-bottom:6px">Send this patient data as a note:</div>';
-    for (const t of state.tickets.slice(0, 5)) {
-      html += `<div class="ticket-row" data-push="${t.id}">
-        <span class="ticket-id">${t.id.toUpperCase()}</span>
-        <span class="ticket-subject">${t.subject || '(no subject)'}</span>
-      </div>`;
-    }
-    html += '</div>';
-  }
-
-  // Vitals
-  if (pd.vitals && Object.keys(pd.vitals).length > 0) {
-    html += '<div class="card"><div class="card-title">Latest Vitals</div>';
-    const vitalLabels = { bp: 'Blood Pressure', hr: 'Heart Rate', temp: 'Temperature', weight: 'Weight', height: 'Height', bmi: 'BMI', o2: 'O2 Sat' };
-    for (const [k, v] of Object.entries(pd.vitals)) {
-      html += `<div class="field"><div class="field-label">${vitalLabels[k] || k}</div><div class="field-value">${v}</div></div>`;
-    }
-    html += '</div>';
-  }
-
-  // Chart sections (from deep scrape)
-  if (pd._sections) {
-    const sectionNames = Object.keys(pd._sections).filter(k => pd._sections[k]);
-    if (sectionNames.length > 0) {
-      html += '<div class="card"><div class="card-title">Chart Sections Retrieved</div>';
-      for (const name of sectionNames) {
-        html += `<details style="margin-bottom:4px"><summary style="cursor:pointer;font-size:12px;font-weight:500;color:#1e3a4f;padding:4px 0">${name}</summary>`;
-        html += `<div style="font-size:11px;white-space:pre-wrap;color:#6b8299;max-height:200px;overflow:auto;padding:4px 8px;background:#f8fafc;border-radius:4px;margin-top:4px">${escapeHtml(pd._sections[name].substring(0, 3000))}</div>`;
-        html += '</details>';
-      }
-      html += '</div>';
-    }
-  }
-
-  if (pd._rawBanner && !pd.patientName) {
-    html += '<div class="card"><div class="card-title">Raw Page Data (AI can analyze)</div>';
-    html += `<div style="font-size:11px;white-space:pre-wrap;color:#6b8299;max-height:200px;overflow:auto">${escapeHtml(pd._rawBanner)}</div>`;
-    html += '</div>';
-  }
+  html += '<div style="display:flex;gap:4px"><input type="text" id="chart-ai-input" placeholder="What insurance does this patient have?" style="flex:1;padding:6px 10px;border:1px solid #c0d0e4;border-radius:16px;font-size:11px;outline:none">';
+  html += '<button class="btn btn-primary btn-small" id="chart-ai-send" style="background:#52a8c7;border-radius:16px;padding:6px 12px">Ask</button></div>';
+  html += '</div>';
 
   return html;
 }
@@ -687,11 +624,12 @@ function bindEvents() {
   document.querySelectorAll('.tab[data-tab]').forEach(t => {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; render(); });
   });
-  // Sub-tab switching
-  document.querySelectorAll('[data-subtab]').forEach(t => {
-    t.addEventListener('click', () => { state.patientSubTab = t.dataset.subtab; render(); });
-  });
-  // Rescan — clear snapshot and show date picker again
+  // Collapsible toggles
+  const toggleOverview = document.getElementById('toggle-overview');
+  if (toggleOverview) toggleOverview.addEventListener('click', () => { state.overviewOpen = !state.overviewOpen; render(); });
+  const toggleChartScan = document.getElementById('toggle-chartscan');
+  if (toggleChartScan) toggleChartScan.addEventListener('click', () => { state.chartScanOpen = !state.chartScanOpen; render(); });
+  // Rescan
   const rescanBtn = document.getElementById('rescan-btn');
   if (rescanBtn) rescanBtn.addEventListener('click', () => {
     state.clinicalSnapshot = null;

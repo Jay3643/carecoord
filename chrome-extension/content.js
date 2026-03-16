@@ -12,7 +12,6 @@
     try { chrome.runtime.sendMessage({ type: 'SCRAPE_PROGRESS', status: msg }); } catch(e) {}
   }
 
-  // ── Parse patient banner ──
   function parseBanner() {
     const data = {};
     data.patientName = txt(sel('[data-element="patient-ribbon-patient-name"]'));
@@ -29,7 +28,6 @@
     return data;
   }
 
-  // ── Scrape Summary page ──
   function scrapeSummary() {
     const data = {};
     const allergyCard = sel('[data-element="allergies-list"]');
@@ -71,7 +69,7 @@
 
   function scrapePatientData() {
     const data = { ...parseBanner(), ...scrapeSummary() };
-    data._pageContext = document.body.innerText.substring(0, 12000);
+    data._pageContext = document.body.innerText.substring(0, 15000);
     return data;
   }
 
@@ -81,14 +79,13 @@
     return m ? new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2])) : null;
   }
 
-  // ── Chart Scan ──
+  // ── Chart Scan — clicks encounters ON THE SUMMARY PAGE ──
   async function chartScan(startDate, endDate) {
     const chart = {};
     const errors = [];
 
-    // Fix date range if backwards
+    // Fix backwards dates
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      report('Date range was backwards — swapping');
       const tmp = startDate; startDate = endDate; endDate = tmp;
     }
 
@@ -97,85 +94,14 @@
     const summaryTab = sel('[data-element="patient-header-tab-Summary"]');
     if (summaryTab) { summaryTab.click(); await sleep(2000); }
 
+    // Scrape all summary data
     Object.assign(chart, scrapePatientData());
-    const foundFields = Object.keys(chart).filter(k => !k.startsWith('_') && chart[k] && (Array.isArray(chart[k]) ? chart[k].length > 0 : true));
-    report('Summary: ' + foundFields.length + ' fields, ' + (chart.medications?.length || 0) + ' meds, ' + (chart.diagnoses?.length || 0) + ' dx');
+    report('Summary: ' + (chart.patientName || 'no name') + ' | ' + (chart.medications?.length || 0) + ' meds | ' + (chart.diagnoses?.length || 0) + ' dx | ' + (chart.encounters?.length || 0) + ' encounters listed');
 
-    if (!chart.patientName) {
-      report('WARNING: No patient name — are you on a patient chart?');
-      errors.push('No patient name detected');
-    }
-
-    // Step 2: Go to Timeline
-    report('Step 2: Opening Timeline...');
-    const timelineTab = sel('[data-element="patient-header-tab-Timeline"]');
-    if (!timelineTab) {
-      report('ERROR: Timeline tab not found');
-      errors.push('Timeline tab not found');
-      chart._errors = errors;
-      chart._scanComplete = true;
-      chart._encountersScanned = 0;
-      return chart;
-    }
-
-    timelineTab.click();
-    await sleep(3000);
-
-    // Discover what's on the Timeline page
-    const pageText = document.body.innerText;
-    report('Timeline page loaded (' + pageText.length + ' chars)');
-
-    // Look for "View all encounters" link
-    const viewAllLinks = Array.from(document.querySelectorAll('a')).filter(a =>
-      a.textContent.toLowerCase().includes('view all encounters') ||
-      a.textContent.toLowerCase().includes('view all') ||
-      (a.href && a.href.includes('timeline/encounter'))
-    );
-    report('Found ' + viewAllLinks.length + ' "view all" links');
-    if (viewAllLinks.length > 0) {
-      viewAllLinks[0].click();
-      await sleep(2500);
-      report('Clicked "View all encounters"');
-    }
-
-    // Try multiple strategies to find encounters
+    // Step 2: Click into encounters from the SUMMARY page encounter list
+    report('Step 2: Reading encounters from Summary...');
     let encounterItems = selAll('[data-element^="encounter-item-"]');
-    report('Strategy 1 [data-element^="encounter-item-"]: ' + encounterItems.length + ' items');
-
-    if (encounterItems.length === 0) {
-      encounterItems = selAll('.encounter-list li');
-      report('Strategy 2 .encounter-list li: ' + encounterItems.length + ' items');
-    }
-    if (encounterItems.length === 0) {
-      encounterItems = selAll('.timeline-item, [class*="timeline"] li, [class*="encounter"] li');
-      report('Strategy 3 timeline/encounter classes: ' + encounterItems.length + ' items');
-    }
-    if (encounterItems.length === 0) {
-      // Look for any list items with dates
-      const allLis = selAll('li');
-      encounterItems = allLis.filter(li => {
-        const t = li.textContent;
-        return t.match(/\d{2}\/\d{2}\/\d{4}/) && t.length > 20 && t.length < 500;
-      });
-      report('Strategy 4 (li with dates): ' + encounterItems.length + ' items');
-    }
-    if (encounterItems.length === 0) {
-      // Last resort: find clickable elements with dates
-      const allClickable = selAll('a, [role="link"], [role="button"]');
-      encounterItems = allClickable.filter(el => {
-        const t = el.textContent;
-        return t.match(/\d{2}\/\d{2}\/\d{4}/) && t.length > 10;
-      });
-      report('Strategy 5 (clickable with dates): ' + encounterItems.length + ' items');
-    }
-
-    if (encounterItems.length === 0) {
-      report('WARNING: No encounters found on Timeline page');
-      report('Page snippet: ' + pageText.substring(0, 500).replace(/\n/g, ' | '));
-      // Dump some DOM info for debugging
-      const allDataElements = selAll('[data-element]').map(el => el.getAttribute('data-element')).slice(0, 30);
-      report('data-elements found: ' + allDataElements.join(', '));
-    }
+    report('Found ' + encounterItems.length + ' encounters on Summary page');
 
     chart.encounterDetails = [];
     let scanned = 0;
@@ -183,92 +109,69 @@
 
     for (let i = 0; i < encounterItems.length; i++) {
       const item = encounterItems[i];
-      // Find the date in this encounter
       const dateMatch = item.textContent.match(/(\d{2}\/\d{2}\/\d{4})/);
       const dateText = dateMatch ? dateMatch[1] : null;
       const encounterDate = parseDate(dateText);
 
       // Date range filter
-      if (encounterDate && startDate) {
-        if (encounterDate < new Date(startDate)) { skipped++; continue; }
-      }
-      if (encounterDate && endDate) {
-        if (encounterDate > new Date(endDate)) { skipped++; continue; }
-      }
+      if (encounterDate && startDate && encounterDate < new Date(startDate)) { skipped++; continue; }
+      if (encounterDate && endDate && encounterDate > new Date(endDate)) { skipped++; continue; }
 
-      const encounterLabel = item.textContent.trim().replace(/\s+/g, ' ').substring(0, 120);
-      report('Encounter ' + (scanned + 1) + ': ' + (dateText || '?') + ' — ' + encounterLabel.substring(0, 60));
+      const label = item.textContent.trim().replace(/\s+/g, ' ').substring(0, 100);
+      report('Encounter ' + (scanned + 1) + ': ' + (dateText || '?') + ' — ' + label.substring(0, 50));
 
       try {
-        const urlBefore = location.href;
+        // Click the date link to open the encounter
+        const dateLink = item.querySelector('.text-color-link');
+        if (!dateLink) { report('  No clickable date link found — skipping'); continue; }
 
-        // Click the encounter
-        const clickTarget = item.querySelector('.text-color-link') || item.querySelector('a') || item;
-        report('  Clicking: <' + clickTarget.tagName + '> "' + clickTarget.textContent.trim().substring(0, 30) + '"');
-        clickTarget.click();
+        const urlBefore = location.href;
+        dateLink.click();
         await sleep(3000);
 
         const urlAfter = location.href;
         const navigated = urlAfter !== urlBefore;
-        report('  URL changed: ' + (navigated ? 'YES' : 'NO'));
+        report('  Navigated: ' + (navigated ? 'YES' : 'NO') + ' | URL: ' + urlAfter.split('/').slice(-2).join('/'));
 
-        // Read content
-        const content = document.body.innerText.substring(0, 8000);
-        const hasClinical = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('HPI') || content.includes('Objective');
+        // Read the encounter page content
+        const content = document.body.innerText.substring(0, 10000);
+        const hasClinical = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('HPI') || content.includes('Objective') || content.includes('CC:');
 
         chart.encounterDetails.push({
           date: dateText,
-          summary: encounterLabel,
+          summary: label,
           content: content,
           navigated: navigated,
-          hasClinicalContent: hasClinical,
         });
         scanned++;
-        report('  Saved (' + content.length + ' chars, clinical: ' + (hasClinical ? 'YES' : 'no') + ')');
+        report('  Read ' + content.length + ' chars (clinical notes: ' + (hasClinical ? 'YES' : 'summary only') + ')');
 
-        // Go back
+        // Go back to Summary
         if (navigated) {
-          // Try back button or timeline tab
-          const backBtn = Array.from(document.querySelectorAll('button, a')).find(el => {
-            const t = el.textContent.trim().toLowerCase();
-            return t === 'back' || t.includes('back to') || t === '←';
-          });
-          if (backBtn) { backBtn.click(); await sleep(2500); }
-          else {
-            const tl = sel('[data-element="patient-header-tab-Timeline"]');
-            if (tl) { tl.click(); await sleep(2500); }
-          }
-          // Re-find encounters
+          const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+          if (sumTab) { sumTab.click(); await sleep(2500); }
+
+          // Re-find encounters after returning
           encounterItems = selAll('[data-element^="encounter-item-"]');
-          if (encounterItems.length === 0) encounterItems = selAll('.encounter-list li');
-          if (encounterItems.length === 0) {
-            const allLis = selAll('li');
-            encounterItems = allLis.filter(li => li.textContent.match(/\d{2}\/\d{2}\/\d{4}/) && li.textContent.length > 20 && li.textContent.length < 500);
-          }
-          report('  Back — re-found ' + encounterItems.length + ' encounters');
+          report('  Returned to Summary — ' + encounterItems.length + ' encounters');
         }
       } catch(e) {
         report('ERROR: ' + e.message);
-        errors.push('Encounter ' + (dateText || i) + ': ' + e.message);
-        const tl = sel('[data-element="patient-header-tab-Timeline"]');
-        if (tl) { tl.click(); await sleep(2000); }
+        errors.push(dateText + ': ' + e.message);
+        const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+        if (sumTab) { sumTab.click(); await sleep(2000); }
+        encounterItems = selAll('[data-element^="encounter-item-"]');
       }
 
       if (scanned >= 10) { report('Reached 10 encounter limit'); break; }
     }
 
-    report('Scanned: ' + scanned + ', Skipped: ' + skipped + ', Errors: ' + errors.length);
-
-    // Return to Summary
-    report('Returning to Summary...');
-    const sumTab = sel('[data-element="patient-header-tab-Summary"]');
-    if (sumTab) { sumTab.click(); await sleep(1500); }
+    report('Done: ' + scanned + ' scanned, ' + skipped + ' skipped, ' + errors.length + ' errors');
 
     chart._scanComplete = true;
     chart._encountersScanned = scanned;
     chart._encountersSkipped = skipped;
     chart._errors = errors;
-    report('Chart scan done');
     return chart;
   }
 
@@ -277,15 +180,11 @@
     if (msg.type === 'SCRAPE_PATIENT') {
       try {
         const data = scrapePatientData();
-        report('Patient overview: ' + (data.patientName || 'no name') + ', ' + (data.medications?.length || 0) + ' meds');
+        report('Overview: ' + (data.patientName || 'no name'));
         sendResponse({ success: true, data });
-      } catch(e) {
-        report('ERROR: ' + e.message);
-        sendResponse({ success: false, error: e.message });
-      }
+      } catch(e) { report('ERROR: ' + e.message); sendResponse({ success: false, error: e.message }); }
     }
     if (msg.type === 'CHART_SCAN') {
-      report('Chart scan starting...');
       chartScan(msg.startDate, msg.endDate).then(data => {
         chrome.runtime.sendMessage({ type: 'CHART_SCAN_COMPLETE', data });
       }).catch(e => {
@@ -297,7 +196,6 @@
     return true;
   });
 
-  // Auto-scrape
   setTimeout(() => {
     const data = scrapePatientData();
     if (data.patientName) {
@@ -306,7 +204,6 @@
     }
   }, 3000);
 
-  // SPA navigation
   let lastUrl = location.href;
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
@@ -318,5 +215,5 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
-  report('Content script ready on ' + location.hostname);
+  report('Ready on ' + location.hostname);
 })();
