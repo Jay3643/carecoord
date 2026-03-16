@@ -79,7 +79,7 @@
     return m ? new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2])) : null;
   }
 
-  // ── Chart Scan — clicks encounters ON THE SUMMARY PAGE ──
+  // ── Chart Scan — reads Summary + all encounter info ──
   async function chartScan(startDate, endDate) {
     const chart = {};
     const errors = [];
@@ -96,19 +96,18 @@
 
     // Scrape all summary data
     Object.assign(chart, scrapePatientData());
-    report('Summary: ' + (chart.patientName || 'no name') + ' | ' + (chart.medications?.length || 0) + ' meds | ' + (chart.diagnoses?.length || 0) + ' dx | ' + (chart.encounters?.length || 0) + ' encounters listed');
+    report('Summary: ' + (chart.patientName || 'no name') + ' | ' + (chart.medications?.length || 0) + ' meds | ' + (chart.diagnoses?.length || 0) + ' dx');
 
-    // Step 2: Click into encounters from the SUMMARY page encounter list
+    // Step 2: Read encounter details from Summary page
     report('Step 2: Reading encounters from Summary...');
-    let encounterItems = selAll('[data-element^="encounter-item-"]');
-    report('Found ' + encounterItems.length + ' encounters on Summary page');
+    const encounterItems = selAll('[data-element^="encounter-item-"]');
+    report('Found ' + encounterItems.length + ' encounters on Summary');
 
     chart.encounterDetails = [];
     let scanned = 0;
     let skipped = 0;
 
-    for (let i = 0; i < encounterItems.length; i++) {
-      const item = encounterItems[i];
+    for (const item of encounterItems) {
       const dateMatch = item.textContent.match(/(\d{2}\/\d{2}\/\d{4})/);
       const dateText = dateMatch ? dateMatch[1] : null;
       const encounterDate = parseDate(dateText);
@@ -117,59 +116,72 @@
       if (encounterDate && startDate && encounterDate < new Date(startDate)) { skipped++; continue; }
       if (encounterDate && endDate && encounterDate > new Date(endDate)) { skipped++; continue; }
 
-      const label = item.textContent.trim().replace(/\s+/g, ' ').substring(0, 100);
-      report('Encounter ' + (scanned + 1) + ': ' + (dateText || '?') + ' — ' + label.substring(0, 50));
+      // Extract all text from this encounter item
+      const title = item.getAttribute('title') || '';
+      const type = txt(item.querySelector('[data-element="encounter-type"]')) || '';
+      const code = txt(item.querySelector('[data-element="code-type-and-code-value"]')) || '';
+      const cc = txt(item.querySelector('.chief-complaint')) || '';
+      const fullText = item.textContent.trim().replace(/\s+/g, ' ');
 
-      try {
-        // Click the date link to open the encounter
-        const dateLink = item.querySelector('.text-color-link');
-        if (!dateLink) { report('  No clickable date link found — skipping'); continue; }
+      chart.encounterDetails.push({
+        date: dateText,
+        type: title || type,
+        code: code,
+        chiefComplaint: cc.replace('CC:', '').trim(),
+        summary: fullText,
+      });
+      scanned++;
+      report('  ' + (dateText || '?') + ' — ' + (title || type || 'encounter') + (cc ? ' | CC: ' + cc.replace('CC:','').trim() : ''));
+    }
 
-        const urlBefore = location.href;
-        dateLink.click();
-        await sleep(3000);
+    // Step 3: Click "View all encounters in timeline" to get full list
+    const viewAllLink = Array.from(document.querySelectorAll('a')).find(a =>
+      a.textContent.includes('View all encounters') && a.href && a.href.includes('timeline/encounter')
+    );
+    if (viewAllLink && encounterItems.length < 10) {
+      report('Step 3: Loading all encounters from timeline...');
+      viewAllLink.click();
+      await sleep(3000);
 
-        const urlAfter = location.href;
-        const navigated = urlAfter !== urlBefore;
-        report('  Navigated: ' + (navigated ? 'YES' : 'NO') + ' | URL: ' + urlAfter.split('/').slice(-2).join('/'));
+      // Read all encounters from the full timeline list
+      const timelineItems = selAll('[data-element^="encounter-item-"]');
+      report('Timeline has ' + timelineItems.length + ' total encounters');
 
-        // Read the encounter page content
-        const content = document.body.innerText.substring(0, 10000);
-        const hasClinical = content.includes('Chief Complaint') || content.includes('Assessment') || content.includes('Plan') || content.includes('Subjective') || content.includes('HPI') || content.includes('Objective') || content.includes('CC:');
+      for (const item of timelineItems) {
+        const dateMatch = item.textContent.match(/(\d{2}\/\d{2}\/\d{4})/);
+        const dateText = dateMatch ? dateMatch[1] : null;
+        const encounterDate = parseDate(dateText);
+
+        if (encounterDate && startDate && encounterDate < new Date(startDate)) continue;
+        if (encounterDate && endDate && encounterDate > new Date(endDate)) continue;
+
+        // Skip if we already have this date
+        if (chart.encounterDetails.some(e => e.date === dateText)) continue;
+
+        const title = item.getAttribute('title') || '';
+        const type = txt(item.querySelector('[data-element="encounter-type"]')) || '';
+        const cc = txt(item.querySelector('.chief-complaint')) || '';
 
         chart.encounterDetails.push({
           date: dateText,
-          summary: label,
-          content: content,
-          navigated: navigated,
+          type: title || type,
+          chiefComplaint: cc.replace('CC:', '').trim(),
+          summary: item.textContent.trim().replace(/\s+/g, ' '),
         });
         scanned++;
-        report('  Read ' + content.length + ' chars (clinical notes: ' + (hasClinical ? 'YES' : 'summary only') + ')');
-
-        // Go back to Summary
-        if (navigated) {
-          const sumTab = sel('[data-element="patient-header-tab-Summary"]');
-          if (sumTab) { sumTab.click(); await sleep(2500); }
-
-          // Re-find encounters after returning
-          encounterItems = selAll('[data-element^="encounter-item-"]');
-          report('  Returned to Summary — ' + encounterItems.length + ' encounters');
-        }
-      } catch(e) {
-        report('ERROR: ' + e.message);
-        errors.push(dateText + ': ' + e.message);
-        const sumTab = sel('[data-element="patient-header-tab-Summary"]');
-        if (sumTab) { sumTab.click(); await sleep(2000); }
-        encounterItems = selAll('[data-element^="encounter-item-"]');
       }
 
-      if (scanned >= 10) { report('Reached 10 encounter limit'); break; }
+      report('Total encounters after timeline: ' + chart.encounterDetails.length);
+
+      // Return to Summary
+      const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+      if (sumTab) { sumTab.click(); await sleep(1500); }
     }
 
-    report('Done: ' + scanned + ' scanned, ' + skipped + ' skipped, ' + errors.length + ' errors');
+    report('Done: ' + scanned + ' encounters, ' + skipped + ' skipped');
 
     chart._scanComplete = true;
-    chart._encountersScanned = scanned;
+    chart._encountersScanned = chart.encounterDetails.length;
     chart._encountersSkipped = skipped;
     chart._errors = errors;
     return chart;
