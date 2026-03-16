@@ -251,7 +251,7 @@ async function chartAiChat(message) {
 
   let fullMsg = message;
   if (state.chartAiMessages.length <= 1) {
-    fullMsg = 'Here is the patient chart data from Practice Fusion:\n\n' + ctx + '\n---\n\nUser question: ' + message;
+    fullMsg = 'Here is the patient chart data from Practice Fusion. IMPORTANT: Only answer based on the data provided below. If the information is not present, say "That information is not in the chart data I have." NEVER make up dates, encounters, or clinical details.\n\n' + ctx + '\n---\n\nUser question: ' + message;
   }
 
   try {
