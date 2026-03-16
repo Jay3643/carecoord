@@ -61,7 +61,6 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [folder, setFolder] = useState('INBOX');
   const [categoryTab, setCategoryTab] = useState('CATEGORY_PERSONAL');
   const [selected, setSelected] = useState(null);
@@ -73,6 +72,8 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
   const [nextPage, setNextPage] = useState(null);
+  const [prevPageTokens, setPrevPageTokens] = useState([]);  // stack of previous page tokens
+  const [currentPageToken, setCurrentPageToken] = useState(null);
   const [total, setTotal] = useState(0);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [labels, setLabels] = useState([]);
@@ -113,30 +114,40 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const load = (f, q, pt, labelId) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
-    if (pt) setLoadingMore(true); else setLoading(true);
+    setLoading(true);
     let url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50';
     if (labelId) url += '&labelId=' + encodeURIComponent(labelId);
     if (pt) url += '&pageToken=' + pt;
     fetch(url, { credentials: 'include' }).then(r => r.json()).then(d => {
-      const newMsgs = d.messages || [];
-      if (pt) {
-        // Append and deduplicate by message ID
-        setMessages(prev => {
-          const ids = new Set(prev.map(m => m.id));
-          return [...prev, ...newMsgs.filter(m => !ids.has(m.id))];
-        });
-      } else {
-        setMessages(newMsgs);
-      }
+      setMessages(d.messages || []);
       setNextPage(d.nextPageToken || null);
       setTotal(d.resultSizeEstimate || 0);
-    }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); setLoadingMore(false); loadingRef.current = false; });
+    }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); loadingRef.current = false; });
   };
 
-  const pickFolder = (id) => { setFolder(id); setActiveLabelId(null); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load(id); };
-  const pickCategory = (cat) => { setCategoryTab(cat.id); setActiveLabelId(null); setSelected(null); setDetail(null); load('INBOX', cat.q); };
-  const pickLabel = (label) => { setFolder(null); setActiveLabelId(label.id); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load('ALL', '', null, label.id); };
-  const doSearch = (q) => { if (!q.trim()) { if (activeLabelId) load('ALL', '', null, activeLabelId); else load(folder); return; } setSelected(null); setDetail(null); load('ALL', q); };
+  const resetPage = () => { setPrevPageTokens([]); setCurrentPageToken(null); setNextPage(null); };
+  const pickFolder = (id) => { setFolder(id); setActiveLabelId(null); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); resetPage(); load(id); };
+  const pickCategory = (cat) => { setCategoryTab(cat.id); setActiveLabelId(null); setSelected(null); setDetail(null); resetPage(); load('INBOX', cat.q); };
+  const pickLabel = (label) => { setFolder(null); setActiveLabelId(label.id); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); resetPage(); load('ALL', '', null, label.id); };
+  const doSearch = (q) => { if (!q.trim()) { if (activeLabelId) load('ALL', '', null, activeLabelId); else load(folder); return; } setSelected(null); setDetail(null); resetPage(); load('ALL', q); };
+
+  const goNewer = () => {
+    if (prevPageTokens.length === 0) return;
+    const stack = [...prevPageTokens];
+    const prevToken = stack.pop();
+    setPrevPageTokens(stack);
+    const pt = prevToken || null;  // null means first page
+    setCurrentPageToken(pt);
+    setSelected(null); setDetail(null); setCheckedIds(new Set());
+    load(activeLabelId ? 'ALL' : folder, search, pt, activeLabelId || undefined);
+  };
+  const goOlder = () => {
+    if (!nextPage) return;
+    setPrevPageTokens(prev => [...prev, currentPageToken]);
+    setCurrentPageToken(nextPage);
+    setSelected(null); setDetail(null); setCheckedIds(new Set());
+    load(activeLabelId ? 'ALL' : folder, search, nextPage, activeLabelId || undefined);
+  };
 
   const openMsg = async (m) => {
     setSelected(m); setShowReply(false); setDetailLoading(true);
@@ -341,13 +352,6 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     setShowLabelPicker(null);
   };
 
-  const onScroll = () => {
-    if (!listRef.current || !nextPage || loadingRef.current) return;
-    const el = listRef.current;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
-      load(activeLabelId ? 'ALL' : folder, search, nextPage, activeLabelId || undefined);
-    }
-  };
 
   const isSupervisorOrAdmin = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
 
@@ -571,12 +575,33 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             </div>
           )}
           <div style={{ flex:1 }} />
-          <span style={{ fontSize:12,color:'#5f6368',padding:'0 8px' }}>{messages.length ? '1\u2013' + messages.length : '0'}{total > messages.length ? ' of many' : ''}</span>
+          {/* Gmail-style pagination */}
+          <div style={{ display:'flex',alignItems:'center',gap:4,padding:'0 8px' }}>
+            <span style={{ fontSize:12,color:'#5f6368' }}>
+              {messages.length > 0
+                ? `${prevPageTokens.length * 50 + 1}\u2013${prevPageTokens.length * 50 + messages.length}${total ? ' of ' + (total > 500 ? 'many' : '~' + total) : ''}`
+                : 'No messages'}
+            </span>
+            <button onClick={goNewer} disabled={prevPageTokens.length === 0}
+              title="Newer"
+              style={{ background:'none',border:'none',cursor:prevPageTokens.length===0?'default':'pointer',padding:4,borderRadius:20,opacity:prevPageTokens.length===0?0.3:1,display:'flex',alignItems:'center' }}
+              onMouseEnter={e => { if(prevPageTokens.length>0) e.currentTarget.style.background='#f1f3f4'; }}
+              onMouseLeave={e => e.currentTarget.style.background='none'}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            </button>
+            <button onClick={goOlder} disabled={!nextPage}
+              title="Older"
+              style={{ background:'none',border:'none',cursor:!nextPage?'default':'pointer',padding:4,borderRadius:20,opacity:!nextPage?0.3:1,display:'flex',alignItems:'center' }}
+              onMouseEnter={e => { if(nextPage) e.currentTarget.style.background='#f1f3f4'; }}
+              onMouseLeave={e => e.currentTarget.style.background='none'}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </button>
+          </div>
         </div>
 
         {/* Message List or Detail */}
         {!selected ? (
-          <div ref={listRef} onScroll={onScroll} style={{ flex:1,overflowY:'auto' }}>
+          <div ref={listRef} style={{ flex:1,overflowY:'auto' }}>
             {loading && Array.from({length:12}).map((_,i) => (
               <div key={i} style={{ display:'flex',alignItems:'center',gap:12,padding:'0 16px',height:40,borderBottom:'1px solid #f6f6f6' }}>
                 <div className="gi-skel" style={{ width:18,height:18 }} />
@@ -622,7 +647,6 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                 <span style={{ flexShrink:0,marginLeft:12,fontSize:12,color:m.isUnread?'#202124':'#5f6368',fontWeight:m.isUnread?700:400,whiteSpace:'nowrap' }}>{fmtDate(m.date)}</span>
               </div>
             ))}
-            {loadingMore && <div style={{ padding:16,textAlign:'center',color:'#5f6368',fontSize:13 }}>Loading more emails...</div>}
           </div>
         ) : (
           <div style={{ flex:1,overflowY:'auto' }}>
