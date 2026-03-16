@@ -25,7 +25,14 @@ export function TagPill({ tag, onRemove }) {
   );
 }
 
-const AVATAR_COLORS = ['#1a5e9a', '#0891b2', '#c96a1b', '#059669', '#dc2626', '#7c3aed', '#d946ef', '#e11d48', '#ca8a04', '#4f46e5', '#0d9488', '#b91c1c'];
+const AVATAR_COLORS = [
+  '#1a5e9a', '#0891b2', '#c96a1b', '#059669', '#dc2626', '#7c3aed',
+  '#d946ef', '#e11d48', '#ca8a04', '#4f46e5', '#0d9488', '#b91c1c',
+  '#2563eb', '#16a34a', '#ea580c', '#9333ea', '#0284c7', '#65a30d',
+  '#db2777', '#0369a1', '#15803d', '#c2410c', '#7e22ce', '#0e7490',
+  '#a16207', '#be123c', '#4338ca', '#047857', '#9a3412', '#6d28d9',
+  '#115e59', '#854d0e', '#9f1239', '#3730a3', '#166534', '#7f1d1d',
+];
 
 export function Avatar({ user, size = 32 }) {
   const idx = user && user.id ? (user.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 7) % AVATAR_COLORS.length : 0;

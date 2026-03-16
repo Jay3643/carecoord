@@ -3,7 +3,12 @@ import { api } from '../api';
 import Icon from './Icons';
 import { Avatar } from './ui';
 
-const TAG_COLORS = ['#6b7280', '#d94040', '#c96a1b', '#ca8a04', '#2e7d32', '#0891b2', '#1a5e9a', '#7c3aed', '#d946ef', '#e11d48'];
+const TAG_COLORS = [
+  '#6b7280', '#d94040', '#c96a1b', '#ca8a04', '#2e7d32', '#0891b2',
+  '#1a5e9a', '#7c3aed', '#d946ef', '#e11d48', '#2563eb', '#16a34a',
+  '#ea580c', '#9333ea', '#0284c7', '#65a30d', '#db2777', '#0369a1',
+  '#15803d', '#7e22ce', '#0e7490', '#a16207', '#be123c', '#4338ca',
+];
 
 function TagsSection({ showToast, s }) {
   const [tags, setTags] = React.useState([]);
@@ -54,7 +59,7 @@ function TagsSection({ showToast, s }) {
 
       {/* Create new tag */}
       <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 200 }}>
           {TAG_COLORS.map(c => (
             <button key={c} onClick={() => setNewColor(c)}
               style={{ width: 20, height: 20, borderRadius: '50%', background: c, border: newColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
@@ -75,7 +80,7 @@ function TagsSection({ showToast, s }) {
         <div key={tag.id} style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12 }}>
           {editingId === tag.id ? (
             <>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', maxWidth: 180 }}>
                 {TAG_COLORS.map(c => (
                   <button key={c} onClick={() => setEditColor(c)}
                     style={{ width: 16, height: 16, borderRadius: '50%', background: c, border: editColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
