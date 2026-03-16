@@ -14,6 +14,7 @@ import ChatScreen from './components/ChatScreen';
 import { GmailConnectButton } from './components/GmailPanel';
 import AiPanel from './components/AiPanel';
 import SetupAccount from './components/SetupAccount';
+import ActivityDashboard from './components/ActivityDashboard';
 import io from 'socket.io-client';
 
 export default function App() {
@@ -229,6 +230,7 @@ export default function App() {
             { key: 'regionQueue', icon: 'inbox', label: 'Region Queue', badge: unassignedCount, badgeColor: '#d94040' },
             { key: 'personalQueue', icon: 'user', label: 'My Queue', badge: personalCount, badgeColor: '#d94040' },
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
+            ...(isSupervisor ? [{ key: 'activityDashboard', icon: 'clock', label: 'Activity' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
             { key: '_chat_toggle' },
@@ -478,6 +480,9 @@ export default function App() {
         
         {screen === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
           <AdminPanel currentUser={currentUser} showToast={showToast} regions={regions} />
+        )}
+        {screen === 'activityDashboard' && isSupervisor && (
+          <ActivityDashboard currentUser={currentUser} allUsers={allUsers} showToast={showToast} />
         )}
         {screen === 'auditLog' && isSupervisor && (
           <AuditLog showToast={showToast} />
