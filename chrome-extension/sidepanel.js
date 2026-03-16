@@ -221,37 +221,108 @@ async function pushToTicket(ticketId) {
   } catch(e) { showToast(e.message); }
 }
 
-// ── Chart AI — ask questions about the scanned chart ──
+// ── Chart AI — live-scans PF page on every question ──
+function liveScanPage() {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'SCRAPE_PATIENT' }, (response) => {
+      if (response && response.success) {
+        state.patientData = response.data;
+        savePatientData();
+        resolve(response.data);
+      } else {
+        resolve(state.patientData || null);
+      }
+    });
+    // Timeout fallback — use cached data if content script doesn't respond
+    setTimeout(() => resolve(state.patientData || null), 3000);
+  });
+}
+
+function buildPatientContext(pd) {
+  if (!pd) return 'No patient data available.\n';
+  let ctx = '';
+  ctx += 'Patient: ' + (pd.patientName||'?') + ' | DOB: ' + (pd.dob||'?') + ' | Age: ' + (pd.age||'?') + ' | ' + (pd.gender||'') + ' | PRN: ' + (pd.prn||'') + '\n';
+  ctx += 'Phone: ' + (pd.phone||'?') + ' | Insurance: ' + (pd.insurance||'?') + '\n';
+  if (pd.allergies?.length) ctx += 'Allergies: ' + pd.allergies.join(', ') + '\n';
+  if (pd.advanceDirectives) ctx += 'Advance Directives: ' + pd.advanceDirectives + '\n';
+  if (pd.familyHistory) ctx += 'Family History: ' + pd.familyHistory + '\n';
+  if (pd.diagnoses?.length) ctx += 'Diagnoses: ' + pd.diagnoses.join('; ') + '\n';
+  if (pd.medications?.length) ctx += 'Medications: ' + pd.medications.join('; ') + '\n';
+  if (pd.healthConcerns) ctx += 'Health Concerns: ' + pd.healthConcerns.substring(0, 500) + '\n';
+  if (pd.socialHistory) {
+    ctx += 'Social History: ';
+    if (pd.socialHistory.tobacco) ctx += 'Tobacco: ' + pd.socialHistory.tobacco + '; ';
+    if (pd.socialHistory.freeText) ctx += pd.socialHistory.freeText.substring(0, 300);
+    ctx += '\n';
+  }
+  if (pd.pastMedicalHistory) {
+    ctx += 'Past Medical History: ';
+    if (pd.pastMedicalHistory.majorEvents) ctx += 'Events: ' + pd.pastMedicalHistory.majorEvents + '; ';
+    if (pd.pastMedicalHistory.preventiveCare) ctx += 'Preventive: ' + pd.pastMedicalHistory.preventiveCare.substring(0, 200);
+    ctx += '\n';
+  }
+  if (pd.screenings?.length) ctx += 'Screenings: ' + pd.screenings.slice(0,5).join('; ') + '\n';
+  if (pd.flowsheets?.length) ctx += 'Flowsheets: ' + pd.flowsheets.join(', ') + '\n';
+  if (pd.encounters?.length) ctx += 'Encounters: ' + pd.encounters.join('; ') + '\n';
+  if (pd.encounterDetails?.length) {
+    ctx += '\nEncounter details:\n';
+    for (const enc of pd.encounterDetails.slice(0, 10)) {
+      ctx += '- ' + (enc.date||'?') + ' | ' + (enc.type||'') + ' | CC: ' + (enc.chiefComplaint||'none') + '\n';
+    }
+  }
+  // Include whatever is currently visible on the PF page
+  if (pd._pageContext) ctx += '\nPage text (current view):\n' + pd._pageContext.substring(0, 3000) + '\n';
+  return ctx;
+}
+
+// Navigate to a PF section and read it
+function navigateAndRead(section) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'NAVIGATE_AND_READ', section }, (response) => {
+      if (response && response.success) resolve(response.text);
+      else resolve(null);
+    });
+    setTimeout(() => resolve(null), 8000);
+  });
+}
+
 async function chartAiChat(message) {
   if (!message.trim() || state.chartAiLoading) return;
   state.chartAiMessages.push({ role: 'user', content: message });
   state.chartAiLoading = true;
   render();
 
-  // Build concise context from patient data (stays under token limits)
-  let ctx = '';
-  if (state.patientData) {
-    const pd = state.patientData;
-    ctx += 'Patient: ' + (pd.patientName||'?') + ' | DOB: ' + (pd.dob||'?') + ' | Age: ' + (pd.age||'?') + ' | ' + (pd.gender||'') + ' | PRN: ' + (pd.prn||'') + '\n';
-    ctx += 'Phone: ' + (pd.phone||'?') + ' | Insurance: ' + (pd.insurance||'?') + '\n';
-    if (pd.allergies?.length) ctx += 'Allergies: ' + pd.allergies.join(', ') + '\n';
-    if (pd.advanceDirectives) ctx += 'Advance Directives: ' + pd.advanceDirectives + '\n';
-    if (pd.diagnoses?.length) ctx += 'Diagnoses: ' + pd.diagnoses.join('; ') + '\n';
-    if (pd.medications?.length) ctx += 'Medications: ' + pd.medications.map(m => m.split(' ').slice(0,3).join(' ')).join('; ') + '\n';
-    if (pd.healthConcerns) ctx += 'Health Concerns: ' + pd.healthConcerns.substring(0, 500) + '\n';
-    if (pd.encounters?.length) ctx += 'Recent encounters: ' + pd.encounters.slice(0,5).join('; ') + '\n';
-    if (pd.encounterDetails?.length) {
-      ctx += '\nEncounter notes:\n';
-      for (const enc of pd.encounterDetails) {
-        ctx += '--- ' + (enc.date||'?') + ' ---\n' + (enc.content||enc.summary||'').substring(0, 1500) + '\n';
+  // Step 1: Live scan the current page (Summary)
+  const freshData = await liveScanPage();
+  let ctx = buildPatientContext(freshData);
+  if (state.clinicalSnapshot) ctx += '\nClinical Overview: ' + state.clinicalSnapshot.substring(0, 800) + '\n';
+
+  // Step 2: Ask the AI if it needs more info from a specific section
+  const planPrompt = 'You are a clinical assistant reading a patient chart in Practice Fusion. You have access to the patient Summary page data below. You can also request data from these additional sections: Timeline, Documents, Profile.\n\nBased on the user\'s question, do you need data from any of these sections to answer? If yes, respond with ONLY the section name (one of: timeline, documents, profile). If the Summary data below is sufficient, respond with ONLY the word "none".\n\nSummary data:\n' + ctx.substring(0, 2000) + '\n\nUser question: ' + message;
+
+  let additionalCtx = '';
+  try {
+    const planResult = await apiRequest('/ai/chat', { method: 'POST', body: { message: planPrompt } });
+    const sectionNeeded = (planResult.reply || '').trim().toLowerCase();
+
+    if (sectionNeeded && sectionNeeded !== 'none' && ['timeline', 'documents', 'profile'].includes(sectionNeeded)) {
+      state.scrapeProgress = 'Looking in ' + sectionNeeded + '...';
+      render();
+      const sectionText = await navigateAndRead(sectionNeeded);
+      if (sectionText) {
+        additionalCtx = '\n\nAdditional data from ' + sectionNeeded.toUpperCase() + ' section:\n' + sectionText.substring(0, 4000) + '\n';
       }
     }
+  } catch(e) {
+    // Planning step failed — just answer with what we have
   }
-  if (state.clinicalSnapshot) ctx += '\nClinical Overview: ' + state.clinicalSnapshot.substring(0, 1000) + '\n';
 
+  // Step 3: Answer the question with all available data
   let fullMsg = message;
   if (state.chartAiMessages.length <= 1) {
-    fullMsg = 'Here is the patient chart data from Practice Fusion. IMPORTANT: Only answer based on the data provided below. If the information is not present, say "That information is not in the chart data I have." NEVER make up dates, encounters, or clinical details.\n\n' + ctx + '\n---\n\nUser question: ' + message;
+    fullMsg = 'Patient chart data from Practice Fusion (live scan):\n\n' + ctx + additionalCtx + '\n\nIMPORTANT: Only answer based on the data above. If information is not present, say "I don\'t have that data in the current chart view." NEVER make up clinical information.\n\nQuestion: ' + message;
+  } else if (additionalCtx) {
+    fullMsg = 'Additional chart data just retrieved:\n' + additionalCtx + '\n\nQuestion: ' + message;
   }
 
   try {
@@ -262,8 +333,8 @@ async function chartAiChat(message) {
     state.chartAiMessages.push({ role: 'assistant', content: 'Error: ' + e.message });
   }
   state.chartAiLoading = false;
+  state.scrapeProgress = '';
   render();
-  // Scroll to bottom
   setTimeout(() => {
     const el = document.getElementById('chart-ai-messages');
     if (el) el.scrollTop = el.scrollHeight;

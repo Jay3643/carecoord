@@ -227,5 +227,42 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
+  // ── Navigate to a PF section and read it ──
+  async function navigateAndRead(section) {
+    const sectionMap = {
+      'summary': 'patient-header-tab-Summary',
+      'timeline': 'patient-header-tab-Timeline',
+      'documents': 'patient-header-tab-Documents',
+      'profile': 'patient-header-tab-Profile',
+      'payment': 'patient-header-tab-Payment collection',
+      'ledger': 'patient-header-tab-Patient ledger',
+    };
+
+    const tabAttr = sectionMap[section.toLowerCase()];
+    if (tabAttr) {
+      const tab = sel('[data-element="' + tabAttr + '"]');
+      if (tab) {
+        report('Navigating to ' + section + '...');
+        tab.click();
+        await sleep(2500);
+        const text = document.body.innerText.substring(0, 6000);
+        // Return to summary
+        const sumTab = sel('[data-element="patient-header-tab-Summary"]');
+        if (sumTab && section.toLowerCase() !== 'summary') { sumTab.click(); await sleep(1000); }
+        return text;
+      }
+    }
+    return null;
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'NAVIGATE_AND_READ') {
+      navigateAndRead(msg.section).then(text => {
+        sendResponse({ success: true, text: text });
+      });
+      return true;
+    }
+  });
+
   report('Ready on ' + location.hostname);
 })();

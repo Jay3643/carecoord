@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // Forward commands to the PF tab (not active tab)
-  if (msg.type === 'SCRAPE_PATIENT' || msg.type === 'CHART_SCAN' || msg.type === 'GET_PAGE_TEXT') {
+  if (msg.type === 'SCRAPE_PATIENT' || msg.type === 'CHART_SCAN' || msg.type === 'NAVIGATE_AND_READ' || msg.type === 'GET_PAGE_TEXT') {
     findPFTab().then(tabId => {
       if (!tabId) {
         // No PF tab found — notify side panel
