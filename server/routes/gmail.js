@@ -679,8 +679,10 @@ router.get('/labels', requireAuth, async (req, res) => {
 // ── Attachment download ──
 router.get('/attachment/:msgId/:attId', requireAuth, async (req, res) => {
   try {
-    const t = getTokens(req.user.id); if (!t) return res.status(400).json({ error: 'Not connected' });
-    const gm = google.gmail({version:'v1',auth:authClient(t)});
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
     const att = await gm.users.messages.attachments.get({ userId: 'me', messageId: req.params.msgId, id: decodeURIComponent(req.params.attId) });
     const buf = Buffer.from(att.data.data, 'base64');
     res.set('Content-Type', 'application/octet-stream');

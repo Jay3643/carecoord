@@ -95,6 +95,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [showLabelPicker, setShowLabelPicker] = useState(null);
   const ran = useRef(false);
   const listRef = useRef(null);
+  const loadingRef = useRef(false);
   const composeFileRef = useRef(null);
   const replyFileRef = useRef(null);
 
@@ -110,7 +111,8 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   }, []);
 
   const load = (f, q, pt, labelId) => {
-    if (pt) setLoadingMore(true); else setLoading(true);
+    if (pt && loadingRef.current) return; // prevent duplicate scroll loads
+    if (pt) { setLoadingMore(true); loadingRef.current = true; } else setLoading(true);
     let url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50';
     if (labelId) url += '&labelId=' + encodeURIComponent(labelId);
     if (pt) url += '&pageToken=' + pt;
@@ -119,7 +121,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
       else setMessages(d.messages || []);
       setNextPage(d.nextPageToken || null);
       setTotal(d.resultSizeEstimate || 0);
-    }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); setLoadingMore(false); });
+    }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); setLoadingMore(false); loadingRef.current = false; });
   };
 
   const pickFolder = (id) => { setFolder(id); setActiveLabelId(null); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load(id); };
