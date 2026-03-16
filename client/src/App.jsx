@@ -239,6 +239,7 @@ export default function App() {
             { key: '_chat_toggle' },
             { key: '_ai_toggle' },
             ...((currentUser.role === 'admin' || currentUser.role === 'supervisor') ? [{ key: 'admin', icon: 'settings', label: 'Admin' }] : []),
+            { key: '_user_manual' },
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
             { key: '_practice_fusion' },
@@ -324,6 +325,19 @@ export default function App() {
                 </div>
               );
             }
+            if (item.key === '_user_manual') return (
+              <a key="_user_manual" href="/CareCoord-User-Manual.pdf" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="User Manual">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-6-1h2v-6h3l-4-4-4 4h3z"/></svg>
+                {!sidebarCollapsed && <span>User Manual</span>}
+              </a>
+            );
             if (item.key === '_prompted') return (
               <a key="_prompted" href="https://seniority.thinkprompted.ai/signin" target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
