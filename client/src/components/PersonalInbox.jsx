@@ -111,14 +111,23 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   }, []);
 
   const load = (f, q, pt, labelId) => {
-    if (pt && loadingRef.current) return; // prevent duplicate scroll loads
-    if (pt) { setLoadingMore(true); loadingRef.current = true; } else setLoading(true);
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    if (pt) setLoadingMore(true); else setLoading(true);
     let url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50';
     if (labelId) url += '&labelId=' + encodeURIComponent(labelId);
     if (pt) url += '&pageToken=' + pt;
     fetch(url, { credentials: 'include' }).then(r => r.json()).then(d => {
-      if (pt) setMessages(prev => [...prev, ...(d.messages || [])]);
-      else setMessages(d.messages || []);
+      const newMsgs = d.messages || [];
+      if (pt) {
+        // Append and deduplicate by message ID
+        setMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          return [...prev, ...newMsgs.filter(m => !ids.has(m.id))];
+        });
+      } else {
+        setMessages(newMsgs);
+      }
       setNextPage(d.nextPageToken || null);
       setTotal(d.resultSizeEstimate || 0);
     }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); setLoadingMore(false); loadingRef.current = false; });
@@ -332,10 +341,9 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     setShowLabelPicker(null);
   };
 
-  const onScroll = () => {
-    if (!listRef.current || !nextPage || loadingMore) return;
-    const el = listRef.current;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) load(folder, search, nextPage, activeLabelId || undefined);
+  const loadMore = () => {
+    if (!nextPage || loadingRef.current) return;
+    load(folder, search, nextPage, activeLabelId || undefined);
   };
 
   const isSupervisorOrAdmin = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
@@ -565,7 +573,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
 
         {/* Message List or Detail */}
         {!selected ? (
-          <div ref={listRef} onScroll={onScroll} style={{ flex:1,overflowY:'auto' }}>
+          <div ref={listRef} style={{ flex:1,overflowY:'auto' }}>
             {loading && Array.from({length:12}).map((_,i) => (
               <div key={i} style={{ display:'flex',alignItems:'center',gap:12,padding:'0 16px',height:40,borderBottom:'1px solid #f6f6f6' }}>
                 <div className="gi-skel" style={{ width:18,height:18 }} />
@@ -611,7 +619,17 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                 <span style={{ flexShrink:0,marginLeft:12,fontSize:12,color:m.isUnread?'#202124':'#5f6368',fontWeight:m.isUnread?700:400,whiteSpace:'nowrap' }}>{fmtDate(m.date)}</span>
               </div>
             ))}
-            {loadingMore && <div style={{ padding:16,textAlign:'center',color:'#5f6368',fontSize:13 }}>Loading more...</div>}
+            {loadingMore && <div style={{ padding:16,textAlign:'center',color:'#5f6368',fontSize:13 }}>Loading...</div>}
+            {!loadingMore && nextPage && (
+              <div style={{ padding:12,textAlign:'center' }}>
+                <button onClick={loadMore}
+                  style={{ padding:'8px 32px',background:'#fff',border:'1px solid #dadce0',borderRadius:20,cursor:'pointer',fontSize:13,fontWeight:500,color:'#1a73e8' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#f2f6fc'}
+                  onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                  Load more
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ flex:1,overflowY:'auto' }}>

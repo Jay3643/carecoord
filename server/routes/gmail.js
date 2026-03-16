@@ -438,8 +438,9 @@ router.get('/personal', requireAuth, async (req, res) => {
     if (q === undefined) q = 'in:inbox';
     if (req.query.q) q += ' ' + req.query.q;
     
-    const max = Math.min(parseInt(req.query.max) || 25, 25);
-    const cacheKey = req.user.id + ':' + q + ':' + (req.query.labelId || '') + ':' + max;
+    const max = Math.min(parseInt(req.query.max) || 50, 50);
+    const pt = req.query.pageToken || '';
+    const cacheKey = req.user.id + ':' + q + ':' + (req.query.labelId || '') + ':' + max + ':' + pt;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
     // Only apply cutoff for coordinators — admin/supervisor see full inbox
