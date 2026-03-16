@@ -15,6 +15,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
   const [queueFilter, setQueueFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState(null);
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [tagSortMode, setTagSortMode] = useState('filter'); // 'filter' or 'group'
 
   const userRegions = useMemo(() =>
     regions.filter(r => currentUser.regionIds.includes(r.id)),
@@ -37,6 +39,17 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
   useEffect(() => { fetchTickets(); }, [selectedRegion, searchQuery]);
 
   // Polling for near-real-time
+
+  // Collect all unique tags across tickets for the tag dropdown
+  const allTags = useMemo(() => {
+    const tagMap = {};
+    for (const t of tickets) {
+      for (const tag of (t.tags || [])) {
+        if (!tagMap[tag.id]) tagMap[tag.id] = tag;
+      }
+    }
+    return Object.values(tagMap).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [tickets]);
 
   const filterCounts = useMemo(() => {
     // We'll approximate counts from loaded data — for exact counts, a dedicated endpoint would be better
@@ -71,15 +84,58 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
     setExpandedGroups(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   };
 
+  // Apply status filter, then tag filter/sort
+  const applyTagFilter = (list) => {
+    if (selectedTag === 'all') return list;
+    if (tagSortMode === 'filter') {
+      return list.filter(t => (t.tags || []).some(tag => tag.id === selectedTag));
+    }
+    if (tagSortMode === 'sort') {
+      return [...list].sort((a, b) => {
+        const aHas = (a.tags || []).some(tag => tag.id === selectedTag) ? 0 : 1;
+        const bHas = (b.tags || []).some(tag => tag.id === selectedTag) ? 0 : 1;
+        return aHas - bHas;
+      });
+    }
+    // group mode — don't filter the flat list, grouping is handled in groupedTickets
+    return list;
+  };
+
   const groupedTickets = useMemo(() => {
     const groups = {};
-    const ft = queueFilter === 'all' ? tickets.filter(t => t.status !== 'CLOSED')
+    let ft = queueFilter === 'all' ? tickets.filter(t => t.status !== 'CLOSED')
       : queueFilter === 'unassigned' ? tickets.filter(t => !t.assignee_user_id && t.status !== 'CLOSED')
       : queueFilter === 'open' ? tickets.filter(t => t.status === 'OPEN')
       : queueFilter === 'waiting' ? tickets.filter(t => t.status === 'WAITING_ON_EXTERNAL')
       : queueFilter === 'closed' ? tickets.filter(t => t.status === 'CLOSED')
       : tickets;
-    
+
+    ft = applyTagFilter(ft);
+
+    if (tagSortMode === 'group' && selectedTag !== 'all') {
+      // Group by tag instead of assignee
+      const tagGroups = {};
+      for (const t of ft) {
+        const tTags = (t.tags || []);
+        if (tTags.length === 0) {
+          const key = '_no_tags';
+          if (!tagGroups[key]) tagGroups[key] = { key, assignee: null, label: 'No Tags', tickets: [] };
+          tagGroups[key].tickets.push(t);
+        } else {
+          for (const tag of tTags) {
+            const key = 'tag_' + tag.id;
+            if (!tagGroups[key]) tagGroups[key] = { key, assignee: null, label: tag.name, tagColor: tag.color, tickets: [] };
+            tagGroups[key].tickets.push(t);
+          }
+        }
+      }
+      return Object.values(tagGroups).sort((a, b) => {
+        if (a.key === '_no_tags') return 1;
+        if (b.key === '_no_tags') return -1;
+        return a.label.localeCompare(b.label);
+      });
+    }
+
     for (const t of ft) {
       const key = t.assignee_user_id || '_unassigned';
       if (!groups[key]) {
@@ -100,16 +156,18 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
       return a.label.localeCompare(b.label);
     });
     return sorted;
-  }, [tickets, queueFilter]);
+  }, [tickets, queueFilter, selectedTag, tagSortMode]);
 
   const filteredTickets = useMemo(() => {
-    if (queueFilter === 'all') return tickets.filter(t => t.status !== 'CLOSED');
-    if (queueFilter === 'unassigned') return tickets.filter(t => !t.assignee_user_id && t.status !== 'CLOSED');
-    if (queueFilter === 'open') return tickets.filter(t => t.status === 'OPEN');
-    if (queueFilter === 'waiting') return tickets.filter(t => t.status === 'WAITING_ON_EXTERNAL');
-    if (queueFilter === 'closed') return tickets.filter(t => t.status === 'CLOSED');
-    return tickets;
-  }, [tickets, queueFilter]);
+    let list;
+    if (queueFilter === 'all') list = tickets.filter(t => t.status !== 'CLOSED');
+    else if (queueFilter === 'unassigned') list = tickets.filter(t => !t.assignee_user_id && t.status !== 'CLOSED');
+    else if (queueFilter === 'open') list = tickets.filter(t => t.status === 'OPEN');
+    else if (queueFilter === 'waiting') list = tickets.filter(t => t.status === 'WAITING_ON_EXTERNAL');
+    else if (queueFilter === 'closed') list = tickets.filter(t => t.status === 'CLOSED');
+    else list = tickets;
+    return applyTagFilter(list);
+  }, [tickets, queueFilter, selectedTag, tagSortMode]);
 
   const totalPages = Math.ceil(filteredTickets.length / PAGE_SIZE);
   const paginatedTickets = filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -157,6 +215,39 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
               </button>
             ))}
           </div>
+          {/* Tag filter/sort */}
+          {allTags.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <select value={selectedTag} onChange={e => { setSelectedTag(e.target.value); setCurrentPage(1); }}
+                style={{ background: selectedTag !== 'all' ? '#1a5e9a' : '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, padding: '6px 10px', color: selectedTag !== 'all' ? '#fff' : '#1e3a4f', fontSize: 12, cursor: 'pointer', maxWidth: 160 }}>
+                <option value="all">All Tags</option>
+                {allTags.map(tag => (
+                  <option key={tag.id} value={tag.id}>{tag.name}</option>
+                ))}
+              </select>
+              {selectedTag !== 'all' && (
+                <div style={{ display: 'flex', gap: 2, background: '#dde8f2', borderRadius: 6, padding: 2, border: '1px solid #c0d0e4' }}>
+                  <button onClick={() => setTagSortMode('filter')}
+                    style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: tagSortMode === 'filter' ? '#1a5e9a' : 'transparent', color: tagSortMode === 'filter' ? '#fff' : '#5a7a8a', fontSize: 10, fontWeight: 500, cursor: 'pointer' }}
+                    title="Show only tickets with this tag">
+                    Filter
+                  </button>
+                  <button onClick={() => setTagSortMode('sort')}
+                    style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: tagSortMode === 'sort' ? '#1a5e9a' : 'transparent', color: tagSortMode === 'sort' ? '#fff' : '#5a7a8a', fontSize: 10, fontWeight: 500, cursor: 'pointer' }}
+                    title="Sort tagged tickets to top">
+                    Sort
+                  </button>
+                  {mode === 'region' && (
+                    <button onClick={() => setTagSortMode('group')}
+                      style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: tagSortMode === 'group' ? '#1a5e9a' : 'transparent', color: tagSortMode === 'group' ? '#fff' : '#5a7a8a', fontSize: 10, fontWeight: 500, cursor: 'pointer' }}
+                      title="Group tickets by tag">
+                      Group
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -261,7 +352,11 @@ export default function QueueScreen({ title, mode, currentUser, regions, onOpenT
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="#6b8299" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s', flexShrink: 0 }}>
                   <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
                 </svg>
-                {group.assignee ? (
+                {group.tagColor ? (
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: group.tagColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.tagColor }} />
+                  </div>
+                ) : group.assignee ? (
                   <Avatar user={group.assignee} size={28} />
                 ) : (
                   <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#c9963b20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
