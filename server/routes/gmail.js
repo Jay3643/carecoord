@@ -439,7 +439,7 @@ router.get('/personal', requireAuth, async (req, res) => {
     if (req.query.q) q += ' ' + req.query.q;
     
     const max = Math.min(parseInt(req.query.max) || 25, 25);
-    const cacheKey = req.user.id + ':' + q + ':' + max;
+    const cacheKey = req.user.id + ':' + q + ':' + (req.query.labelId || '') + ':' + max;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
     // Only apply cutoff for coordinators — admin/supervisor see full inbox
@@ -449,6 +449,8 @@ router.get('/personal', requireAuth, async (req, res) => {
       q = q ? q + ' before:' + cutoffDate : 'before:' + cutoffDate;
     }
     const listParams = { userId: 'me', q, maxResults: max };
+    // Support filtering by label ID directly for reliable label-based views
+    if (req.query.labelId) listParams.labelIds = [req.query.labelId];
     if (req.query.pageToken) listParams.pageToken = req.query.pageToken;
     const list = await gm.users.messages.list(listParams);
     if (!list.data.messages) return res.json({ messages: [] });
@@ -554,13 +556,23 @@ router.get('/labels', requireAuth, async (req, res) => {
     const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
     const r = await gm.users.labels.list({ userId: 'me' });
     const labels = (r.data.labels || []).map(l => ({ id: l.id, name: l.name, type: l.type }));
-    // Get unread counts for key labels
-    const withCounts = await Promise.all(labels.slice(0, 30).map(async l => {
-      try {
-        const detail = await gm.users.labels.get({ userId: 'me', id: l.id });
-        return { ...l, unread: detail.data.messagesUnread || 0, total: detail.data.messagesTotal || 0 };
-      } catch(e) { return { ...l, unread: 0, total: 0 }; }
-    }));
+    // Get counts and colors for ALL labels in batches of 15 to avoid rate limits
+    const withCounts = [];
+    for (let i = 0; i < labels.length; i += 15) {
+      const batch = labels.slice(i, i + 15);
+      const results = await Promise.all(batch.map(async l => {
+        try {
+          const detail = await gm.users.labels.get({ userId: 'me', id: l.id });
+          return {
+            ...l,
+            unread: detail.data.messagesUnread || 0,
+            total: detail.data.messagesTotal || 0,
+            color: detail.data.color || null,
+          };
+        } catch(e) { return { ...l, unread: 0, total: 0, color: null }; }
+      }));
+      withCounts.push(...results);
+    }
     res.json({ labels: withCounts });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -852,6 +864,21 @@ router.delete('/labels/:labelId', requireAuth, async (req, res) => {
     const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
     await gm.users.labels.delete({ userId: 'me', id: req.params.labelId });
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/labels/:labelId', requireAuth, async (req, res) => {
+  try {
+    const userAuth = getAuthForUser(req.user.id);
+    const t = getTokens(req.user.id);
+    if (!userAuth && !t) return res.status(400).json({ error: 'Not connected' });
+    const gm = google.gmail({version:'v1', auth: userAuth ? userAuth.auth : authClient(t)});
+    const { name, color } = req.body;
+    const requestBody = {};
+    if (name?.trim()) requestBody.name = name.trim();
+    if (color) requestBody.color = color;
+    const r = await gm.users.labels.patch({ userId: 'me', id: req.params.labelId, requestBody });
+    res.json({ label: { id: r.data.id, name: r.data.name, type: r.data.type, color: r.data.color || null } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -117,6 +117,8 @@ export const api = {
   gmailUntrash: (messageId) => request('/gmail/personal/untrash', { method: 'POST', body: { messageId } }),
   gmailCreateLabel: (name) => request('/gmail/labels/create', { method: 'POST', body: { name } }),
   gmailDeleteLabel: (labelId) => request('/gmail/labels/' + labelId, { method: 'DELETE' }),
+  gmailRenameLabel: (labelId, name) => request('/gmail/labels/' + labelId, { method: 'PATCH', body: { name } }),
+  gmailPersonalByLabel: (labelId, max, pageToken) => request('/gmail/personal?folder=ALL&labelId=' + encodeURIComponent(labelId) + '&max=' + (max || 25) + (pageToken ? '&pageToken=' + pageToken : '')),
   calendarEvents: (min, max) => cached('cal:'+min+':'+max, 30000, () => request('/gmail/calendar/events?timeMin='+(min||'')+'&timeMax='+(max||''))),
   calendarCreate: (d) => request('/gmail/calendar/events', { method: 'POST', body: d }),
   calendarDelete: (id) => request('/gmail/calendar/events/' + id, { method: 'DELETE' }),

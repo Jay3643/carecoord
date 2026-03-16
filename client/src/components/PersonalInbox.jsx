@@ -87,6 +87,11 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [newLabelName, setNewLabelName] = useState('');
   const [aiDraftingReply, setAiDraftingReply] = useState(false);
   const [aiDraftingCompose, setAiDraftingCompose] = useState(false);
+  const [activeLabelId, setActiveLabelId] = useState(null);
+  const [renamingLabelId, setRenamingLabelId] = useState(null);
+  const [renameLabelValue, setRenameLabelValue] = useState('');
+  const [labelContextMenu, setLabelContextMenu] = useState(null);
+  const [showLabelPicker, setShowLabelPicker] = useState(null);
   const ran = useRef(false);
   const listRef = useRef(null);
   const composeFileRef = useRef(null);
@@ -103,9 +108,11 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     }).catch(() => setLoading(false));
   }, []);
 
-  const load = (f, q, pt) => {
+  const load = (f, q, pt, labelId) => {
     if (pt) setLoadingMore(true); else setLoading(true);
-    const url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50' + (pt ? '&pageToken=' + pt : '');
+    let url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50';
+    if (labelId) url += '&labelId=' + encodeURIComponent(labelId);
+    if (pt) url += '&pageToken=' + pt;
     fetch(url, { credentials: 'include' }).then(r => r.json()).then(d => {
       if (pt) setMessages(prev => [...prev, ...(d.messages || [])]);
       else setMessages(d.messages || []);
@@ -114,9 +121,10 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); setLoadingMore(false); });
   };
 
-  const pickFolder = (id) => { setFolder(id); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load(id); };
-  const pickCategory = (cat) => { setCategoryTab(cat.id); setSelected(null); setDetail(null); load('INBOX', cat.q); };
-  const doSearch = (q) => { if (!q.trim()) { load(folder); return; } setSelected(null); setDetail(null); load('ALL', q); };
+  const pickFolder = (id) => { setFolder(id); setActiveLabelId(null); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load(id); };
+  const pickCategory = (cat) => { setCategoryTab(cat.id); setActiveLabelId(null); setSelected(null); setDetail(null); load('INBOX', cat.q); };
+  const pickLabel = (label) => { setFolder(null); setActiveLabelId(label.id); setSelected(null); setDetail(null); setCheckedIds(new Set()); setSearch(''); setSearchActive(false); load('ALL', '', null, label.id); };
+  const doSearch = (q) => { if (!q.trim()) { if (activeLabelId) load('ALL', '', null, activeLabelId); else load(folder); return; } setSelected(null); setDetail(null); load('ALL', q); };
 
   const openMsg = async (m) => {
     setSelected(m); setShowReply(false); setDetailLoading(true);
@@ -268,10 +276,63 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
 
   const userLabels = labels.filter(l => l.type === 'user' && !l.name.startsWith('CareCoord'));
 
+  // Build nested label tree from flat list
+  const labelTree = (() => {
+    const sorted = [...userLabels].sort((a, b) => a.name.localeCompare(b.name));
+    const roots = [];
+    const map = {};
+    for (const l of sorted) {
+      const parts = l.name.split('/');
+      const displayName = parts[parts.length - 1];
+      const depth = parts.length - 1;
+      const parentPath = parts.slice(0, -1).join('/');
+      const node = { ...l, displayName, depth, children: [] };
+      map[l.name] = node;
+      if (depth > 0 && map[parentPath]) {
+        map[parentPath].children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    // Flatten tree with depth info for rendering
+    const flat = [];
+    const walk = (nodes) => { for (const n of nodes) { flat.push(n); walk(n.children); } };
+    walk(roots);
+    return flat;
+  })();
+
+  const renameLabel = async (labelId) => {
+    if (!renameLabelValue.trim()) { setRenamingLabelId(null); return; }
+    try {
+      const d = await api.gmailRenameLabel(labelId, renameLabelValue.trim());
+      setLabels(prev => prev.map(l => l.id === labelId ? { ...l, name: d.label.name } : l));
+      showToast?.('Label renamed');
+    } catch(e) { showToast?.(e.message); }
+    setRenamingLabelId(null); setRenameLabelValue('');
+  };
+
+  const toggleLabelOnMessage = async (msgId, labelId, hasLabel) => {
+    try {
+      if (hasLabel) {
+        await api.gmailModify(msgId, [], [labelId]);
+      } else {
+        await api.gmailModify(msgId, [labelId], []);
+      }
+      // Update message labels in state
+      setMessages(prev => prev.map(m => {
+        if (m.id !== msgId) return m;
+        const newLabels = hasLabel ? (m.labels || []).filter(lid => lid !== labelId) : [...(m.labels || []), labelId];
+        return { ...m, labels: newLabels };
+      }));
+      showToast?.(hasLabel ? 'Label removed' : 'Label applied');
+    } catch(e) { showToast?.(e.message); }
+    setShowLabelPicker(null);
+  };
+
   const onScroll = () => {
     if (!listRef.current || !nextPage || loadingMore) return;
     const el = listRef.current;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) load(folder, search, nextPage);
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) load(folder, search, nextPage, activeLabelId || undefined);
   };
 
   const isSupervisorOrAdmin = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
@@ -321,7 +382,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
           const unread = getLabelCount(f.id);
           return (
             <div key={f.id} onClick={() => pickFolder(f.id)}
-              className={`gi-sb ${folder === f.id && !searchActive ? 'gi-sb-active' : ''}`}
+              className={`gi-sb ${folder === f.id && !searchActive && !activeLabelId ? 'gi-sb-active' : ''}`}
               style={{ display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:32,cursor:'pointer',color:folder===f.id?'#001d35':'#444746',fontSize:14,fontWeight:folder===f.id?700:400,marginRight:8 }}>
               <SvgIcon d={ICON_PATHS[f.icon]} size={20} color={folder===f.id?'#001d35':'#444746'} />
               <span style={{ flex:1 }}>{f.label}</span>
@@ -357,21 +418,55 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             <div onClick={createLabel} style={{ padding:'3px 10px',background:'#0b57d0',color:'#fff',borderRadius:4,cursor:'pointer',fontSize:11,fontWeight:500 }}>Create</div>
           </div>
         )}
-        {userLabels.map(l => (
-          <div key={l.id} onClick={() => { setFolder(l.id); setSelected(null); setDetail(null); load('ALL', 'label:' + l.name.replace(/ /g, '-')); }}
-            className="gi-sb"
-            style={{ display:'flex',alignItems:'center',gap:12,padding:'0 24px',height:32,cursor:'pointer',color:'#444746',fontSize:14,marginRight:8 }}>
-            <SvgIcon d={ICON_PATHS.label} size={18} color="#444746" />
-            <span style={{ flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{l.name}</span>
-            {l.unread > 0 && <span style={{ fontSize:12,fontWeight:700 }}>{l.unread}</span>}
-            <div onClick={e => { e.stopPropagation(); deleteLabel(l.id, l.name); }} style={{ padding:2,borderRadius:4,display:'flex',opacity:0.5 }}
-              onMouseEnter={e => e.currentTarget.style.opacity=1} onMouseLeave={e => e.currentTarget.style.opacity=0.5} title="Delete label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        <div style={{ flex:1,overflowY:'auto',minHeight:0 }}>
+        {labelTree.map(l => {
+          const isActive = activeLabelId === l.id;
+          const labelColor = l.color?.backgroundColor || null;
+          return (
+            <div key={l.id}
+              onClick={() => pickLabel(l)}
+              onContextMenu={e => { e.preventDefault(); setLabelContextMenu({ id: l.id, name: l.name, x: e.clientX, y: e.clientY }); }}
+              className={`gi-sb ${isActive ? 'gi-sb-active' : ''}`}
+              style={{ display:'flex',alignItems:'center',gap:8,padding:'0 24px',paddingLeft: 24 + l.depth * 16,height:32,cursor:'pointer',color:isActive?'#001d35':'#444746',fontSize:14,fontWeight:isActive?700:400,marginRight:8 }}>
+              {labelColor ? (
+                <span style={{ width:12,height:12,borderRadius:'50%',background:labelColor,flexShrink:0,border:'1px solid rgba(0,0,0,0.1)' }} />
+              ) : (
+                <SvgIcon d={ICON_PATHS.label} size={18} color={isActive ? '#001d35' : '#444746'} />
+              )}
+              {renamingLabelId === l.id ? (
+                <input value={renameLabelValue} onChange={e => setRenameLabelValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') renameLabel(l.id); if (e.key === 'Escape') { setRenamingLabelId(null); setRenameLabelValue(''); } }}
+                  onClick={e => e.stopPropagation()} autoFocus
+                  style={{ flex:1,border:'1px solid #dadce0',borderRadius:4,padding:'2px 6px',fontSize:12,outline:'none',minWidth:0 }} />
+              ) : (
+                <span style={{ flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{l.displayName}</span>
+              )}
+              {l.unread > 0 && <span style={{ fontSize:12,fontWeight:700,color:isActive?'#001d35':'#444746' }}>{l.unread}</span>}
             </div>
-          </div>
-        ))}
-        {userLabels.length === 0 && !showNewLabel && (
+          );
+        })}
+        </div>
+        {labelTree.length === 0 && !showNewLabel && (
           <div style={{ padding:'4px 24px',fontSize:12,color:'#5f6368',fontStyle:'italic' }}>No labels</div>
+        )}
+
+        {/* Label right-click context menu */}
+        {labelContextMenu && (
+          <>
+            <div onClick={() => setLabelContextMenu(null)} style={{ position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:98 }} />
+            <div style={{ position:'fixed',top:labelContextMenu.y,left:labelContextMenu.x,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:99,minWidth:160,padding:'4px 0' }}>
+              <div onClick={() => { setRenamingLabelId(labelContextMenu.id); setRenameLabelValue(labelContextMenu.name); setLabelContextMenu(null); }}
+                style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
+                onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                Rename
+              </div>
+              <div onClick={() => { deleteLabel(labelContextMenu.id, labelContextMenu.name); setLabelContextMenu(null); }}
+                style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8,color:'#d93025' }}
+                onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                Delete
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -386,7 +481,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
               onKeyDown={e => { if (e.key === 'Enter') doSearch(search); if (e.key === 'Escape') { setSearch(''); setSearchActive(false); load(folder); } }}
               placeholder="Search mail"
               style={{ flex:1,border:'none',background:'transparent',outline:'none',fontSize:16,padding:'0 12px',color:'#202124',fontFamily:'inherit' }} />
-            {search && <div onClick={() => { setSearch(''); load(folder); }} style={{ cursor:'pointer',padding:4,borderRadius:'50%',display:'flex' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>}
+            {search && <div onClick={() => { setSearch(''); if (activeLabelId) load('ALL', '', null, activeLabelId); else load(folder); }} style={{ cursor:'pointer',padding:4,borderRadius:'50%',display:'flex' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>}
           </div>
         </div>
 
@@ -408,7 +503,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             style={{ width:18,height:18,border:checkedIds.size?'none':'2px solid #c4c7c5',borderRadius:2,background:checkedIds.size?'#1a73e8':'transparent',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',marginRight:8 }}>
             {checkedIds.size > 0 && <span style={{ color:'#fff',fontSize:11,fontWeight:700 }}>&#10003;</span>}
           </div>
-          <div onClick={() => load(folder, search)} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+          <div onClick={() => load(folder, search, null, activeLabelId || undefined)} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
             <SvgIcon d={ICON_PATHS.refresh} />
           </div>
           {checkedIds.size > 0 && (
@@ -432,15 +527,20 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   <SvgIcon d={ICON_PATHS.moveTo} size={18} />
                 </div>
                 {showMoveMenu && (
-                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:180,maxHeight:240,overflowY:'auto' }}>
-                    {userLabels.map(l => (
-                      <div key={l.id} onClick={() => { Array.from(checkedIds).forEach(id => moveToLabel(id, l.id)); setCheckedIds(new Set()); }}
-                        style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
-                        onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                        <SvgIcon d={ICON_PATHS.label} size={16} color="#444746" /> {l.name}
-                      </div>
-                    ))}
-                    {userLabels.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
+                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:220,maxHeight:300,overflowY:'auto' }}>
+                    <div style={{ padding:'8px 12px',borderBottom:'1px solid #f1f3f4',fontSize:12,fontWeight:600,color:'#5f6368' }}>Label as:</div>
+                    {labelTree.map(l => {
+                      const lColor = l.color?.backgroundColor || null;
+                      return (
+                        <div key={l.id} onClick={() => { Array.from(checkedIds).forEach(id => moveToLabel(id, l.id)); setCheckedIds(new Set()); setShowMoveMenu(false); }}
+                          style={{ padding:'6px 16px',paddingLeft: 16 + l.depth * 12,cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                          {lColor ? <span style={{ width:10,height:10,borderRadius:'50%',background:lColor,flexShrink:0 }} /> : <SvgIcon d={ICON_PATHS.label} size={16} color="#444746" />}
+                          {l.displayName}
+                        </div>
+                      );
+                    })}
+                    {labelTree.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
                   </div>
                 )}
               </div>
@@ -491,8 +591,17 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                 <span style={{ width:200,flexShrink:0,fontSize:14,fontWeight:m.isUnread?700:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingRight:8 }}>
                   {senderName(m.from)}
                 </span>
-                <div style={{ flex:1,display:'flex',alignItems:'baseline',overflow:'hidden',minWidth:0,gap:4 }}>
+                <div style={{ flex:1,display:'flex',alignItems:'center',overflow:'hidden',minWidth:0,gap:4 }}>
                   <span style={{ fontWeight:m.isUnread?700:400,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'45%' }}>{m.subject || '(no subject)'}</span>
+                  {(() => {
+                    const mLabels = userLabels.filter(l => (m.labels || []).includes(l.id));
+                    if (mLabels.length === 0) return null;
+                    return mLabels.slice(0, 3).map(l => (
+                      <span key={l.id} style={{ padding:'0 5px',background:l.color?.backgroundColor || '#e8eaed',borderRadius:3,fontSize:10,fontWeight:500,color:'#202124',whiteSpace:'nowrap',flexShrink:0,lineHeight:'16px' }}>
+                        {l.name.split('/').pop()}
+                      </span>
+                    ));
+                  })()}
                   <span style={{ color:'#5f6368',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{m.snippet ? '\u2014 ' + m.snippet : ''}</span>
                 </div>
                 {m.hasAttachment && <SvgIcon d={ICON_PATHS.attach} size={16} color="#5f6368" />}
@@ -522,19 +631,49 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   <SvgIcon d={ICON_PATHS.moveTo} size={18} />
                 </div>
                 {showMoveMenu && (
-                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:180,maxHeight:240,overflowY:'auto' }}>
-                    {userLabels.map(l => (
-                      <div key={l.id} onClick={() => moveToLabel(selected.id, l.id)}
-                        style={{ padding:'8px 16px',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
-                        onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                        <SvgIcon d={ICON_PATHS.label} size={16} color="#444746" /> {l.name}
-                      </div>
-                    ))}
-                    {userLabels.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
+                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:220,maxHeight:300,overflowY:'auto' }}>
+                    <div style={{ padding:'8px 12px',borderBottom:'1px solid #f1f3f4',fontSize:12,fontWeight:600,color:'#5f6368' }}>Label as:</div>
+                    {labelTree.map(l => {
+                      const hasLabel = (selected?.labels || []).includes(l.id);
+                      const lColor = l.color?.backgroundColor || null;
+                      return (
+                        <div key={l.id} onClick={() => toggleLabelOnMessage(selected.id, l.id, hasLabel)}
+                          style={{ padding:'6px 16px',paddingLeft: 16 + l.depth * 12,cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                          <span style={{ width:16,height:16,border: hasLabel ? 'none' : '2px solid #c4c7c5',borderRadius:2,background: hasLabel ? '#1a73e8' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+                            {hasLabel && <span style={{ color:'#fff',fontSize:10,fontWeight:700 }}>&#10003;</span>}
+                          </span>
+                          {lColor ? <span style={{ width:10,height:10,borderRadius:'50%',background:lColor,flexShrink:0 }} /> : <SvgIcon d={ICON_PATHS.label} size={14} color="#444746" />}
+                          {l.displayName}
+                        </div>
+                      );
+                    })}
+                    {labelTree.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Applied label chips on current message */}
+            {selected && (() => {
+              const appliedLabels = userLabels.filter(l => (selected.labels || []).includes(l.id));
+              if (appliedLabels.length === 0) return null;
+              return (
+                <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px 0',alignItems:'center' }}>
+                  {appliedLabels.map(l => {
+                    const lColor = l.color?.backgroundColor || '#e8eaed';
+                    return (
+                      <span key={l.id} style={{ display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',background:lColor,borderRadius:4,fontSize:11,fontWeight:500,color:'#202124' }}>
+                        {l.name.split('/').pop()}
+                        <span onClick={() => toggleLabelOnMessage(selected.id, l.id, true)} style={{ cursor:'pointer',fontSize:13,lineHeight:1,opacity:0.6 }}
+                          onMouseEnter={e => e.currentTarget.style.opacity=1} onMouseLeave={e => e.currentTarget.style.opacity=0.6}>&times;</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {detailLoading ? (
               <div style={{ padding:40,textAlign:'center',color:'#5f6368' }}>Loading...</div>
             ) : detail && (
