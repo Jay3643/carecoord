@@ -73,7 +73,12 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
   const [heatmap, setHeatmap] = useState([]);
   const [loading, setLoading] = useState(true);
   const [feedFilter, setFeedFilter] = useState({ userId: '', actionType: '', days: 7 });
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('online');
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [drilldownMinutes, setDrilldownMinutes] = useState(15);
+  const [drilldownData, setDrilldownData] = useState(null);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -106,6 +111,67 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
   };
   useEffect(() => { reloadFeed(); }, [feedFilter]);
 
+  // Poll online users every 15 seconds
+  const fetchOnline = async () => {
+    try {
+      const d = await api.getOnlineUsers();
+      setOnlineUsers(d.users || []);
+    } catch(e) {}
+  };
+  useEffect(() => {
+    fetchOnline();
+    const iv = setInterval(fetchOnline, 15000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Drill-down into a user's recent activity
+  const loadDrilldown = async (userId, minutes) => {
+    setSelectedUserId(userId);
+    setDrilldownMinutes(minutes);
+    setDrilldownLoading(true);
+    try {
+      const d = await api.getUserRecentActivity(userId, minutes);
+      setDrilldownData(d);
+    } catch(e) { showToast?.('Failed to load user activity'); setDrilldownData(null); }
+    setDrilldownLoading(false);
+  };
+
+  useEffect(() => {
+    if (selectedUserId) loadDrilldown(selectedUserId, drilldownMinutes);
+  }, [drilldownMinutes]);
+
+  const TIME_PRESETS = [
+    { label: '15 min', minutes: 15 },
+    { label: '30 min', minutes: 30 },
+    { label: '1 hour', minutes: 60 },
+    { label: '4 hours', minutes: 240 },
+    { label: '1 day', minutes: 1440 },
+    { label: '1 week', minutes: 10080 },
+  ];
+
+  const onlineSorted = useMemo(() => {
+    return [...onlineUsers].sort((a, b) => {
+      // Online first, then away, then offline
+      const aScore = a.isOnline ? 0 : a.isAway ? 1 : 2;
+      const bScore = b.isOnline ? 0 : b.isAway ? 1 : 2;
+      if (aScore !== bScore) return aScore - bScore;
+      // Then by last_active desc
+      return (b.lastActive || 0) - (a.lastActive || 0);
+    });
+  }, [onlineUsers]);
+
+  const onlineCount = onlineUsers.filter(u => u.isOnline).length;
+  const awayCount = onlineUsers.filter(u => u.isAway).length;
+
+  function formatAgo(ts) {
+    if (!ts) return 'never';
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return Math.floor(diff / 86400000) + 'd ago';
+  }
+
   // Summary stats from performance data
   const summary = useMemo(() => {
     const totalClosed = performance.reduce((s, c) => s + c.closed, 0);
@@ -133,13 +199,15 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
         <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, margin: 0, flex: 1 }}>Activity Dashboard</h1>
         <div style={{ display: 'flex', gap: 4, background: '#dde8f2', borderRadius: 8, padding: 3, border: '1px solid #c0d0e4' }}>
           {[
+            { key: 'online', label: 'Who\u2019s Online', badge: onlineCount },
             { key: 'overview', label: 'Overview' },
             { key: 'team', label: 'Team' },
             { key: 'feed', label: 'Activity Feed' },
           ].map(t => (
             <button key={t.key} onClick={() => setActiveTab(t.key)}
-              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: activeTab === t.key ? '#1a5e9a' : 'transparent', color: activeTab === t.key ? '#fff' : '#5a7a8a', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: activeTab === t.key ? '#1a5e9a' : 'transparent', color: activeTab === t.key ? '#fff' : '#5a7a8a', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               {t.label}
+              {t.badge > 0 && <span style={{ background: activeTab === t.key ? '#fff' : '#2e7d32', color: activeTab === t.key ? '#1a5e9a' : '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8, minWidth: 16, textAlign: 'center' }}>{t.badge}</span>}
             </button>
           ))}
         </div>
@@ -157,6 +225,171 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+        {activeTab === 'online' && (
+          <div style={{ display: 'flex', gap: 16, height: '100%' }}>
+            {/* User List */}
+            <div style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Team Status</span>
+                <span style={{ fontSize: 11, color: '#2e7d32', fontWeight: 600 }}>{onlineCount} online</span>
+                {awayCount > 0 && <span style={{ fontSize: 11, color: '#c96a1b', fontWeight: 600 }}>{awayCount} away</span>}
+              </div>
+              <Card style={{ flex: 1, padding: 0, overflow: 'auto' }}>
+                {onlineSorted.map(u => {
+                  const statusColor = u.isOnline ? '#4ade80' : u.isAway ? '#fbbf24' : '#d1d5db';
+                  const statusLabel = u.isOnline ? 'Online' : u.isAway ? 'Away' : u.hasSession ? 'Idle' : 'Offline';
+                  const isSelected = selectedUserId === u.id;
+                  return (
+                    <div key={u.id} onClick={() => loadDrilldown(u.id, drilldownMinutes)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f0f4f9', background: isSelected ? '#e8f0f8' : '#fff', transition: 'background 0.1s' }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <Avatar user={u} size={36} />
+                        <span style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: statusColor, border: '2px solid #fff' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
+                        <div style={{ fontSize: 11, color: '#6b8299', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ textTransform: 'capitalize' }}>{u.role}</span>
+                          {u.workStatus === 'inactive' && <span style={{ color: '#d32f2f', fontSize: 10, fontWeight: 600 }}>INACTIVE</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: u.isOnline ? '#2e7d32' : u.isAway ? '#c96a1b' : '#8a9fb0' }}>{statusLabel}</div>
+                        <div style={{ fontSize: 10, color: '#8a9fb0' }}>{formatAgo(u.lastActive)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {onlineSorted.length === 0 && (
+                  <div style={{ padding: 32, textAlign: 'center', color: '#8a9fb0', fontSize: 13 }}>No users found</div>
+                )}
+              </Card>
+            </div>
+
+            {/* Drill-Down Panel */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              {!selectedUserId ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8a9fb0' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Icon name="user" size={40} />
+                    <div style={{ fontSize: 14, marginTop: 8 }}>Click a team member to see their recent activity</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* User header + time range selector */}
+                  {(() => {
+                    const u = onlineUsers.find(x => x.id === selectedUserId);
+                    if (!u) return null;
+                    const statusColor = u.isOnline ? '#4ade80' : u.isAway ? '#fbbf24' : '#d1d5db';
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                        <div style={{ position: 'relative' }}>
+                          <Avatar user={u} size={44} />
+                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: '50%', background: statusColor, border: '2px solid #fff' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 700 }}>{u.name}</div>
+                          <div style={{ fontSize: 12, color: '#6b8299' }}>{u.email} &middot; Last active: {formatAgo(u.lastActive)}</div>
+                        </div>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, background: '#dde8f2', borderRadius: 8, padding: 3, border: '1px solid #c0d0e4' }}>
+                          {TIME_PRESETS.map(tp => (
+                            <button key={tp.minutes} onClick={() => setDrilldownMinutes(tp.minutes)}
+                              style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: drilldownMinutes === tp.minutes ? '#1a5e9a' : 'transparent', color: drilldownMinutes === tp.minutes ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              {tp.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {drilldownLoading ? (
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8a9fb0' }}>Loading...</div>
+                  ) : drilldownData ? (
+                    <>
+                      {/* Summary cards */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+                        <Card style={{ textAlign: 'center', padding: 12 }}>
+                          <div style={{ fontSize: 9, color: '#6b8299', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Actions</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#7b1fa2' }}>{drilldownData.totalActions}</div>
+                        </Card>
+                        <Card style={{ textAlign: 'center', padding: 12 }}>
+                          <div style={{ fontSize: 9, color: '#6b8299', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Emails Sent</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#1a5e9a' }}>{drilldownData.emailsSent}</div>
+                        </Card>
+                        <Card style={{ textAlign: 'center', padding: 12 }}>
+                          <div style={{ fontSize: 9, color: '#6b8299', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Notes Added</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#5d4037' }}>{drilldownData.notesAdded}</div>
+                        </Card>
+                        <Card style={{ textAlign: 'center', padding: 12 }}>
+                          <div style={{ fontSize: 9, color: '#6b8299', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tickets Touched</div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#c96a1b' }}>{drilldownData.ticketsTouched?.length || 0}</div>
+                        </Card>
+                      </div>
+
+                      {/* Action breakdown */}
+                      {drilldownData.actionCounts && Object.keys(drilldownData.actionCounts).length > 0 && (
+                        <Card style={{ marginBottom: 16, padding: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Action Breakdown</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {Object.entries(drilldownData.actionCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                              <span key={type} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: (ACTION_COLORS[type] || '#6b8299') + '15', borderRadius: 6, fontSize: 12, fontWeight: 500 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTION_COLORS[type] || '#6b8299' }} />
+                                {ACTION_LABELS[type] || type}
+                                <span style={{ fontWeight: 700, color: ACTION_COLORS[type] || '#6b8299' }}>{count}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+
+                      {/* Tickets touched */}
+                      {drilldownData.ticketsTouched?.length > 0 && (
+                        <Card style={{ marginBottom: 16, padding: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Tickets Touched</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {drilldownData.ticketsTouched.map(t => (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: '#f8fafc', borderRadius: 6, fontSize: 12 }}>
+                                <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299', fontSize: 10 }}>{t.id.toUpperCase().slice(0, 12)}</span>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{t.subject}</span>
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: t.status === 'CLOSED' ? '#e8f5e9' : t.status === 'WAITING_ON_EXTERNAL' ? '#fff3e0' : '#e3f2fd', color: t.status === 'CLOSED' ? '#2e7d32' : t.status === 'WAITING_ON_EXTERNAL' ? '#e65100' : '#1565c0', fontWeight: 600 }}>{t.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+
+                      {/* Activity timeline */}
+                      <Card style={{ flex: 1, padding: 0, overflow: 'auto' }}>
+                        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f0f4f9', fontSize: 12, fontWeight: 600, color: '#6b8299', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                          Activity Timeline ({drilldownData.actions?.length || 0} events)
+                        </div>
+                        {(!drilldownData.actions || drilldownData.actions.length === 0) && (
+                          <div style={{ padding: 24, textAlign: 'center', color: '#8a9fb0', fontSize: 12 }}>No activity in this time range</div>
+                        )}
+                        {(drilldownData.actions || []).map((item, i) => (
+                          <div key={item.id || i}
+                            style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 14px', borderBottom: '1px solid #f8fafc', fontSize: 12 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: ACTION_COLORS[item.actionType] || '#6b8299', marginTop: 4, flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontWeight: 600, color: ACTION_COLORS[item.actionType] || '#6b8299' }}>{ACTION_LABELS[item.actionType] || item.actionType}</span>
+                              {item.detail && <span style={{ color: '#6b8299', marginLeft: 6 }}>{item.detail}</span>}
+                            </div>
+                            <span style={{ fontSize: 10, color: '#8a9fb0', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatTs(item.ts)}</span>
+                          </div>
+                        ))}
+                      </Card>
+                    </>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'overview' && (
           <>
             {/* KPI Cards */}

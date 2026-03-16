@@ -143,7 +143,10 @@ export default function App() {
     };
     fetchCounts();
     const interval = setInterval(fetchCounts, 5000);
-    return () => clearInterval(interval);
+    // Heartbeat for presence tracking (every 60s)
+    api.heartbeat().catch(() => {});
+    const hbInterval = setInterval(() => api.heartbeat().catch(() => {}), 60000);
+    return () => { clearInterval(interval); clearInterval(hbInterval); };
   }, [currentUser]);
 
   // Socket.io for real-time chat notifications

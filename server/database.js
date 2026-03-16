@@ -40,7 +40,8 @@ async function initDb() {
   r('CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, ticket_id TEXT, filename TEXT, data TEXT, message_id TEXT, mime_type TEXT, size INTEGER)');
   r('CREATE TABLE IF NOT EXISTS gmail_tokens (id TEXT PRIMARY KEY, user_id TEXT, access_token TEXT, refresh_token TEXT, expiry_date INTEGER, email TEXT)');
   r('CREATE TABLE IF NOT EXISTS email_filters (id TEXT PRIMARY KEY, domain TEXT, sender TEXT, subject_contains TEXT, action TEXT DEFAULT \'personal\', created_by TEXT, created_at INTEGER)');
-  r('CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, user_id TEXT, expires INTEGER)');
+  r('CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, user_id TEXT, expires INTEGER, last_active INTEGER)');
+  try { r('ALTER TABLE sessions ADD COLUMN last_active INTEGER'); } catch(e) {}
   try { r('CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_gmail_id ON messages(gmail_message_id)'); } catch(e) {}
   r('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
   r('CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, region_ids TEXT, token TEXT UNIQUE NOT NULL, invited_by TEXT, created_at INTEGER, expires_at INTEGER, accepted_at INTEGER)');

@@ -233,6 +233,101 @@ router.get('/activity/heatmap', requireAuth, (req, res) => {
   } catch(e) { console.error('[Activity/heatmap]', e.message); res.json({ heatmap: [], days: 0 }); }
 });
 
+// ── Online Presence & Drill-Down ──
+
+// Heartbeat — lightweight endpoint for clients to ping
+router.post('/activity/heartbeat', requireAuth, (req, res) => {
+  // last_active is already touched by middleware on every request
+  res.json({ ok: true });
+});
+
+// Who's online — all users with their last_active timestamp and presence status
+router.get('/activity/online', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const now = Date.now();
+
+    const users = db.prepare(
+      "SELECT u.id, u.name, u.email, u.role, u.avatar, u.work_status, u.profile_photo_url, " +
+      "MAX(s.last_active) as last_active, MAX(s.expires) as session_expires " +
+      "FROM users u LEFT JOIN sessions s ON s.user_id = u.id AND s.expires > ? " +
+      "WHERE u.is_active = 1 GROUP BY u.id ORDER BY last_active DESC"
+    ).all(now);
+
+    const result = users.map(u => {
+      const lastActive = u.last_active ? Number(u.last_active) : null;
+      const hasSession = u.session_expires ? Number(u.session_expires) > now : false;
+      // Consider "online" if active within last 5 minutes
+      const isOnline = hasSession && lastActive && (now - lastActive) < 5 * 60 * 1000;
+      // "Away" if has session but inactive 5-30 min
+      const isAway = hasSession && lastActive && !isOnline && (now - lastActive) < 30 * 60 * 1000;
+
+      return {
+        id: u.id, name: u.name, email: u.email, role: u.role,
+        avatar: u.avatar, profilePhoto: u.profile_photo_url,
+        workStatus: u.work_status,
+        lastActive, isOnline, isAway, hasSession,
+      };
+    });
+
+    res.json({ users: result, serverTime: now });
+  } catch(e) { console.error('[Activity/online]', e.message); res.json({ users: [], serverTime: Date.now() }); }
+});
+
+// Drill-down: recent activity for a specific user within a time range
+router.get('/activity/user/:userId/recent', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const { userId } = req.params;
+    const minutes = parseInt(req.query.minutes) || 15;
+    const startTs = Date.now() - minutes * 60 * 1000;
+
+    // Get audit log entries for this user in the time range
+    const actions = db.prepare(
+      "SELECT a.id, a.action_type, a.entity_type, a.entity_id, a.ts, a.detail " +
+      "FROM audit_log a WHERE a.actor_user_id = ? AND a.ts >= ? ORDER BY a.ts DESC LIMIT 100"
+    ).all(userId, startTs);
+
+    // Get tickets this user touched in the time range (via messages or status changes)
+    const ticketsTouched = db.prepare(
+      "SELECT DISTINCT t.id, t.subject, t.status FROM tickets t " +
+      "WHERE t.id IN (" +
+      "  SELECT entity_id FROM audit_log WHERE actor_user_id = ? AND entity_type = 'ticket' AND ts >= ?" +
+      ") ORDER BY t.last_activity_at DESC LIMIT 20"
+    ).all(userId, startTs);
+
+    // Get emails sent in the time range
+    const emailsSent = db.prepare(
+      "SELECT COUNT(*) as c FROM audit_log WHERE actor_user_id = ? AND action_type = 'outbound_sent' AND ts >= ?"
+    ).get(userId, startTs);
+
+    // Get notes added in the time range
+    const notesAdded = db.prepare(
+      "SELECT COUNT(*) as c FROM audit_log WHERE actor_user_id = ? AND action_type = 'note_added' AND ts >= ?"
+    ).get(userId, startTs);
+
+    // Summary counts by action type
+    const actionCounts = {};
+    for (const a of actions) {
+      actionCounts[a.action_type] = (actionCounts[a.action_type] || 0) + 1;
+    }
+
+    res.json({
+      userId,
+      minutes,
+      totalActions: actions.length,
+      emailsSent: emailsSent?.c || 0,
+      notesAdded: notesAdded?.c || 0,
+      actionCounts,
+      ticketsTouched: ticketsTouched.map(t => ({ id: t.id, subject: t.subject, status: t.status })),
+      actions: actions.map(a => ({
+        id: a.id, actionType: a.action_type, entityType: a.entity_type,
+        entityId: a.entity_id, detail: a.detail, ts: Number(a.ts),
+      })),
+    });
+  } catch(e) { console.error('[Activity/user/recent]', e.message); res.json({ actions: [], totalActions: 0 }); }
+});
+
 // Legacy catch-all
 router.get('/', requireAuth, (req, res) => {
   res.json({ totalOpen: 0, unassigned: 0, closedToday: 0, triageCount: 0, oldestOpen: null });

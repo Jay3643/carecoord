@@ -13,6 +13,9 @@ function requireAuth(req, res, next) {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id);
   if (!user) return res.status(401).json({ error: 'User not found' });
 
+  // Touch last_active on every authenticated request
+  try { db.prepare('UPDATE sessions SET last_active = ? WHERE sid = ?').run(Date.now(), sid); } catch(e) {}
+
   const regions = db.prepare('SELECT region_id FROM user_regions WHERE user_id = ?').all(session.user_id);
   req.user = {
     id: toStr(user.id), name: toStr(user.name), email: toStr(user.email),
