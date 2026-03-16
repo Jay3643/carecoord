@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { api } from '../api';
 import Icon from './Icons';
 import { TagPill } from './ui';
+import EmailAutocomplete from './EmailAutocomplete';
 
 export default function ComposeModal({ currentUser, regions, allTags, onClose, onCreated, showToast }) {
   const [toEmail, setToEmail] = useState('');
@@ -84,7 +85,7 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
           {/* To */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', display: 'block', marginBottom: 6 }}>To (email) *</label>
-            <input type="email" value={toEmail} onChange={e => setToEmail(e.target.value)}
+            <EmailAutocomplete value={toEmail} onChange={setToEmail}
               placeholder="provider@hospital.org"
               style={{ width: '100%', padding: '10px 14px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
           </div>

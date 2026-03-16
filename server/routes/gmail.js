@@ -31,7 +31,7 @@ function getServiceAuth(userEmail) {
   const auth = new google.auth.JWT({
     email: serviceAccountKey.client_email,
     key: serviceAccountKey.private_key,
-    scopes: ['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'],
+    scopes: ['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'],
     subject: userEmail,
   });
   return auth;
@@ -77,7 +77,7 @@ async function getOrCreateLabel(gm, name) {
 // ── OAuth ──
 router.get('/auth', requireAuth, (req, res) => {
   res.json({ authUrl: oauth2().generateAuthUrl({ access_type:'offline', prompt:'consent', state:req.user.id,
-    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'] }) });
+    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'] }) });
 });
 router.get('/callback', async (req, res) => {
   try {
@@ -104,7 +104,7 @@ router.get('/admin-auth/:userId', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ authUrl: oauth2().generateAuthUrl({ access_type:'offline', prompt:'consent', state: targetUserId,
-    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly'] }) });
+    scope:['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/calendar','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/contacts.readonly'] }) });
 });
 
 // ── Admin checks workspace status for any user ──
@@ -545,6 +545,81 @@ router.post('/personal/send', requireAuth, async (req, res) => {
     const r = await gmail.users.messages.send(p);
     res.json({ id: r.data.id, threadId: r.data.threadId });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Contacts (People API) ──
+const contactsCache = {}; // userId -> { data, ts }
+const CONTACTS_TTL = 10 * 60 * 1000; // 10 min cache
+
+router.get('/contacts', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Return cached if fresh
+    if (contactsCache[userId] && (Date.now() - contactsCache[userId].ts) < CONTACTS_TTL) {
+      return res.json({ contacts: contactsCache[userId].data });
+    }
+
+    const userAuth = getAuthForUser(userId);
+    const t = getTokens(userId);
+    if (!userAuth && !t) return res.json({ contacts: [] });
+    const auth = userAuth ? userAuth.auth : authClient(t);
+    const people = google.people({ version: 'v1', auth });
+
+    // Fetch contacts with email addresses
+    const contacts = [];
+    let nextPageToken = null;
+    do {
+      const resp = await people.people.connections.list({
+        resourceName: 'people/me',
+        pageSize: 1000,
+        personFields: 'names,emailAddresses,photos,organizations',
+        pageToken: nextPageToken || undefined,
+      });
+      for (const p of (resp.data.connections || [])) {
+        const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
+        if (emails.length === 0) continue;
+        const name = p.names?.[0]?.displayName || '';
+        const photo = p.photos?.[0]?.url || null;
+        const org = p.organizations?.[0]?.name || '';
+        for (const email of emails) {
+          contacts.push({ name, email: email.toLowerCase(), photo, org });
+        }
+      }
+      nextPageToken = resp.data.nextPageToken;
+    } while (nextPageToken);
+
+    // Also pull "Other Contacts" (people you've emailed but not saved)
+    try {
+      const otherResp = await people.otherContacts.list({
+        pageSize: 1000,
+        readMask: 'names,emailAddresses',
+      });
+      for (const p of (otherResp.data.otherContacts || [])) {
+        const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
+        if (emails.length === 0) continue;
+        const name = p.names?.[0]?.displayName || '';
+        for (const email of emails) {
+          if (!contacts.find(c => c.email === email.toLowerCase())) {
+            contacts.push({ name, email: email.toLowerCase(), photo: null, org: '' });
+          }
+        }
+      }
+    } catch(e) { /* otherContacts may not be available */ }
+
+    // Deduplicate by email
+    const seen = new Set();
+    const deduped = contacts.filter(c => {
+      if (seen.has(c.email)) return false;
+      seen.add(c.email);
+      return true;
+    }).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+
+    contactsCache[userId] = { data: deduped, ts: Date.now() };
+    res.json({ contacts: deduped });
+  } catch(e) {
+    console.error('[Contacts]', e.message);
+    res.json({ contacts: [] });
+  }
 });
 
 // ── Gmail Labels ──

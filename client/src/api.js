@@ -101,6 +101,7 @@ export const api = {
   adminDisconnectWorkspace: (userId) => request('/gmail/admin-disconnect/' + userId, { method: 'POST' }),
   gmailAuth: () => request('/gmail/auth'),
   getGmailLabels: () => request('/gmail/labels'),
+  getGmailContacts: () => cached('gmailContacts', 600000, () => request('/gmail/contacts')),
   chatChannels: () => request('/chat/channels'),
   chatCreateChannel: (data) => request('/chat/channels', { method: 'POST', body: data }),
   chatMessages: (channelId, before) => request('/chat/channels/' + channelId + '/messages' + (before ? '?before=' + before : '')),

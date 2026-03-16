@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
+import EmailAutocomplete from './EmailAutocomplete';
 
 function fmtDate(d) {
   if (!d) return '';
@@ -767,7 +768,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             </div>
           </div>
           <div style={{ padding:'4px 12px',borderBottom:'1px solid #f1f3f4' }}>
-            <input value={composeTo} onChange={e => setComposeTo(e.target.value)} placeholder="Recipients"
+            <EmailAutocomplete value={composeTo} onChange={setComposeTo} placeholder="Recipients"
               style={{ width:'100%',border:'none',outline:'none',fontSize:14,padding:'8px 0',fontFamily:'inherit' }} />
           </div>
           <div style={{ padding:'4px 12px',borderBottom:'1px solid #f1f3f4' }}>
