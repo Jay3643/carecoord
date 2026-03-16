@@ -204,7 +204,13 @@ async function chartAiChat(message) {
   }
   state.chartAiLoading = false;
   render();
-  setTimeout(() => { const el = document.getElementById('chart-ai-messages'); if (el) el.scrollTop = el.scrollHeight; }, 100);
+  setTimeout(() => {
+    const el = document.getElementById('chart-ai-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+    // Also scroll the content area to keep AI visible
+    const content = document.querySelector('.content');
+    if (content) content.scrollTop = content.scrollHeight;
+  }, 150);
 }
 
 // ── Render ──
@@ -312,14 +318,14 @@ function renderPatientTab() {
     const isUser = m.role === 'user';
     html += '<div style="display:flex;gap:6px;padding:4px 0"><div style="width:20px;height:20px;border-radius:' + (isUser?'50%':'3px') + ';background:' + (isUser?'#1a5e9a':'#52a8c7') + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">' + (isUser ? (state.user?.name?.[0]||'U') : '✦') + '</div>';
     html += '<div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:' + (isUser?'#1e3a4f':'#3d8ba8') + '">' + (isUser?'You':'Seniority AI') + '</div>';
-    html += '<div style="font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content) + '</div></div></div>';
+    html += '<div style="font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content) + '</div></div></div>';
   }
   if (state.chartAiLoading) {
     html += '<div style="display:flex;gap:6px;padding:4px 0;align-items:center"><img src="icons/icon128.jpg" style="width:20px;height:20px;border-radius:3px;animation:pulse 1.5s ease-in-out infinite">';
     html += '<span style="font-size:11px;color:#8a9fb0;font-style:italic">' + (state.scrapeProgress || 'Thinking...') + '</span></div>';
   }
   html += '</div>';
-  html += '<div style="display:flex;gap:4px"><input type="text" id="chart-ai-input" placeholder="Is this patient\'s treatment optimized?" style="flex:1;padding:6px 10px;border:1px solid #c0d0e4;border-radius:16px;font-size:11px;outline:none">';
+  html += '<div style="display:flex;gap:4px"><input type="text" id="chart-ai-input" placeholder="Is this patient\'s treatment optimized?" style="flex:1;padding:6px 10px;border:1px solid #c0d0e4;border-radius:16px;font-size:13px;outline:none">';
   html += '<button class="btn btn-primary btn-small" id="chart-ai-send" style="background:#52a8c7;border-radius:16px;padding:6px 12px">Ask</button></div>';
   html += '</div>';
   return html;
@@ -344,7 +350,16 @@ function renderSettingsTab() {
   html += '<button class="btn btn-secondary btn-small" id="clear-cache-btn" style="margin-top:4px">Clear Cache</button></div>';
   return html;
 }
-function escapeHtml(text) { return (text||'').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+function escapeHtml(text) {
+  return (text||'')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^#{1,4}\s+/gm, '')        // remove markdown headers
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // remove bold **text**
+    .replace(/\*([^*]+)\*/g, '$1')      // remove italic *text*
+    .replace(/^[-•]\s+/gm, '  ')        // replace bullet dashes with indent
+    .replace(/^\d+\.\s+/gm, '  ')       // replace numbered lists with indent
+    .replace(/\n/g, '<br>');
+}
 
 // ── Events ──
 function bindEvents() {
