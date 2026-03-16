@@ -4,7 +4,7 @@ import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
 
-export default function QueueScreen({ title, mode, currentUser, regions, allUsers, onOpenTicket }) {
+export default function QueueScreen({ title, mode, currentUser, regions, allUsers, onOpenTicket, showToast, refreshCounts }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -40,10 +40,13 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
 
   // Auto-expand all groups when searching so results are visible
   useEffect(() => {
-    if (searchQuery && groupedTickets.length > 0) {
-      setExpandedGroups(new Set(groupedTickets.map(g => g.key)));
+    if (searchQuery) {
+      setExpandedGroups(prev => {
+        const allKeys = groupedTickets.map(g => g.key);
+        return new Set(allKeys);
+      });
     }
-  }, [searchQuery, groupedTickets.length]);
+  }, [searchQuery]);
 
   // Polling for near-real-time
 
