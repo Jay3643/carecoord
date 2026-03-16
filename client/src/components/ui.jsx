@@ -34,8 +34,20 @@ const AVATAR_COLORS = [
   '#115e59', '#854d0e', '#9f1239', '#3730a3', '#166534', '#7f1d1d',
 ];
 
+// FNV-1a hash — excellent distribution even for sequential/similar strings
+function fnv1a(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
 export function Avatar({ user, size = 32 }) {
-  const idx = user && user.id ? (user.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 7) % AVATAR_COLORS.length : 0;
+  // Combine id + name for maximum uniqueness
+  const key = user ? (user.id || '') + ':' + (user.name || '') : '';
+  const idx = key ? fnv1a(key) % AVATAR_COLORS.length : 0;
   const photoUrl = user?.photoUrl || user?.profile_photo_url;
   const [imgError, setImgError] = React.useState(false);
   if (photoUrl && !imgError) {
