@@ -85,7 +85,7 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
       } else {
         d = await api.aiGeneralChat(msg, history);
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: d.reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: d.reply, tools_used: d.tools_used || [] }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: ' + (e.message || 'AI request failed') }]);
     }
@@ -193,6 +193,15 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
               <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {m.content}
               </div>
+              {m.role === 'assistant' && m.tools_used && m.tools_used.length > 0 && (
+                <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {[...new Set(m.tools_used)].map((t, i) => (
+                    <span key={i} style={{ fontSize: 9, padding: '1px 6px', background: '#e8f0fe', border: '1px solid #c5d7f2', borderRadius: 4, color: '#1a5e9a', fontWeight: 500 }}>
+                      {t.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              )}
               {m.role === 'assistant' && (
                 <button onClick={() => { navigator.clipboard.writeText(m.content); showToast('Copied'); }}
                   style={{ marginTop: 4, padding: '2px 8px', background: TEAL_BG, border: '1px solid ' + TEAL_LIGHT, borderRadius: 4, fontSize: 9, color: TEAL_DARK, cursor: 'pointer' }}>
@@ -205,7 +214,7 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
         {loading && (
           <div style={{ display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
             <AiLogo size={26} animate={true} />
-            <span style={{ fontSize: 12, color: TEAL_DARK, fontStyle: 'italic' }}>Thinking...</span>
+            <span style={{ fontSize: 12, color: TEAL_DARK, fontStyle: 'italic' }}>Searching &amp; analyzing...</span>
           </div>
         )}
         <div ref={endRef} />
