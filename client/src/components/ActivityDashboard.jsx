@@ -63,7 +63,7 @@ function formatTs(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-export default function ActivityDashboard({ currentUser, allUsers, showToast }) {
+export default function ActivityDashboard({ currentUser, allUsers, showToast, onOpenTicket }) {
   const [period, setPeriod] = useState(30);
   const [trends, setTrends] = useState([]);
   const [performance, setPerformance] = useState([]);
@@ -588,16 +588,28 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
-                      {item.detail}
+                      {item.detail && String(item.detail).match(/tk-[a-z0-9-]+/) ? (
+                        String(item.detail).split(/(tk-[a-z0-9-]+)/g).map((part, j) =>
+                          part.match(/^tk-/) ? <a key={j} onClick={() => onOpenTicket?.(part)} style={{ color: '#1a5e9a', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>{part}</a> : <span key={j}>{part}</span>
+                        )
+                      ) : item.detail}
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: '#8a9fb0', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {formatTs(item.ts)}
                   </div>
                   {item.entityId && (
-                    <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#8a9fb0', background: '#f0f4f9', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
-                      {String(item.entityId).toUpperCase().slice(0, 12)}
-                    </span>
+                    String(item.entityId).startsWith('tk') ? (
+                      <a onClick={() => onOpenTicket?.(item.entityId)}
+                        style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#1a5e9a', background: '#e8f0fe', padding: '2px 6px', borderRadius: 4, flexShrink: 0, cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
+                        {String(item.entityId).toUpperCase().slice(0, 12)}
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#8a9fb0', background: '#f0f4f9', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                        {String(item.entityId).toUpperCase().slice(0, 12)}
+                      </span>
+                    )
                   )}
                 </div>
               ))}
@@ -681,7 +693,8 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
                     <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                       {auditData.responseTime.details.map(r => (
                         <div key={r.ticketId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
-                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#8a9fb0', minWidth: 90 }}>{r.ticketId.slice(0, 15)}</span>
+                          <a onClick={() => onOpenTicket?.(r.ticketId)} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#1a5e9a', minWidth: 90, cursor: 'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>{r.ticketId.slice(0, 15)}</a>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f' }}>{r.subject}</span>
                           <span style={{ fontWeight: 600, minWidth: 50, textAlign: 'right', color: r.responseMs < 3600000 ? '#2e7d32' : r.responseMs < 14400000 ? '#c96a1b' : '#d94040' }}>
                             {r.responseMs < 60000 ? Math.round(r.responseMs / 1000) + 's' : r.responseMs < 3600000 ? Math.round(r.responseMs / 60000) + 'm' : Math.round(r.responseMs / 3600000 * 10) / 10 + 'h'}
@@ -700,7 +713,8 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
                       {auditData.tickets.openTickets.map(t => (
                         <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: t.hasUnread ? '#d94040' : '#4ade80', flexShrink: 0 }} />
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f', fontWeight: t.hasUnread ? 600 : 400 }}>{t.subject}</span>
+                          <a onClick={() => onOpenTicket?.(t.id)} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1a5e9a', fontWeight: t.hasUnread ? 600 : 400, cursor: 'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>{t.subject}</a>
                           <span style={{ fontSize: 10, color: '#6b8299' }}>{t.hasUnread ? 'Unread' : 'Read'}</span>
                           {t.waitingMs && <span style={{ fontSize: 10, fontWeight: 600, color: t.waitingMs > 14400000 ? '#d94040' : '#c96a1b' }}>waiting {Math.round(t.waitingMs / 3600000 * 10) / 10}h</span>}
                         </div>
@@ -731,8 +745,21 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
                       <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTION_COLORS[a.actionType] || '#94a3b8', flexShrink: 0 }} />
                         <span style={{ fontSize: 10, color: '#8a9fb0', minWidth: 70 }}>{formatTs(a.ts)}</span>
-                        <span style={{ color: '#1a5e9a', fontWeight: 500 }}>{ACTION_LABELS[a.actionType] || a.actionType}</span>
-                        <span style={{ flex: 1, color: '#6b8299', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.detail}</span>
+                        {a.entityId && String(a.entityId).startsWith('tk') ? (
+                          <a onClick={() => onOpenTicket?.(a.entityId)} style={{ color: '#1a5e9a', fontWeight: 500, cursor: 'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
+                            {ACTION_LABELS[a.actionType] || a.actionType}
+                          </a>
+                        ) : (
+                          <span style={{ color: '#1a5e9a', fontWeight: 500 }}>{ACTION_LABELS[a.actionType] || a.actionType}</span>
+                        )}
+                        <span style={{ flex: 1, color: '#6b8299', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.detail && String(a.detail).match(/tk-[a-z0-9-]+/) ? (
+                            String(a.detail).split(/(tk-[a-z0-9-]+)/g).map((part, i) =>
+                              part.match(/^tk-/) ? <a key={i} onClick={() => onOpenTicket?.(part)} style={{ color: '#1a5e9a', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>{part}</a> : <span key={i}>{part}</span>
+                            )
+                          ) : a.detail}
+                        </span>
                       </div>
                     ))}
                   </div>

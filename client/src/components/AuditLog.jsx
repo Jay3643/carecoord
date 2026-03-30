@@ -4,7 +4,7 @@ import { fmt } from '../utils';
 import Icon from './Icons';
 import { Avatar } from './ui';
 
-export default function AuditLog({ showToast }) {
+export default function AuditLog({ showToast, onOpenTicket }) {
   const [entries, setEntries] = useState([]);
   const [actionTypes, setActionTypes] = useState([]);
   const [filterType, setFilterType] = useState('all');
@@ -59,11 +59,35 @@ export default function AuditLog({ showToast }) {
             <span style={{ fontSize: 12, color: '#5a7a8a', flex: 1 }}>
               {entry.actor_name && <strong style={{ color: '#1e3a4f' }}>{entry.actor_name}</strong>}
               {entry.actor_name && ' — '}
-              {entry.detail}
+              {entry.detail && String(entry.detail).match(/tk-[a-z0-9-]+/) ? (
+                String(entry.detail).split(/(tk-[a-z0-9-]+)/g).map((part, i) =>
+                  part.match(/^tk-/) ? (
+                    <a key={i} onClick={() => onOpenTicket?.(part)} style={{ color: '#1a5e9a', cursor: 'pointer', fontWeight: 500 }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration='underline'}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>{part}</a>
+                  ) : <span key={i}>{part}</span>
+                )
+              ) : entry.detail}
             </span>
-            <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#8a9fb0', flexShrink: 0 }}>
-              {entry.entity_type}:{entry.entity_id}
-            </span>
+            {entry.entity_id && (entry.entity_type === 'ticket' || entry.entity_type === 'message' || entry.entity_type === 'note') && entry.entity_id.startsWith('tk') ? (
+              <a onClick={() => onOpenTicket?.(entry.entity_id)}
+                style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#1a5e9a', cursor: 'pointer', flexShrink: 0, textDecoration: 'none' }}
+                onMouseEnter={e => e.currentTarget.style.textDecoration='underline'}
+                onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
+                {entry.entity_type}:{entry.entity_id}
+              </a>
+            ) : entry.entity_id && String(entry.entity_id).includes('tk-') ? (
+              <a onClick={() => { const m = String(entry.entity_id).match(/tk-[a-z0-9-]+/); if (m) onOpenTicket?.(m[0]); }}
+                style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#1a5e9a', cursor: 'pointer', flexShrink: 0, textDecoration: 'none' }}
+                onMouseEnter={e => e.currentTarget.style.textDecoration='underline'}
+                onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
+                {entry.entity_type}:{String(entry.entity_id).slice(0, 30)}
+              </a>
+            ) : (
+              <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#8a9fb0', flexShrink: 0 }}>
+                {entry.entity_type}:{entry.entity_id}
+              </span>
+            )}
           </div>
         ))}
       </div>

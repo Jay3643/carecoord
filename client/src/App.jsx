@@ -502,10 +502,10 @@ export default function App() {
           <AdminPanel currentUser={currentUser} showToast={showToast} regions={regions} />
         )}
         {screen === 'activityDashboard' && isSupervisor && (
-          <ActivityDashboard currentUser={currentUser} allUsers={allUsers} showToast={showToast} />
+          <ActivityDashboard currentUser={currentUser} allUsers={allUsers} showToast={showToast} onOpenTicket={openTicket} />
         )}
         {screen === 'auditLog' && isSupervisor && (
-          <AuditLog showToast={showToast} />
+          <AuditLog showToast={showToast} onOpenTicket={openTicket} />
         )}
         {screen === 'archive' && (
           <ArchiveScreen currentUser={currentUser} isSupervisor={isSupervisor} onOpenTicket={openTicket} showToast={showToast} />
