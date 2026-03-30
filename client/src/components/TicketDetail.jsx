@@ -46,6 +46,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const aiEndRef = useRef(null);
+  const [clockRunning, setClockRunning] = useState(null); // { id, startedAt }
+  const [clockElapsed, setClockElapsed] = useState(0);
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [totalTimeMs, setTotalTimeMs] = useState(0);
 
   const fetchData = async () => {
     setLoading(true);
@@ -58,6 +62,14 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setTicket(ticketData.ticket);
       setMessages(msgData.messages);
       setNotes(noteData.notes);
+      // Load time tracking
+      try {
+        const td = await api.getTimeEntries(ticketId);
+        setTimeEntries(td.entries || []);
+        setTotalTimeMs(td.totalMs || 0);
+        if (td.running) { setClockRunning(td.running); setClockElapsed(Date.now() - td.running.startedAt); }
+        else { setClockRunning(null); setClockElapsed(0); }
+      } catch(e) {}
     } catch (e) {
       showToast('Error loading ticket');
     } finally {
@@ -66,6 +78,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   };
 
   useEffect(() => { fetchData(); }, [ticketId]);
+
+  // Tick the clock every second when running
+  useEffect(() => {
+    if (!clockRunning) return;
+    const iv = setInterval(() => setClockElapsed(Date.now() - clockRunning.startedAt), 1000);
+    return () => clearInterval(iv);
+  }, [clockRunning]);
 
   useEffect(() => {
     if (ticket?.region_id) {
@@ -136,6 +155,37 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setDiscussionMsgs(md.messages || []);
     } catch(e) { showToast?.(e.message); }
     setDiscussionLoading(false);
+  };
+
+  const formatDuration = (ms) => {
+    if (!ms || ms < 0) return '0:00';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0 ? h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') : m + ':' + String(sec).padStart(2, '0');
+  };
+
+  const handleStartClock = async () => {
+    try {
+      const d = await api.startClock(ticketId);
+      setClockRunning({ id: d.id, startedAt: d.startedAt });
+      setClockElapsed(0);
+      if (d.stoppedPrevious) showToast('Previous clock stopped');
+    } catch(e) { showToast?.(e.message); }
+  };
+
+  const handleStopClock = async () => {
+    try {
+      await api.stopClock(ticketId);
+      setClockRunning(null);
+      setClockElapsed(0);
+      // Refresh time entries
+      const td = await api.getTimeEntries(ticketId);
+      setTimeEntries(td.entries || []);
+      setTotalTimeMs(td.totalMs || 0);
+      showToast('Clock stopped — ' + formatDuration(clockElapsed) + ' logged');
+    } catch(e) { showToast?.(e.message); }
   };
 
   const sendDiscussion = async () => {
@@ -324,6 +374,29 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <StatusBadge status={ticket.status} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
+          </div>
+          {/* Clock */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {clockRunning ? (
+              <button onClick={handleStopClock}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#d94040', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, animation: 'clockPulse 2s infinite' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />
+                {formatDuration(clockElapsed)}
+                <span style={{ fontSize: 10, opacity: 0.8 }}>Stop</span>
+              </button>
+            ) : (
+              <button onClick={handleStartClock}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#e8f0fe', color: '#1a5e9a', border: '1px solid #c5d7f2', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                onMouseEnter={e => e.currentTarget.style.background='#d2e3fc'} onMouseLeave={e => e.currentTarget.style.background='#e8f0fe'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Start Clock
+              </button>
+            )}
+            {totalTimeMs > 0 && !clockRunning && (
+              <span style={{ fontSize: 11, color: '#6b8299', padding: '4px 8px', background: '#f0f4f9', borderRadius: 6 }}>
+                Total: {formatDuration(totalTimeMs)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -791,7 +864,30 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <span style={{ textAlign: 'right', fontSize: 11 }}>{closeReasons.find(r => r.id === ticket.close_reason_id)?.label}</span>
               </div>
             )}
+            {totalTimeMs > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b8299' }}>Time logged</span>
+                <span style={{ fontWeight: 600 }}>{formatDuration(totalTimeMs)}</span>
+              </div>
+            )}
           </div>
+
+          {/* Time log */}
+          {timeEntries.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', marginBottom: 8 }}>Time Log</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {timeEntries.slice(0, 10).map(e => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', borderBottom: '1px solid #f0f4f9' }}>
+                    <span style={{ color: '#6b8299', minWidth: 60 }}>{e.userName}</span>
+                    <span style={{ fontWeight: 600, color: '#1e3a4f', minWidth: 50 }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? formatDuration(Date.now() - e.startedAt) : '--'}</span>
+                    <span style={{ color: '#8a9fb0', fontSize: 10 }}>{e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}</span>
+                    {e.running && <span style={{ fontSize: 9, color: '#d94040', fontWeight: 600 }}>RUNNING</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

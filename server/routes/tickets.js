@@ -526,4 +526,65 @@ router.get('/:ticketId/attachments/:attId/download', requireAuth, (req, res) => 
 });
 
 
+// ── Time Tracking ──
+
+// Get time entries for a ticket
+router.get('/:id/time', requireAuth, (req, res) => {
+  const db = getDb();
+  const entries = db.prepare('SELECT te.*, u.name as user_name, u.avatar as user_avatar FROM time_entries te LEFT JOIN users u ON u.id = te.user_id WHERE te.ticket_id = ? ORDER BY te.started_at DESC').all(req.params.id);
+  // Check if current user has a running clock on this ticket
+  const running = db.prepare('SELECT * FROM time_entries WHERE ticket_id = ? AND user_id = ? AND stopped_at IS NULL').get(req.params.id, req.user.id);
+  // Total time for this ticket
+  const totalMs = entries.reduce((sum, e) => sum + (e.duration_ms || (e.stopped_at ? e.stopped_at - e.started_at : Date.now() - e.started_at) || 0), 0);
+  res.json({
+    entries: entries.map(e => ({
+      id: toStr(e.id), ticketId: toStr(e.ticket_id), userId: toStr(e.user_id),
+      userName: toStr(e.user_name), userAvatar: toStr(e.user_avatar),
+      startedAt: e.started_at, stoppedAt: e.stopped_at,
+      durationMs: e.duration_ms || (e.stopped_at ? e.stopped_at - e.started_at : null),
+      note: toStr(e.note), running: !e.stopped_at,
+    })),
+    running: running ? { id: toStr(running.id), startedAt: running.started_at } : null,
+    totalMs,
+  });
+});
+
+// Start clock
+router.post('/:id/time/start', requireAuth, (req, res) => {
+  const db = getDb();
+  // Stop any existing running clock for this user on any ticket
+  const existing = db.prepare('SELECT id, ticket_id, started_at FROM time_entries WHERE user_id = ? AND stopped_at IS NULL').get(req.user.id);
+  if (existing) {
+    const dur = Date.now() - existing.started_at;
+    db.prepare('UPDATE time_entries SET stopped_at = ?, duration_ms = ? WHERE id = ?').run(Date.now(), dur, existing.id);
+  }
+  const id = 'te-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  db.prepare('INSERT INTO time_entries (id, ticket_id, user_id, started_at) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.user.id, Date.now());
+  saveDb();
+  addAudit(db, req.user.id, 'clock_started', 'ticket', req.params.id, 'Started time clock');
+  res.json({ id, startedAt: Date.now(), stoppedPrevious: existing ? toStr(existing.ticket_id) : null });
+});
+
+// Stop clock
+router.post('/:id/time/stop', requireAuth, (req, res) => {
+  const db = getDb();
+  const { note } = req.body;
+  const entry = db.prepare('SELECT * FROM time_entries WHERE ticket_id = ? AND user_id = ? AND stopped_at IS NULL').get(req.params.id, req.user.id);
+  if (!entry) return res.status(400).json({ error: 'No running clock' });
+  const now = Date.now();
+  const dur = now - entry.started_at;
+  db.prepare('UPDATE time_entries SET stopped_at = ?, duration_ms = ?, note = ? WHERE id = ?').run(now, dur, note || null, entry.id);
+  saveDb();
+  addAudit(db, req.user.id, 'clock_stopped', 'ticket', req.params.id, 'Stopped clock — ' + Math.round(dur / 60000) + ' min');
+  res.json({ id: toStr(entry.id), durationMs: dur });
+});
+
+// Get current user's running clock (any ticket)
+router.get('/my/active-clock', requireAuth, (req, res) => {
+  const db = getDb();
+  const entry = db.prepare('SELECT te.*, t.subject FROM time_entries te LEFT JOIN tickets t ON t.id = te.ticket_id WHERE te.user_id = ? AND te.stopped_at IS NULL').get(req.user.id);
+  if (!entry) return res.json({ active: null });
+  res.json({ active: { id: toStr(entry.id), ticketId: toStr(entry.ticket_id), subject: toStr(entry.subject), startedAt: entry.started_at } });
+});
+
 module.exports = router;

@@ -184,7 +184,7 @@ export default function App() {
     document.body.style.userSelect = 'none';
   };
 
-  const chatBadgeStyle = `@keyframes chatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }`;
+  const chatBadgeStyle = `@keyframes chatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} } @keyframes clockPulse { 0%,100%{opacity:1} 50%{opacity:0.7} }`;
 
   if (!authChecked) {
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f7f8', color: '#8a9fb0' }}>Loading...</div>;
