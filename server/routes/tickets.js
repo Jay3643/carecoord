@@ -306,6 +306,30 @@ router.post('/:id/status', requireAuth, (req, res) => {
     return res.status(403).json({ error: 'Supervisor override required to reopen' });
   db.prepare('UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, close_reason_id = ?, locked_closed = ? WHERE id = ?')
     .run(status, Date.now(), status === 'CLOSED' ? Date.now() : null, closeReasonId || null, status === 'CLOSED' ? 1 : 0, req.params.id);
+
+  // When closing: archive the chat channel — save messages to notes, then remove the channel
+  if (status === 'CLOSED') {
+    const chatChannel = db.prepare("SELECT id FROM chat_channels WHERE ticket_id = ? AND type = 'ticket'").get(req.params.id);
+    if (chatChannel) {
+      const chId = toStr(chatChannel.id);
+      // Save chat messages as a single archived note
+      const chatMsgs = db.prepare('SELECT cm.body, cm.created_at, u.name as sender_name FROM chat_messages cm LEFT JOIN users u ON u.id = cm.user_id WHERE cm.channel_id = ? ORDER BY cm.created_at ASC').all(chId);
+      if (chatMsgs.length > 0) {
+        const transcript = chatMsgs.map(m => {
+          const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+          return '[' + (toStr(m.sender_name) || 'Unknown') + ' — ' + time + ']\n' + toStr(m.body);
+        }).join('\n\n');
+        const noteBody = '--- Archived Chat (' + chatMsgs.length + ' messages) ---\n\n' + transcript;
+        db.prepare('INSERT INTO notes (id, ticket_id, author_user_id, body, created_at) VALUES (?, ?, ?, ?, ?)')
+          .run(uuid(), req.params.id, req.user.id, noteBody, Date.now());
+      }
+      // Remove chat channel, members, and messages
+      db.prepare('DELETE FROM chat_messages WHERE channel_id = ?').run(chId);
+      db.prepare('DELETE FROM chat_members WHERE channel_id = ?').run(chId);
+      db.prepare('DELETE FROM chat_channels WHERE id = ?').run(chId);
+    }
+  }
+
   saveDb();
   addAudit(db, req.user.id, 'status_changed', 'ticket', req.params.id, 'Status -> ' + status);
   res.json({ ticket: enrichTicket(db, db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id)) });
