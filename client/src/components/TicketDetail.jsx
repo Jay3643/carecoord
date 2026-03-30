@@ -52,6 +52,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [totalTimeMs, setTotalTimeMs] = useState(0);
   const [timeByUser, setTimeByUser] = useState([]);
   const [timeLogExpanded, setTimeLogExpanded] = useState(false);
+  const [hasExistingChat, setHasExistingChat] = useState(false);
   const [clockManualStop, setClockManualStop] = useState(false); // user manually stopped — don't auto-restart
 
   const fetchData = async () => {
@@ -65,6 +66,11 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setTicket(ticketData.ticket);
       setMessages(msgData.messages);
       setNotes(noteData.notes);
+      // Check if chat exists for this ticket
+      try {
+        const chData = await fetch('/api/chat/channels', { credentials: 'include' }).then(r => r.json());
+        setHasExistingChat(!!(chData.channels || []).find(ch => ch.ticketId === ticketId));
+      } catch(e) {}
       // Load time tracking
       try {
         const td = await api.getTimeEntries(ticketId);
@@ -120,6 +126,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       try {
         const tc = await api.chatTicketChannel(ticketId);
         setDiscussionChannelId(tc.channelId);
+        setHasExistingChat(true);
         setShowMemberPicker(false);
         const md = await api.chatMessages(tc.channelId);
         setDiscussionMsgs(md.messages || []);
@@ -511,8 +518,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <button onClick={() => setActiveTab('note')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'note' ? '#c9963b' : '#dde8f2', color: activeTab === 'note' ? '#000' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="note" size={12} /> Internal Note
               </button>
-              <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'discussion' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'discussion' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> Start a Chat
+              <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none',
+                background: activeTab === 'discussion' ? '#1a5e9a' : hasExistingChat ? '#1a5e9a' : '#dde8f2',
+                color: activeTab === 'discussion' ? '#fff' : hasExistingChat ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                <Icon name="send" size={12} /> {hasExistingChat ? 'Open Chat' : 'Start a Chat'}
               </button>
               <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? '#52a8c7' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'contain' }} /> Seniority AI
