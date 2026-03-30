@@ -653,7 +653,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 )}
                 <button onClick={() => setShowCloseModal(true)} style={{ padding: '6px 12px', background: '#dde8f2', color: '#d94040', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Close</button>
                 {isSupervisor && (
-                  <button onClick={() => setPullMenuOpen(true)}
+                  <button onClick={async () => {
+                    const choice = window.confirm('Pull from Queue\n\nOK = Return to original recipient\'s inbox\nCancel = Pull to YOUR inbox\n\n(Press OK for original, Cancel for yours)');
+                    const dest = choice ? 'original' : null;
+                    if (dest === null) {
+                      const pullToMe = window.confirm('Pull this email to YOUR inbox instead?');
+                      if (!pullToMe) return;
+                    }
+                    try {
+                      await api.pullFromQueue(ticketId, dest || 'me');
+                      showToast(dest === 'original' ? 'Returned to original inbox' : 'Pulled to your inbox');
+                      onBack();
+                    } catch(e) { showToast(e.message); }
+                  }}
                     style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
                     Pull from Queue
                   </button>
