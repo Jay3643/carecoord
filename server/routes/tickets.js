@@ -535,7 +535,8 @@ router.get('/:id/time', requireAuth, (req, res) => {
   // Check if current user has a running clock on this ticket
   const running = db.prepare('SELECT * FROM time_entries WHERE ticket_id = ? AND user_id = ? AND stopped_at IS NULL').get(req.params.id, req.user.id);
   // Total time for this ticket
-  const totalMs = entries.reduce((sum, e) => sum + (e.duration_ms || (e.stopped_at ? e.stopped_at - e.started_at : Date.now() - e.started_at) || 0), 0);
+  // Only count completed entries in the total — running entry is shown live on client
+  const totalMs = entries.reduce((sum, e) => sum + (e.stopped_at ? (e.duration_ms || e.stopped_at - e.started_at) : 0), 0);
   res.json({
     entries: entries.map(e => ({
       id: toStr(e.id), ticketId: toStr(e.ticket_id), userId: toStr(e.user_id),

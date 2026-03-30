@@ -67,8 +67,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
         const td = await api.getTimeEntries(ticketId);
         setTimeEntries(td.entries || []);
         setTotalTimeMs(td.totalMs || 0);
-        if (td.running) { setClockRunning(td.running); setClockElapsed(Date.now() - td.running.startedAt); }
-        else { setClockRunning(null); setClockElapsed(0); }
+        if (td.running) {
+          // Use client time: record when we loaded so the tick is relative to local clock
+          const elapsedSoFar = Date.now() - td.running.startedAt;
+          const clientStart = Date.now() - Math.max(0, elapsedSoFar);
+          setClockRunning({ ...td.running, clientStart });
+          setClockElapsed(Math.max(0, elapsedSoFar));
+        } else { setClockRunning(null); setClockElapsed(0); }
       } catch(e) {}
     } catch (e) {
       showToast('Error loading ticket');
@@ -82,7 +87,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   // Tick the clock every second when running
   useEffect(() => {
     if (!clockRunning) return;
-    const iv = setInterval(() => setClockElapsed(Date.now() - clockRunning.startedAt), 1000);
+    const start = clockRunning.clientStart || Date.now();
+    const iv = setInterval(() => setClockElapsed(Date.now() - start), 1000);
     return () => clearInterval(iv);
   }, [clockRunning]);
 
@@ -168,8 +174,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
 
   const handleStartClock = async () => {
     try {
+      const clientStart = Date.now();
       const d = await api.startClock(ticketId);
-      setClockRunning({ id: d.id, startedAt: d.startedAt });
+      setClockRunning({ id: d.id, startedAt: d.startedAt, clientStart });
       setClockElapsed(0);
       if (d.stoppedPrevious) showToast('Previous clock stopped');
     } catch(e) { showToast?.(e.message); }
