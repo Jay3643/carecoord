@@ -204,6 +204,32 @@ router.get('/', requireAuth, (req, res) => {
   res.json({ tickets: tickets.map(t => enrichTicket(db, t)) });
 });
 
+// ── Pending import: unassigned tickets synced for this user ──
+router.get('/my/pending', requireAuth, (req, res) => {
+  const db = getDb();
+  const tickets = db.prepare("SELECT * FROM tickets WHERE synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED' ORDER BY created_at DESC").all(req.user.id);
+  res.json({ tickets: tickets.map(t => enrichTicket(db, t)), count: tickets.length });
+});
+
+// ── Claim pending tickets (import into my queue) ──
+router.post('/my/claim-pending', requireAuth, (req, res) => {
+  const db = getDb();
+  const { ticketIds } = req.body;
+  const now = Date.now();
+  let claimed = 0;
+  // If ticketIds provided, claim those; otherwise claim all pending
+  const pending = ticketIds
+    ? ticketIds.map(id => db.prepare("SELECT id FROM tickets WHERE id = ? AND synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED'").get(id, req.user.id)).filter(Boolean)
+    : db.prepare("SELECT id FROM tickets WHERE synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED'").all(req.user.id);
+  for (const t of pending) {
+    db.prepare('UPDATE tickets SET assignee_user_id = ?, assigned_at = ?, has_unread = 1 WHERE id = ?').run(req.user.id, now, toStr(t.id));
+    claimed++;
+  }
+  saveDb();
+  if (claimed > 0) addAudit(db, req.user.id, 'bulk_claim', 'user', req.user.id, 'Claimed ' + claimed + ' pending tickets');
+  res.json({ claimed });
+});
+
 // ── Bird's Eye Dashboard ──
 router.get('/birds-eye', requireAuth, (req, res) => {
   if (req.user.role !== 'supervisor' && req.user.role !== 'admin') {

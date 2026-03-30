@@ -45,6 +45,7 @@ async function initDb() {
   try { r('ALTER TABLE tickets ADD COLUMN assigned_at INTEGER'); } catch(e) {}
   try { r('ALTER TABLE tickets ADD COLUMN read_at INTEGER'); } catch(e) {}
   try { r('ALTER TABLE tickets ADD COLUMN read_by_user_id TEXT'); } catch(e) {}
+  try { r('ALTER TABLE tickets ADD COLUMN synced_for_user_id TEXT'); } catch(e) {}
   try { r('CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_gmail_id ON messages(gmail_message_id)'); } catch(e) {}
   r("CREATE TABLE IF NOT EXISTS time_entries (id TEXT PRIMARY KEY, ticket_id TEXT, user_id TEXT, started_at INTEGER, stopped_at INTEGER, duration_ms INTEGER, note TEXT)");
   r('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');

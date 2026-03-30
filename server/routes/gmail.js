@@ -406,14 +406,10 @@ async function syncUser(db, row) {
           console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId, '(was', toStr(ticket.assignee_user_id), ', also received by', uid, ')');
         }
       } else {
-        // Brand new email — create ticket
-        // If email was TO a region alias or user is paused, leave unassigned; otherwise auto-assign
-        const isRegionEmail = Object.keys(aliasMap).some(a => allRecipients.includes(a));
-        const isPaused = userRow && toStr(userRow.work_status) === 'paused';
-        const assignTo = (isRegionEmail || isPaused) ? null : uid;
+        // Brand new email — always create as unassigned, tag with who it was synced from
         const tid = generateTicketId(db, rid);
-        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
-          .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null);
+        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)')
+          .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid);
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);

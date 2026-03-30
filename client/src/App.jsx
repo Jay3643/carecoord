@@ -29,6 +29,7 @@ export default function App() {
   const [composeDraft, setComposeDraft] = useState(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null); // { tickets, count }
   const [workStatus, setWorkStatus] = useState('active');
   const [aiOpen, setAiOpen] = useState(false);
   const [chatWidth, setChatWidth] = useState(380);
@@ -77,6 +78,10 @@ export default function App() {
         setAllTags(t.tags);
         setCloseReasons(c.reasons || c.closeReasons || []);
       }).catch(e => showToast('Error loading reference data'));
+      // Check for pending tickets addressed to this user
+      api.getPendingTickets().then(d => {
+        if (d.count > 0) setPendingImport(d);
+      }).catch(() => {});
     }
   }, [currentUser?.id]);
 
@@ -93,13 +98,12 @@ export default function App() {
   };
 
   const cycleWorkStatus = async () => {
-    const next = workStatus === 'active' ? 'paused' : workStatus === 'paused' ? 'inactive' : 'active';
+    const next = workStatus === 'active' ? 'inactive' : 'active';
     try {
       await api.setWorkStatus(next);
       setWorkStatus(next);
       if (next === 'inactive') showToast('Inactive — tickets returned to queue, sync stopped');
-      else if (next === 'paused') showToast('Paused — new messages go to unassigned, you keep your tickets');
-      else showToast('Active — receiving new messages');
+      else showToast('Active — you can claim tickets from the queue');
       refreshCounts();
     } catch (e) { showToast(e.message); }
   };
@@ -472,14 +476,12 @@ export default function App() {
             {!sidebarCollapsed && currentUser.role === 'coordinator' && (
               <button onClick={cycleWorkStatus}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-                  background: workStatus === 'active' ? '#0d3b1e' : workStatus === 'paused' ? '#3b2e0d' : '#3b1a0d',
-                  border: '1px solid',
-                  borderColor: workStatus === 'active' ? '#2e7d32' : workStatus === 'paused' ? '#c9963b' : '#d94040',
-                  borderRadius: 6,
-                  color: workStatus === 'active' ? '#4ade80' : workStatus === 'paused' ? '#fbbf24' : '#f87171',
+                  background: workStatus === 'active' ? '#0d3b1e' : '#3b1a0d',
+                  border: '1px solid', borderColor: workStatus === 'active' ? '#2e7d32' : '#d94040',
+                  borderRadius: 6, color: workStatus === 'active' ? '#4ade80' : '#f87171',
                   cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : workStatus === 'paused' ? '#fbbf24' : '#f87171' }} />
-                {workStatus === 'active' ? 'Active' : workStatus === 'paused' ? 'Paused' : 'Inactive'}
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : '#f87171' }} />
+                {workStatus === 'active' ? 'Active' : 'Inactive'}
               </button>
             )}
             {!sidebarCollapsed && (
@@ -612,6 +614,44 @@ export default function App() {
               title="Discard draft">
               ✕
             </button>
+          </div>
+        )}
+
+        {/* Pending import modal */}
+        {pendingImport && pendingImport.count > 0 && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+            <div style={{ background: '#f0f4f9', borderRadius: 14, border: '1px solid #c0d0e4', padding: 28, width: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f', marginBottom: 6 }}>New Messages for You</h3>
+              <p style={{ fontSize: 13, color: '#6b8299', marginBottom: 16 }}>
+                There {pendingImport.count === 1 ? 'is' : 'are'} <strong style={{ color: '#1a5e9a' }}>{pendingImport.count}</strong> unassigned {pendingImport.count === 1 ? 'message' : 'messages'} addressed to you in the queue.
+              </p>
+              <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                {pendingImport.tickets.slice(0, 15).map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#8a9fb0' }}>{t.id}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f' }}>{t.subject}</span>
+                  </div>
+                ))}
+                {pendingImport.count > 15 && <div style={{ padding: '6px 12px', fontSize: 11, color: '#8a9fb0' }}>...and {pendingImport.count - 15} more</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={async () => {
+                  try {
+                    const d = await api.claimPendingTickets();
+                    showToast(d.claimed + ' tickets imported to your queue');
+                    setPendingImport(null);
+                    refreshCounts();
+                  } catch(e) { showToast(e.message); }
+                }}
+                  style={{ flex: 1, padding: '10px 16px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  Import All to My Queue
+                </button>
+                <button onClick={() => setPendingImport(null)}
+                  style={{ padding: '10px 16px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  Leave in Queue
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
