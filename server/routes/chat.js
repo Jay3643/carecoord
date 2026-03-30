@@ -169,7 +169,16 @@ router.post('/ticket-channel', requireAuth, (req, res) => {
 
   // Check if channel exists for this ticket
   const existing = db.prepare("SELECT id FROM chat_channels WHERE ticket_id = ? AND type = 'ticket'").get(ticketId);
-  if (existing) return res.json({ channelId: toStr(existing.id), existing: true });
+  if (existing) {
+    // Auto-add the requesting user as a member if not already
+    const chId = toStr(existing.id);
+    const isMember = db.prepare('SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?').get(chId, req.user.id);
+    if (!isMember) {
+      db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id, joined_at, last_read_at) VALUES (?,?,?,0)').run(chId, req.user.id, Date.now());
+      saveDb();
+    }
+    return res.json({ channelId: chId, existing: true });
+  }
 
   // Create ticket discussion channel
   const ticket = db.prepare('SELECT subject, assignee_user_id FROM tickets WHERE id = ?').get(ticketId);

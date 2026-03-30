@@ -73,31 +73,46 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   }, [ticket?.region_id]);
 
-  // Discussion channel — check if one exists already
+  // Discussion channel — check if one exists already, or auto-join via ticket-channel endpoint
   useEffect(() => {
     if (activeTab !== 'discussion') return;
     setDiscussionLoading(true);
-    // Try to get existing channel
-    fetch('/api/chat/channels', { credentials: 'include' }).then(r => r.json()).then(d => {
+    // First check user's channels for an existing ticket discussion
+    fetch('/api/chat/channels', { credentials: 'include' }).then(r => r.json()).then(async (d) => {
       const existing = (d.channels || []).find(ch => ch.ticketId === ticketId);
       if (existing) {
         setDiscussionChannelId(existing.id);
         setShowMemberPicker(false);
-        return api.chatMessages(existing.id).then(md => {
-          setDiscussionMsgs(md.messages || []);
-          // Load members
-          setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
-        });
+        const md = await api.chatMessages(existing.id);
+        setDiscussionMsgs(md.messages || []);
+        setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
       } else {
-        // No channel yet — show member picker
-        setShowMemberPicker(true);
-        setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
-        setSelectedMemberIds(new Set());
+        // Try ticket-channel endpoint — auto-creates/joins if channel exists for this ticket
+        try {
+          const tc = await api.chatTicketChannel(ticketId);
+          if (tc.existing) {
+            // Channel exists, we were just added as a member
+            setDiscussionChannelId(tc.channelId);
+            setShowMemberPicker(false);
+            const md = await api.chatMessages(tc.channelId);
+            setDiscussionMsgs(md.messages || []);
+            setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
+          } else {
+            // No channel yet — show member picker
+            setShowMemberPicker(true);
+            setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
+            setSelectedMemberIds(new Set());
+          }
+        } catch(e) {
+          setShowMemberPicker(true);
+          setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
+          setSelectedMemberIds(new Set());
+        }
       }
     }).catch(() => {}).finally(() => setDiscussionLoading(false));
   }, [activeTab, ticketId]);
 
-  // Socket for real-time discussion
+  // Socket + polling for real-time discussion (Socket.IO may not work on Render)
   useEffect(() => {
     if (!discussionChannelId) return;
     const sock = io(window.location.origin, { transports: ['websocket', 'polling'] });
@@ -105,10 +120,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     sock.emit('join', discussionChannelId);
     sock.on('chat:message', (msg) => {
       if (msg.channelId === discussionChannelId) {
-        setDiscussionMsgs(prev => [...prev, msg]);
+        setDiscussionMsgs(prev => {
+          if (prev.find(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
       }
     });
-    return () => { sock.emit('leave', discussionChannelId); sock.disconnect(); };
+    // Poll for new messages every 3 seconds as fallback
+    const poll = setInterval(() => {
+      api.chatMessages(discussionChannelId).then(md => {
+        setDiscussionMsgs(md.messages || []);
+      }).catch(() => {});
+    }, 3000);
+    return () => { clearInterval(poll); sock.emit('leave', discussionChannelId); sock.disconnect(); };
   }, [discussionChannelId]);
 
   useEffect(() => {
@@ -130,11 +154,15 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
 
   const sendDiscussion = async () => {
     if (!discussionText.trim() || !discussionChannelId) return;
+    const text = discussionText;
+    setDiscussionText('');
     try {
-      await api.chatSend(discussionChannelId, { body: discussionText, type: 'text' });
-      setDiscussionText('');
-      if (discussionChannelId) api.chatMarkRead(discussionChannelId);
-    } catch(e) { showToast?.(e.message); }
+      await api.chatSend(discussionChannelId, { body: text, type: 'text' });
+      // Immediately fetch messages so the sent message appears
+      const md = await api.chatMessages(discussionChannelId);
+      setDiscussionMsgs(md.messages || []);
+      api.chatMarkRead(discussionChannelId);
+    } catch(e) { showToast?.(e.message); setDiscussionText(text); }
   };
 
   useEffect(() => {
