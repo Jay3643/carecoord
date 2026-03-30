@@ -160,22 +160,40 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     }
 
     for (const t of ft) {
-      const key = t.assignee_user_id || '_unassigned';
-      if (!groups[key]) {
-        groups[key] = {
-          key,
-          assignee: t.assignee || null,
-          label: t.assignee ? t.assignee.name : 'Unassigned',
-          tickets: [],
-        };
+      if (!t.assignee_user_id && t.synced_for_user_id && t.syncedFor) {
+        // Unassigned ticket addressed to someone — group by "To: Name"
+        const key = '_to_' + t.synced_for_user_id;
+        if (!groups[key]) {
+          groups[key] = {
+            key,
+            assignee: null,
+            syncedFor: t.syncedFor,
+            label: 'To: ' + t.syncedFor.name,
+            isToGroup: true,
+            tickets: [],
+          };
+        }
+        groups[key].tickets.push(t);
+      } else {
+        const key = t.assignee_user_id || '_unassigned';
+        if (!groups[key]) {
+          groups[key] = {
+            key,
+            assignee: t.assignee || null,
+            label: t.assignee ? t.assignee.name : 'Unassigned',
+            tickets: [],
+          };
+        }
+        groups[key].tickets.push(t);
       }
-      groups[key].tickets.push(t);
     }
 
-    // Sort: unassigned first, then by assignee name
+    // Sort: unassigned first, then "To:" groups, then assigned
     const sorted = Object.values(groups).sort((a, b) => {
       if (a.key === '_unassigned') return -1;
       if (b.key === '_unassigned') return 1;
+      if (a.isToGroup && !b.isToGroup) return -1;
+      if (!a.isToGroup && b.isToGroup) return 1;
       return a.label.localeCompare(b.label);
     });
     return sorted;
@@ -399,11 +417,13 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
             <div key={group.key} style={{ marginBottom: 6 }}>
               {/* Group Header */}
               <button onClick={() => toggleGroup(group.key)}
-                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '10px 16px', background: group.key === '_unassigned' ? '#fef8ec' : '#f0f4f9',
-                  border: '1px solid', borderColor: group.key === '_unassigned' ? '#f0ddb0' : '#dde8f2', borderRadius: isExpanded ? '10px 10px 0 0' : 10,
+                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '10px 16px',
+                  background: group.isToGroup ? (getUserColor(group.syncedFor) + '08') : group.key === '_unassigned' ? '#fef8ec' : '#f0f4f9',
+                  border: '1px solid', borderColor: group.isToGroup ? (getUserColor(group.syncedFor) + '30') : group.key === '_unassigned' ? '#f0ddb0' : '#dde8f2',
+                  borderRadius: isExpanded ? '10px 10px 0 0' : 10,
                   cursor: 'pointer', textAlign: 'left', color: '#1e3a4f', gap: 10, transition: 'all 0.1s' }}
-                onMouseEnter={e => e.currentTarget.style.background = group.key === '_unassigned' ? '#fdf0d5' : '#e4ecf5'}
-                onMouseLeave={e => e.currentTarget.style.background = group.key === '_unassigned' ? '#fef8ec' : '#f0f4f9'}>
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="#6b8299" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s', flexShrink: 0 }}>
                   <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
                 </svg>
@@ -411,6 +431,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                   <div style={{ width: 28, height: 28, borderRadius: '50%', background: group.tagColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.tagColor }} />
                   </div>
+                ) : group.isToGroup ? (
+                  <Avatar user={group.syncedFor} size={28} />
                 ) : group.assignee ? (
                   <Avatar user={group.assignee} size={28} />
                 ) : (
@@ -418,7 +440,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                     <Icon name="inbox" size={14} />
                   </div>
                 )}
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.key === '_unassigned' ? '#c9963b' : '#1e3a4f' }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.isToGroup ? getUserColor(group.syncedFor) : group.key === '_unassigned' ? '#c9963b' : '#1e3a4f' }}>
                   {group.label}
                 </span>
                 {unreadCount > 0 && (
