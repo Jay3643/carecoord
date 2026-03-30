@@ -5,6 +5,19 @@ const { getDb, saveDb } = require('../database');
 const { requireAuth, toStr } = require('../middleware');
 const router = express.Router();
 
+function generateTicketId(db, regionId) {
+  const region = regionId ? db.prepare('SELECT name FROM regions WHERE id = ?').get(regionId) : null;
+  const regionName = region ? toStr(region.name) : 'GEN';
+  const abbr = regionName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
+  const last = db.prepare("SELECT id FROM tickets WHERE id LIKE ? ORDER BY id DESC LIMIT 1").get(abbr + '-%');
+  let num = 1;
+  if (last) {
+    const match = toStr(last.id).match(/-(\d+)$/);
+    if (match) num = parseInt(match[1]) + 1;
+  }
+  return abbr + '-' + String(num).padStart(4, '0');
+}
+
 function oauth2() { return new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI); }
 function authClient(t) { const c = oauth2(); c.setCredentials({ access_token: toStr(t.access_token), refresh_token: toStr(t.refresh_token), expiry_date: t.expiry_date }); return c; }
 function getTokens(uid) { return getDb().prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(uid) || null; }
@@ -299,9 +312,17 @@ async function syncUser(db, row) {
   }
 
   const startDate = toStr(syncState.sync_start_date) || '2026/03/07';
-  const rid = toStr(regions[0].region_id);
+  const defaultRid = toStr(regions[0].region_id);
   const archiveEmail = db.prepare("SELECT value FROM settings WHERE key='archive_email'").get();
   const archiveAddr = archiveEmail ? toStr(archiveEmail.value) : 'thinkprompted@gmail.com';
+
+  // Build alias-to-region map for routing by To address
+  const allRegions = db.prepare("SELECT id, routing_aliases FROM regions WHERE is_active = 1").all();
+  const aliasMap = {};
+  for (const r of allRegions) {
+    const aliases = JSON.parse(toStr(r.routing_aliases) || '[]');
+    for (const a of aliases) aliasMap[a.toLowerCase()] = toStr(r.id);
+  }
 
   // Load exception list — these senders/domains SKIP the queue, stay in personal inbox
   const exceptions = db.prepare("SELECT * FROM email_filters WHERE action='exception'").all();
@@ -330,6 +351,15 @@ async function syncUser(db, row) {
       const bd = body(msg.data.payload), thId = msg.data.threadId;
       const ts = parseInt(msg.data.internalDate) || Date.now();
       const rfcMessageId = hdr(h, 'Message-ID') || hdr(h, 'Message-Id') || '';
+      const toAddr = hdr(h, 'To') || '';
+      const ccAddr = hdr(h, 'Cc') || '';
+      const allRecipients = (toAddr + ',' + ccAddr).toLowerCase();
+
+      // Route to region by matching To/Cc against region aliases
+      let rid = defaultRid;
+      for (const [alias, regionId] of Object.entries(aliasMap)) {
+        if (allRecipients.includes(alias)) { rid = regionId; break; }
+      }
 
       // Check exception list — if sender matches, skip queue (stays in personal inbox)
       let isException = false;
@@ -376,10 +406,13 @@ async function syncUser(db, row) {
           console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId, '(was', toStr(ticket.assignee_user_id), ', also received by', uid, ')');
         }
       } else {
-        // Brand new email — create ticket, auto-assign to this coordinator
-        const tid = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        // Brand new email — create ticket
+        // If email was TO a region alias, leave unassigned; otherwise auto-assign to coordinator
+        const isRegionEmail = Object.keys(aliasMap).some(a => allRecipients.includes(a));
+        const assignTo = isRegionEmail ? null : uid;
+        const tid = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
-          .run(tid, subj, from, rid, 'OPEN', uid, ts, ts, JSON.stringify([from]), ts);
+          .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null);
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
@@ -827,7 +860,7 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
         .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
     } else {
-      ticketId = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      ticketId = generateTicketId(db, rid);
       db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,1)')
         .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
       const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -1054,7 +1087,7 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
           .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
         db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
       } else {
-        ticketId = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        ticketId = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,1)')
           .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);

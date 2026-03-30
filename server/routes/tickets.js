@@ -7,6 +7,22 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
+// Generate short ticket ID: REGION-NNNN (e.g. CPA-0042)
+function generateTicketId(db, regionId) {
+  const region = regionId ? db.prepare('SELECT name FROM regions WHERE id = ?').get(regionId) : null;
+  const regionName = region ? toStr(region.name) : 'GEN';
+  // Build abbreviation from region name: "Central PA" -> "CPA", "South NJ" -> "SNJ"
+  const abbr = regionName.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
+  // Get next number
+  const last = db.prepare("SELECT id FROM tickets WHERE id LIKE ? ORDER BY id DESC LIMIT 1").get(abbr + '-%');
+  let num = 1;
+  if (last) {
+    const match = toStr(last.id).match(/-(\d+)$/);
+    if (match) num = parseInt(match[1]) + 1;
+  }
+  return abbr + '-' + String(num).padStart(4, '0');
+}
+
 // Service account key (same as gmail.js)
 let serviceAccountKey = null;
 if (process.env.SA_CLIENT_EMAIL && process.env.SA_PRIVATE_KEY) {
@@ -84,7 +100,7 @@ router.post('/', requireAuth, async (req, res) => {
   const region = db.prepare('SELECT * FROM regions WHERE id = ?').get(regionId);
   if (!region) return res.status(404).json({ error: 'Region not found' });
 
-  const ticketId = 'tk-' + uuid().split('-')[0];
+  const ticketId = generateTicketId(db, regionId);
   const msgId = uuid();
   const now = Date.now();
   const aliases = JSON.parse(region.routing_aliases || '[]');
