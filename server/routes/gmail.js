@@ -775,23 +775,31 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
   if (!ticketId) return res.status(400).json({ error: 'ticketId required' });
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
   if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
-  const t = getTokens(req.user.id);
-  if (t) {
-    const gm = google.gmail({ version: 'v1', auth: authClient(t) });
-    const msgs = db.prepare('SELECT gmail_message_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
-    for (const m of msgs) {
+
+  // Restore emails to the original user's Gmail inbox (use service account or their OAuth tokens)
+  const msgs = db.prepare('SELECT gmail_message_id, gmail_user_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
+  for (const m of msgs) {
+    const gmailUserId = toStr(m.gmail_user_id);
+    const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
+    if (userAuth) {
       try {
+        const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
         const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
         const modReq = { addLabelIds: ['INBOX'] };
         if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
-        await gm.users.messages.modify({ userId: 'me', id: m.gmail_message_id, requestBody: modReq });
-      } catch(e) {}
+        await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
+      } catch(e) { console.log('[Pull] Gmail restore failed:', e.message); }
     }
   }
-  // Restore ticket: unassign and reopen (don't delete — preserve history)
-  db.prepare("UPDATE tickets SET assignee_user_id = NULL, status = 'OPEN', last_activity_at = ? WHERE id = ?").run(Date.now(), ticketId);
+
+  // Remove ticket and related data from CareCoord
+  db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
+  db.prepare('DELETE FROM notes WHERE ticket_id = ?').run(ticketId);
+  db.prepare('DELETE FROM messages WHERE ticket_id = ?').run(ticketId);
+  db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ?').run(ticketId);
+  db.prepare('DELETE FROM tickets WHERE id = ?').run(ticketId);
   saveDb();
-  console.log('[Queue] Pulled:', ticketId);
+  console.log('[Queue] Pulled and removed:', ticketId);
   res.json({ ok: true, ticketId });
 });
 
@@ -804,25 +812,33 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
   const { ticketIds } = req.body;
   if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
 
-  const t = getTokens(req.user.id);
-  let gm = null;
-  if (t) gm = google.gmail({ version: 'v1', auth: authClient(t) });
-
   let pulled = 0;
   for (const ticketId of ticketIds) {
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
     if (!ticket) continue;
 
-    // Restore emails to inbox in Gmail
-    if (gm) {
-      const msgs = db.prepare('SELECT gmail_message_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
-      for (const m of msgs) {
-        try { await gm.users.messages.modify({ userId: 'me', id: m.gmail_message_id, requestBody: { addLabelIds: ['INBOX'] } }); } catch(e) {}
+    // Restore emails to the original user's Gmail inbox
+    const msgs = db.prepare('SELECT gmail_message_id, gmail_user_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
+    for (const m of msgs) {
+      const gmailUserId = toStr(m.gmail_user_id);
+      const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
+      if (userAuth) {
+        try {
+          const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+          const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
+          const modReq = { addLabelIds: ['INBOX'] };
+          if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
+          await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
+        } catch(e) {}
       }
     }
 
-    // Restore ticket: unassign and reopen (don't delete — preserve history)
-    db.prepare("UPDATE tickets SET assignee_user_id = NULL, status = 'OPEN', last_activity_at = ? WHERE id = ?").run(Date.now(), ticketId);
+    // Remove ticket and related data from CareCoord
+    db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
+    db.prepare('DELETE FROM notes WHERE ticket_id = ?').run(ticketId);
+    db.prepare('DELETE FROM messages WHERE ticket_id = ?').run(ticketId);
+    db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ?').run(ticketId);
+    db.prepare('DELETE FROM tickets WHERE id = ?').run(ticketId);
     pulled++;
   }
 
