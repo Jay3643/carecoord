@@ -894,7 +894,7 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
             const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
             const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
             // Insert the raw message into current user's inbox
-            await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX'] } });
+            await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
           }
         } catch(e) { console.log('[Pull] Forward to me failed:', e.message); }
       }
@@ -912,7 +912,7 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
       }
     }
   } else {
-    // Default: restore to original coordinator's inbox
+    // Default: restore to original coordinator's inbox as unread
     for (const m of msgs) {
       const gmailUserId = toStr(m.gmail_user_id);
       const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
@@ -920,7 +920,7 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
         try {
           const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
           const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-          const modReq = { addLabelIds: ['INBOX'] };
+          const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
           if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
           await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
         } catch(e) { console.log('[Pull] Gmail restore failed:', e.message); }
@@ -967,7 +967,7 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
             if (origAuth) {
               const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
               const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
-              await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX'] } });
+              await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
             }
           } catch(e) {}
         }
@@ -985,7 +985,7 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
         }
       }
     } else {
-      // Default: restore to original coordinator's inbox
+      // Default: restore to original coordinator's inbox as unread
       for (const m of msgs) {
         const gmailUserId = toStr(m.gmail_user_id);
         const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
@@ -993,7 +993,7 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
           try {
             const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
             const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-            const modReq = { addLabelIds: ['INBOX'] };
+            const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
             if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
             await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
           } catch(e) {}
