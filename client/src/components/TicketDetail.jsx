@@ -42,6 +42,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const discussionEndRef = useRef(null);
   const socketRef = useRef(null);
   const [aiMessages, setAiMessages] = useState([]);
+  const [pullMenuOpen, setPullMenuOpen] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const aiEndRef = useRef(null);
@@ -652,8 +653,28 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 )}
                 <button onClick={() => setShowCloseModal(true)} style={{ padding: '6px 12px', background: '#dde8f2', color: '#d94040', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Close</button>
                 {isSupervisor && (
-                  <button onClick={async () => { try { await api.pullFromQueue(ticketId); showToast('Returned to inbox'); onBack(); } catch(e) { showToast(e.message); } }}
-                    style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Pull from Queue</button>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <button onClick={() => setPullMenuOpen(!pullMenuOpen)}
+                      style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                      Pull from Queue ▾
+                    </button>
+                    {pullMenuOpen && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 220, overflow: 'hidden' }}>
+                        <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'original'); showToast('Returned to original inbox'); onBack(); } catch(e) { showToast(e.message); } }}
+                          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid #f0f4f8', cursor: 'pointer', textAlign: 'left', fontSize: 12 }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f0f4f8'} onMouseLeave={e => e.currentTarget.style.background='none'}>
+                          <div style={{ fontWeight: 600, color: '#1e3a4f' }}>Return to original inbox</div>
+                          <div style={{ color: '#6b8299', fontSize: 11, marginTop: 2 }}>Send back to the coordinator who received it</div>
+                        </button>
+                        <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'me'); showToast('Pulled to your inbox'); onBack(); } catch(e) { showToast(e.message); } }}
+                          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 12 }}
+                          onMouseEnter={e => e.currentTarget.style.background='#f0f4f8'} onMouseLeave={e => e.currentTarget.style.background='none'}>
+                          <div style={{ fontWeight: 600, color: '#1e3a4f' }}>Pull to my inbox</div>
+                          <div style={{ color: '#6b8299', fontSize: 11, marginTop: 2 }}>Forward the email to your own Gmail</div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </>
             )}
