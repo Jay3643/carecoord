@@ -68,11 +68,12 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
         setTimeEntries(td.entries || []);
         setTotalTimeMs(td.totalMs || 0);
         if (td.running) {
-          // Use client time: record when we loaded so the tick is relative to local clock
-          const elapsedSoFar = Date.now() - td.running.startedAt;
-          const clientStart = Date.now() - Math.max(0, elapsedSoFar);
+          // Continue from previous total + current session elapsed
+          const sessionElapsed = Math.max(0, Date.now() - td.running.startedAt);
+          const totalPrevious = td.totalMs || 0;
+          const clientStart = Date.now() - totalPrevious - sessionElapsed;
           setClockRunning({ ...td.running, clientStart });
-          setClockElapsed(Math.max(0, elapsedSoFar));
+          setClockElapsed(totalPrevious + sessionElapsed);
         } else { setClockRunning(null); setClockElapsed(0); }
       } catch(e) {}
     } catch (e) {
@@ -174,10 +175,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
 
   const handleStartClock = async () => {
     try {
-      const clientStart = Date.now();
+      const clientStart = Date.now() - totalTimeMs; // offset so clock continues from previous total
       const d = await api.startClock(ticketId);
       setClockRunning({ id: d.id, startedAt: d.startedAt, clientStart });
-      setClockElapsed(0);
+      setClockElapsed(totalTimeMs);
       if (d.stoppedPrevious) showToast('Previous clock stopped');
     } catch(e) { showToast?.(e.message); }
   };
