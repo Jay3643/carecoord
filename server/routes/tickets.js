@@ -86,6 +86,9 @@ function enrichTicket(db, ticket) {
   if (ticket.read_by_user_id) {
     ticket.read_by = db.prepare('SELECT id, name FROM users WHERE id = ?').get(ticket.read_by_user_id);
   }
+  if (ticket.synced_for_user_id) {
+    ticket.syncedFor = db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.synced_for_user_id);
+  }
   return ticket;
 }
 
