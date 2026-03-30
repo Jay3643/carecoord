@@ -115,6 +115,7 @@ export const api = {
   chatMessages: (channelId, before) => request('/chat/channels/' + channelId + '/messages' + (before ? '?before=' + before : '')),
   chatSend: (channelId, data) => request('/chat/channels/' + channelId + '/messages', { method: 'POST', body: data }),
   chatMarkRead: (channelId) => request('/chat/channels/' + channelId + '/read', { method: 'POST' }),
+  chatAddMembers: (channelId, memberIds) => request('/chat/channels/' + channelId + '/members', { method: 'POST', body: { memberIds } }),
   chatDeleteChannel: (channelId) => request('/chat/channels/' + channelId, { method: 'DELETE' }),
   chatDeleteMessage: (channelId, msgId) => request('/chat/channels/' + channelId + '/messages/' + msgId, { method: 'DELETE' }),
   chatUnread: () => request('/chat/unread'),

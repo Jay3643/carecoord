@@ -631,8 +631,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                     {selectedMemberIds.size > 0 && (
                       <button onClick={async () => {
                         try {
-                          for (const uid of selectedMemberIds) {
-                            await api.chatCreateChannel({ type: 'ticket', ticketId, memberIds: [uid] });
+                          if (discussionChannelId) {
+                            await api.chatAddMembers(discussionChannelId, Array.from(selectedMemberIds));
                           }
                           showToast?.(selectedMemberIds.size + ' member(s) added');
                           setSelectedMemberIds(new Set());

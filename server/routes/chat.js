@@ -125,6 +125,26 @@ router.get('/channels/:id/messages', requireAuth, (req, res) => {
   }))});
 });
 
+// Add members to a channel
+router.post('/channels/:id/members', requireAuth, (req, res) => {
+  const db = getDb();
+  const { memberIds } = req.body;
+  if (!memberIds || !memberIds.length) return res.status(400).json({ error: 'memberIds required' });
+  // Verify requester is a member
+  const isMember = db.prepare('SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!isMember) return res.status(403).json({ error: 'Not a member' });
+  let added = 0;
+  for (const uid of memberIds) {
+    const exists = db.prepare('SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?').get(req.params.id, uid);
+    if (!exists) {
+      db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id, joined_at, last_read_at) VALUES (?,?,?,0)').run(req.params.id, uid, Date.now());
+      added++;
+    }
+  }
+  saveDb();
+  res.json({ added });
+});
+
 // Send message
 router.post('/channels/:id/messages', requireAuth, (req, res) => {
   const db = getDb();
@@ -193,11 +213,8 @@ router.post('/ticket-channel', requireAuth, (req, res) => {
   db.prepare('INSERT INTO chat_channels (id, name, type, ticket_id, created_by, created_at) VALUES (?,?,?,?,?,?)')
     .run(id, ticket ? toStr(ticket.subject) : 'Ticket Discussion', 'ticket', ticketId, req.user.id, Date.now());
 
-  // Add all active users as members (exclude users with inactive work_status)
-  const users = db.prepare("SELECT id FROM users WHERE is_active = 1 AND COALESCE(work_status,'active') != 'inactive'").all();
-  for (const u of users) {
-    db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id, joined_at, last_read_at) VALUES (?,?,?,0)').run(id, toStr(u.id), Date.now());
-  }
+  // Only add the creator as a member — others are added explicitly via "Add Team Members"
+  db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id, joined_at, last_read_at) VALUES (?,?,?,0)').run(id, req.user.id, Date.now());
   saveDb();
   res.json({ channelId: id });
 });
