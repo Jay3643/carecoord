@@ -1055,7 +1055,7 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
         db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
       } else {
         ticketId = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants) VALUES (?,?,?,?,?,?,?,?)')
+        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,1)')
           .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
