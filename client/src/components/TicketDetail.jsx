@@ -653,28 +653,10 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 )}
                 <button onClick={() => setShowCloseModal(true)} style={{ padding: '6px 12px', background: '#dde8f2', color: '#d94040', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>Close</button>
                 {isSupervisor && (
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <button onClick={() => setPullMenuOpen(!pullMenuOpen)}
-                      style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
-                      Pull from Queue ▾
-                    </button>
-                    {pullMenuOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 220, overflow: 'hidden' }}>
-                        <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'original'); showToast('Returned to original inbox'); onBack(); } catch(e) { showToast(e.message); } }}
-                          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid #f0f4f8', cursor: 'pointer', textAlign: 'left', fontSize: 12 }}
-                          onMouseEnter={e => e.currentTarget.style.background='#f0f4f8'} onMouseLeave={e => e.currentTarget.style.background='none'}>
-                          <div style={{ fontWeight: 600, color: '#1e3a4f' }}>Return to original inbox</div>
-                          <div style={{ color: '#6b8299', fontSize: 11, marginTop: 2 }}>Send back to the coordinator who received it</div>
-                        </button>
-                        <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'me'); showToast('Pulled to your inbox'); onBack(); } catch(e) { showToast(e.message); } }}
-                          style={{ display: 'block', width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 12 }}
-                          onMouseEnter={e => e.currentTarget.style.background='#f0f4f8'} onMouseLeave={e => e.currentTarget.style.background='none'}>
-                          <div style={{ fontWeight: 600, color: '#1e3a4f' }}>Pull to my inbox</div>
-                          <div style={{ color: '#6b8299', fontSize: 11, marginTop: 2 }}>Forward the email to your own Gmail</div>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <button onClick={() => setPullMenuOpen(true)}
+                    style={{ padding: '6px 12px', background: '#dde8f2', color: '#c96a1b', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                    Pull from Queue
+                  </button>
                 )}
               </>
             )}
@@ -794,6 +776,47 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <button onClick={() => handleStatusChange('CLOSED', closeReasonId)} disabled={!closeReasonId}
                 style={{ padding: '8px 16px', background: closeReasonId ? '#d94040' : '#dde8f2', color: closeReasonId ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 8, cursor: closeReasonId ? 'pointer' : 'default', fontSize: 12, fontWeight: 600 }}>
                 Close Ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Pull from Queue modal */}
+      {pullMenuOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={() => setPullMenuOpen(false)}>
+          <div style={{ background: '#f0f4f9', borderRadius: 16, border: '1px solid #c0d0e4', padding: 28, width: 400 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f', marginBottom: 8 }}>Pull from Queue</h3>
+            <p style={{ fontSize: 13, color: '#6b8299', marginBottom: 20 }}>Where should this email go?</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'original'); showToast('Returned to original inbox'); onBack(); } catch(e) { showToast(e.message); } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 10, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#e8f0fe'; e.currentTarget.style.borderColor='#1a5e9a'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#c0d0e4'; }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a5e9a" strokeWidth="2"><path d="M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z"/><path d="M8 12l-4 0"/><path d="M16 12l4 0"/><path d="M12 8l0-4"/><path d="M12 16l0 4"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a4f' }}>Return to original recipient</div>
+                  <div style={{ fontSize: 11, color: '#6b8299', marginTop: 2 }}>Send back to the coordinator who received it</div>
+                </div>
+              </button>
+              <button onClick={async () => { setPullMenuOpen(false); try { await api.pullFromQueue(ticketId, 'me'); showToast('Pulled to your inbox'); onBack(); } catch(e) { showToast(e.message); } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 10, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#e8f0fe'; e.currentTarget.style.borderColor='#1a5e9a'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#c0d0e4'; }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a5e9a" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a4f' }}>Pull to my inbox</div>
+                  <div style={{ fontSize: 11, color: '#6b8299', marginTop: 2 }}>Forward the email to your own Gmail</div>
+                </div>
+              </button>
+            </div>
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              <button onClick={() => setPullMenuOpen(false)}
+                style={{ padding: '8px 16px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                Cancel
               </button>
             </div>
           </div>
