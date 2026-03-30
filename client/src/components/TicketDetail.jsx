@@ -50,6 +50,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [clockElapsed, setClockElapsed] = useState(0);
   const [timeEntries, setTimeEntries] = useState([]);
   const [totalTimeMs, setTotalTimeMs] = useState(0);
+  const [timeLogExpanded, setTimeLogExpanded] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -883,14 +884,28 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
           {/* Time log */}
           {timeEntries.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', marginBottom: 8 }}>Time Log</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {timeEntries.slice(0, 10).map(e => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', borderBottom: '1px solid #f0f4f9' }}>
-                    <span style={{ color: '#6b8299', minWidth: 60 }}>{e.userName}</span>
-                    <span style={{ fontWeight: 600, color: '#1e3a4f', minWidth: 50 }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? formatDuration(Date.now() - e.startedAt) : '--'}</span>
-                    <span style={{ color: '#8a9fb0', fontSize: 10 }}>{e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}</span>
-                    {e.running && <span style={{ fontSize: 9, color: '#d94040', fontWeight: 600 }}>RUNNING</span>}
+              <button onClick={() => setTimeLogExpanded(!timeLogExpanded)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 8 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299' }}>Time Log ({timeEntries.length})</span>
+                <span style={{ fontSize: 10, color: '#8a9fb0', transition: 'transform 0.15s', transform: timeLogExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: timeLogExpanded ? 0 : 4 }}>
+                {timeEntries.map(e => (
+                  <div key={e.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', borderBottom: '1px solid #f0f4f9' }}>
+                      <span style={{ color: '#6b8299', minWidth: 60 }}>{e.userName}</span>
+                      <span style={{ fontWeight: 600, color: '#1e3a4f', minWidth: 50 }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? formatDuration(Date.now() - e.startedAt) : '--'}</span>
+                      <span style={{ color: '#8a9fb0', fontSize: 10 }}>{e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}</span>
+                      {e.running && <span style={{ fontSize: 9, color: '#d94040', fontWeight: 600 }}>RUNNING</span>}
+                    </div>
+                    {timeLogExpanded && (
+                      <div style={{ padding: '4px 0 8px 66px', fontSize: 10, color: '#8a9fb0', display: 'flex', flexDirection: 'column', gap: 2, background: '#fafbfc', borderBottom: '1px solid #f0f4f9' }}>
+                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Date:</span> {e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '--'}</div>
+                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Start:</span> {e.startedAt ? new Date(e.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '--'}</div>
+                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Stop:</span> {e.stoppedAt ? new Date(e.stoppedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : e.running ? <span style={{ color: '#d94040' }}>In progress</span> : '--'}</div>
+                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Duration:</span> <span style={{ fontWeight: 600, color: '#1e3a4f' }}>{e.durationMs ? formatDuration(e.durationMs) : '--'}</span></div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
