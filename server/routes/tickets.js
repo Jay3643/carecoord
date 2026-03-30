@@ -89,6 +89,11 @@ function enrichTicket(db, ticket) {
   if (ticket.synced_for_user_id) {
     ticket.syncedFor = db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.synced_for_user_id);
   }
+  // Multiple intended recipients
+  const syncedIds = JSON.parse(toStr(ticket.synced_for_user_ids) || '[]');
+  if (syncedIds.length > 0) {
+    ticket.syncedForUsers = syncedIds.map(uid => db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(uid)).filter(Boolean);
+  }
   return ticket;
 }
 
@@ -210,7 +215,7 @@ router.get('/', requireAuth, (req, res) => {
 // ── Pending import: unassigned tickets synced for this user ──
 router.get('/my/pending', requireAuth, (req, res) => {
   const db = getDb();
-  const tickets = db.prepare("SELECT * FROM tickets WHERE synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED' ORDER BY created_at DESC").all(req.user.id);
+  const tickets = db.prepare("SELECT * FROM tickets WHERE (synced_for_user_id = ? OR synced_for_user_ids LIKE ?) AND assignee_user_id IS NULL AND status != 'CLOSED' ORDER BY created_at DESC").all(req.user.id, '%' + req.user.id + '%');
   res.json({ tickets: tickets.map(t => enrichTicket(db, t)), count: tickets.length });
 });
 
@@ -222,8 +227,8 @@ router.post('/my/claim-pending', requireAuth, (req, res) => {
   let claimed = 0;
   // If ticketIds provided, claim those; otherwise claim all pending
   const pending = ticketIds
-    ? ticketIds.map(id => db.prepare("SELECT id FROM tickets WHERE id = ? AND synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED'").get(id, req.user.id)).filter(Boolean)
-    : db.prepare("SELECT id FROM tickets WHERE synced_for_user_id = ? AND assignee_user_id IS NULL AND status != 'CLOSED'").all(req.user.id);
+    ? ticketIds.map(id => db.prepare("SELECT id FROM tickets WHERE id = ? AND (synced_for_user_id = ? OR synced_for_user_ids LIKE ?) AND assignee_user_id IS NULL AND status != 'CLOSED'").get(id, req.user.id, '%' + req.user.id + '%')).filter(Boolean)
+    : db.prepare("SELECT id FROM tickets WHERE (synced_for_user_id = ? OR synced_for_user_ids LIKE ?) AND assignee_user_id IS NULL AND status != 'CLOSED'").all(req.user.id, '%' + req.user.id + '%');
   for (const t of pending) {
     db.prepare('UPDATE tickets SET assignee_user_id = ?, assigned_at = ?, has_unread = 1 WHERE id = ?').run(req.user.id, now, toStr(t.id));
     claimed++;

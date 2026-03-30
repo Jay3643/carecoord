@@ -171,8 +171,18 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
         };
       }
       groups[key].tickets.push(t);
-      // Track pending subgroups within unassigned
-      if (!t.assignee_user_id && t.synced_for_user_id && t.syncedFor) {
+      // Track pending subgroups within unassigned — put in each recipient's folder
+      if (!t.assignee_user_id && t.syncedForUsers && t.syncedForUsers.length > 0) {
+        for (const user of t.syncedForUsers) {
+          const subKey = user.id;
+          if (!groups[key].pendingSubgroups[subKey]) {
+            groups[key].pendingSubgroups[subKey] = { user, tickets: [] };
+          }
+          if (!groups[key].pendingSubgroups[subKey].tickets.find(x => x.id === t.id)) {
+            groups[key].pendingSubgroups[subKey].tickets.push(t);
+          }
+        }
+      } else if (!t.assignee_user_id && t.synced_for_user_id && t.syncedFor) {
         const subKey = t.synced_for_user_id;
         if (!groups[key].pendingSubgroups[subKey]) {
           groups[key].pendingSubgroups[subKey] = { user: t.syncedFor, tickets: [] };
@@ -480,6 +490,12 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                                     <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                                     <StatusBadge status={ticket.status} />
                                     {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                                    {ticket.syncedForUsers && ticket.syncedForUsers.length > 1 && (
+                                      <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}
+                                        title={ticket.syncedForUsers.map(u => u.name).join(', ')}>
+                                        Sent to {ticket.syncedForUsers.length}
+                                      </span>
+                                    )}
                                   </div>
                                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                                   <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(ticket.external_participants || [])[0]}</div>

@@ -399,17 +399,25 @@ async function syncUser(db, row) {
           db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', existingTicketId);
         }
 
-        // If a different coordinator already owns this ticket, unassign for supervisor
-        const ticket = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(existingTicketId);
-        if (ticket && ticket.assignee_user_id && toStr(ticket.assignee_user_id) !== uid) {
-          db.prepare('UPDATE tickets SET assignee_user_id = NULL WHERE id = ?').run(existingTicketId);
-          console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId, '(was', toStr(ticket.assignee_user_id), ', also received by', uid, ')');
+        // Add this user to the synced_for list if not already there
+        const existingTicket = db.prepare('SELECT assignee_user_id, synced_for_user_ids FROM tickets WHERE id = ?').get(existingTicketId);
+        if (existingTicket) {
+          const currentIds = JSON.parse(toStr(existingTicket.synced_for_user_ids) || '[]');
+          if (!currentIds.includes(uid)) {
+            currentIds.push(uid);
+            db.prepare('UPDATE tickets SET synced_for_user_ids = ? WHERE id = ?').run(JSON.stringify(currentIds), existingTicketId);
+          }
+          // If a different coordinator already owns this ticket, unassign
+          if (existingTicket.assignee_user_id && toStr(existingTicket.assignee_user_id) !== uid) {
+            db.prepare('UPDATE tickets SET assignee_user_id = NULL WHERE id = ?').run(existingTicketId);
+            console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId);
+          }
         }
       } else {
         // Brand new email — always create as unassigned, tag with who it was synced from
         const tid = generateTicketId(db, rid);
-        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)')
-          .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid);
+        db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)')
+          .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid, JSON.stringify([uid]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
