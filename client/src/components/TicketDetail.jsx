@@ -46,11 +46,12 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const aiEndRef = useRef(null);
-  const [clockRunning, setClockRunning] = useState(null); // { id, startedAt }
+  const [clockRunning, setClockRunning] = useState(null); // { id, startedAt, clientStart }
   const [clockElapsed, setClockElapsed] = useState(0);
   const [timeEntries, setTimeEntries] = useState([]);
   const [totalTimeMs, setTotalTimeMs] = useState(0);
   const [timeLogExpanded, setTimeLogExpanded] = useState(false);
+  const [clockManualStop, setClockManualStop] = useState(false); // user manually stopped — don't auto-restart
 
   const fetchData = async () => {
     setLoading(true);
@@ -75,6 +76,15 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
           const clientStart = Date.now() - totalPrevious - sessionElapsed;
           setClockRunning({ ...td.running, clientStart });
           setClockElapsed(totalPrevious + sessionElapsed);
+        } else if (!clockManualStop) {
+          // Auto-start clock when opening ticket
+          try {
+            const totalPrevious = td.totalMs || 0;
+            const clientStart = Date.now() - totalPrevious;
+            const d2 = await api.startClock(ticketId);
+            setClockRunning({ id: d2.id, startedAt: d2.startedAt, clientStart });
+            setClockElapsed(totalPrevious);
+          } catch(e2) {}
         } else { setClockRunning(null); setClockElapsed(0); }
       } catch(e) {}
     } catch (e) {
@@ -176,7 +186,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
 
   const handleStartClock = async () => {
     try {
-      const clientStart = Date.now() - totalTimeMs; // offset so clock continues from previous total
+      setClockManualStop(false);
+      const clientStart = Date.now() - totalTimeMs;
       const d = await api.startClock(ticketId);
       setClockRunning({ id: d.id, startedAt: d.startedAt, clientStart });
       setClockElapsed(totalTimeMs);
@@ -186,14 +197,14 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
 
   const handleStopClock = async () => {
     try {
+      setClockManualStop(true);
       await api.stopClock(ticketId);
       setClockRunning(null);
-      setClockElapsed(0);
-      // Refresh time entries
       const td = await api.getTimeEntries(ticketId);
       setTimeEntries(td.entries || []);
       setTotalTimeMs(td.totalMs || 0);
-      showToast('Clock stopped — ' + formatDuration(clockElapsed) + ' logged');
+      setClockElapsed(td.totalMs || 0);
+      showToast('Clock stopped');
     } catch(e) { showToast?.(e.message); }
   };
 
@@ -881,34 +892,35 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
             )}
           </div>
 
-          {/* Time log */}
+          {/* Time log — collapsed shows total only, expanded shows entries */}
           {timeEntries.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <button onClick={() => setTimeLogExpanded(!timeLogExpanded)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 8 }}>
-                <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299' }}>Time Log ({timeEntries.length})</span>
-                <span style={{ fontSize: 10, color: '#8a9fb0', transition: 'transform 0.15s', transform: timeLogExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: timeLogExpanded ? 8 : 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299' }}>Time Log ({timeEntries.length})</span>
+                  <span style={{ fontSize: 10, color: '#8a9fb0', transition: 'transform 0.15s', transform: timeLogExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a4f' }}>{formatDuration(totalTimeMs)}</span>
               </button>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: timeLogExpanded ? 0 : 4 }}>
-                {timeEntries.map(e => (
-                  <div key={e.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', borderBottom: '1px solid #f0f4f9' }}>
-                      <span style={{ color: '#6b8299', minWidth: 60 }}>{e.userName}</span>
-                      <span style={{ fontWeight: 600, color: '#1e3a4f', minWidth: 50 }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? formatDuration(Date.now() - e.startedAt) : '--'}</span>
-                      <span style={{ color: '#8a9fb0', fontSize: 10 }}>{e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}</span>
-                      {e.running && <span style={{ fontSize: 9, color: '#d94040', fontWeight: 600 }}>RUNNING</span>}
-                    </div>
-                    {timeLogExpanded && (
-                      <div style={{ padding: '4px 0 8px 66px', fontSize: 10, color: '#8a9fb0', display: 'flex', flexDirection: 'column', gap: 2, background: '#fafbfc', borderBottom: '1px solid #f0f4f9' }}>
-                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Date:</span> {e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '--'}</div>
-                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Start:</span> {e.startedAt ? new Date(e.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '--'}</div>
-                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Stop:</span> {e.stoppedAt ? new Date(e.stoppedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : e.running ? <span style={{ color: '#d94040' }}>In progress</span> : '--'}</div>
-                        <div><span style={{ color: '#6b8299', minWidth: 50, display: 'inline-block' }}>Duration:</span> <span style={{ fontWeight: 600, color: '#1e3a4f' }}>{e.durationMs ? formatDuration(e.durationMs) : '--'}</span></div>
+              {timeLogExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {timeEntries.map(e => (
+                    <div key={e.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f4f9' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
+                        <span style={{ color: '#6b8299' }}>{e.userName}</span>
+                        <span style={{ fontWeight: 600, color: '#1e3a4f' }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? <span style={{ color: '#d94040' }}>Running</span> : '--'}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                      <div style={{ fontSize: 10, color: '#8a9fb0', marginTop: 2 }}>
+                        {e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : ''}
+                        {' '}
+                        {e.startedAt ? new Date(e.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+                        {e.stoppedAt ? ' — ' + new Date(e.stoppedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

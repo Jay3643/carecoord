@@ -351,7 +351,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
               {paginatedTickets.map(ticket => {
                 const tags = ticket.tags || [];
                 return (
-                  <button key={ticket.id} onClick={() => onOpenTicket(ticket.id)}
+                  <button key={ticket.id} onClick={() => onOpenTicket(ticket.id, ticket.subject)}
                     style={{ display: 'flex', alignItems: 'stretch', width: '100%', padding: '12px 8px 12px 16px', background: ticket.has_unread ? '#f8faff' : '#fff', border: 'none', borderBottom: '1px solid #f0f4f9',
                       cursor: 'pointer', textAlign: 'left', color: '#1e3a4f', transition: 'background 0.1s', gap: 12 }}
                     onMouseEnter={e => e.currentTarget.style.background = '#e8f0f8'}
@@ -431,7 +431,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                   {group.tickets.map(ticket => {
                     const tags = ticket.tags || [];
                     return (
-                      <button key={ticket.id} onClick={() => onOpenTicket(ticket.id)}
+                      <button key={ticket.id} onClick={() => onOpenTicket(ticket.id, ticket.subject)}
                         style={{ display: 'flex', alignItems: 'stretch', width: '100%', padding: '12px 8px 12px 16px', background: ticket.has_unread ? '#f8faff' : '#fff', border: 'none', borderBottom: '1px solid #f0f4f9',
                           cursor: 'pointer', textAlign: 'left', color: '#1e3a4f', transition: 'background 0.1s', gap: 12 }}
                         onMouseEnter={e => e.currentTarget.style.background = '#e8f0f8'}

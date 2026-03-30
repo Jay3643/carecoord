@@ -22,6 +22,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [screen, setScreen] = useState('login');
   const [selectedTicketId, setSelectedTicketId] = useState(null);
+  const [openTicketTabs, setOpenTicketTabs] = useState([]); // [{ id, subject }]
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
   const [showCompose, setShowCompose] = useState(false); // false | 'open' | 'minimized'
@@ -105,12 +106,37 @@ export default function App() {
     } catch (e) { showToast(e.message); }
   };
 
-  const openTicket = (id) => {
+  const openTicket = (id, subject) => {
     setSelectedTicketId(id);
     setScreen('ticketDetail');
+    setOpenTicketTabs(prev => {
+      if (prev.find(t => t.id === id)) return prev;
+      return [...prev, { id, subject: subject || id }];
+    });
+  };
+
+  const closeTicketTab = (id) => {
+    // Stop clock when closing tab
+    api.stopClock(id).catch(() => {});
+    setOpenTicketTabs(prev => {
+      const remaining = prev.filter(t => t.id !== id);
+      if (selectedTicketId === id) {
+        if (remaining.length > 0) {
+          setSelectedTicketId(remaining[remaining.length - 1].id);
+        } else {
+          setSelectedTicketId(null);
+          setScreen('regionQueue');
+        }
+      }
+      return remaining;
+    });
   };
 
   const goBack = () => {
+    if (selectedTicketId) {
+      api.stopClock(selectedTicketId).catch(() => {});
+      setOpenTicketTabs(prev => prev.filter(t => t.id !== selectedTicketId));
+    }
     setSelectedTicketId(null);
     setScreen('regionQueue');
   };
@@ -478,17 +504,38 @@ export default function App() {
           <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'ticketDetail' && selectedTicketId && (
-          <TicketDetail
-            ticketId={selectedTicketId}
-            currentUser={currentUser}
-            isSupervisor={isSupervisor}
-            regions={regions}
-            allTags={allTags}
-            closeReasons={closeReasons}
-            allUsers={allUsers}
-            onBack={goBack}
-            showToast={showToast}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {/* Ticket tabs */}
+            {openTicketTabs.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, background: '#e8edf3', borderBottom: '1px solid #c0d0e4', padding: '0 8px', flexShrink: 0, overflow: 'auto' }}>
+                {openTicketTabs.map(tab => (
+                  <div key={tab.id} onClick={() => { setSelectedTicketId(tab.id); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: tab.id === selectedTicketId ? 600 : 400,
+                      background: tab.id === selectedTicketId ? '#fff' : 'transparent', color: tab.id === selectedTicketId ? '#1e3a4f' : '#6b8299',
+                      borderBottom: tab.id === selectedTicketId ? '2px solid #1a5e9a' : '2px solid transparent', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.subject || tab.id}</span>
+                    <span onClick={(e) => { e.stopPropagation(); closeTicketTab(tab.id); }}
+                      style={{ fontSize: 14, color: '#8a9fb0', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#8a9fb0'}>×</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <TicketDetail
+                key={selectedTicketId}
+                ticketId={selectedTicketId}
+                currentUser={currentUser}
+                isSupervisor={isSupervisor}
+                regions={regions}
+                allTags={allTags}
+                closeReasons={closeReasons}
+                allUsers={allUsers}
+                onBack={goBack}
+                showToast={showToast}
+              />
+            </div>
+          </div>
         )}
         {screen === 'dashboard' && isSupervisor && (
           <Dashboard currentUser={currentUser} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} />
