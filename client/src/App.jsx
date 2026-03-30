@@ -15,6 +15,7 @@ import { GmailConnectButton } from './components/GmailPanel';
 import AiPanel from './components/AiPanel';
 import SetupAccount from './components/SetupAccount';
 import ActivityDashboard from './components/ActivityDashboard';
+import ArchiveScreen from './components/ArchiveScreen';
 import io from 'socket.io-client';
 
 export default function App() {
@@ -236,6 +237,7 @@ export default function App() {
             ...(isSupervisor ? [{ key: 'dashboard', icon: 'barChart', label: 'Dashboard' }] : []),
             ...(isSupervisor ? [{ key: 'activityDashboard', icon: 'clock', label: 'Activity' }] : []),
             ...(isSupervisor ? [{ key: 'auditLog', icon: 'log', label: 'Audit Log' }] : []),
+            { key: 'archive', icon: 'shield', label: 'Archive' },
             { key: 'personalEmail', icon: 'mail', label: 'Email' },
             { key: '_chat_toggle' },
             { key: '_ai_toggle' },
@@ -504,6 +506,9 @@ export default function App() {
         )}
         {screen === 'auditLog' && isSupervisor && (
           <AuditLog showToast={showToast} />
+        )}
+        {screen === 'archive' && (
+          <ArchiveScreen currentUser={currentUser} isSupervisor={isSupervisor} onOpenTicket={openTicket} showToast={showToast} />
         )}
 
         {/* Compose Modal */}
