@@ -756,6 +756,23 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <span style={{ color: '#6b8299' }}>Assigned</span><span>{fmt.full(ticket.assigned_at)}</span>
               </div>
             )}
+            {ticket.read_at && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b8299' }}>Read</span>
+                <span>{fmt.full(ticket.read_at)}{ticket.read_by ? ' by ' + ticket.read_by.name : ''}</span>
+              </div>
+            )}
+            {ticket.response_time_ms != null && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b8299' }}>Response time</span>
+                <span style={{ fontWeight: 600, color: ticket.response_time_ms < 3600000 ? '#16a34a' : ticket.response_time_ms < 14400000 ? '#c9963b' : '#d94040' }}>
+                  {ticket.response_time_ms < 60000 ? Math.round(ticket.response_time_ms / 1000) + 's'
+                    : ticket.response_time_ms < 3600000 ? Math.round(ticket.response_time_ms / 60000) + 'm'
+                    : ticket.response_time_ms < 86400000 ? Math.round(ticket.response_time_ms / 3600000 * 10) / 10 + 'h'
+                    : Math.round(ticket.response_time_ms / 86400000 * 10) / 10 + 'd'}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#6b8299' }}>Last activity</span><span>{fmt.time(ticket.last_activity_at)}</span>
             </div>

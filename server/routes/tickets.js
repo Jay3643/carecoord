@@ -63,6 +63,13 @@ function enrichTicket(db, ticket) {
   if (ticket.assignee_user_id)
     ticket.assignee = db.prepare('SELECT id, name, email, role, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.assignee_user_id);
   ticket.region = db.prepare('SELECT id, name FROM regions WHERE id = ?').get(ticket.region_id);
+  // Compute response time (assigned -> read)
+  if (ticket.assigned_at && ticket.read_at) {
+    ticket.response_time_ms = ticket.read_at - ticket.assigned_at;
+  }
+  if (ticket.read_by_user_id) {
+    ticket.read_by = db.prepare('SELECT id, name FROM users WHERE id = ?').get(ticket.read_by_user_id);
+  }
   return ticket;
 }
 
@@ -245,11 +252,13 @@ router.get('/:id', requireAuth, (req, res) => {
   const db = getDb();
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
-  // Mark as read when opened
+  // Mark as read when opened — record who read it and when
   if (ticket.has_unread) {
-    db.prepare('UPDATE tickets SET has_unread = 0 WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE tickets SET has_unread = 0, read_at = ?, read_by_user_id = ? WHERE id = ?').run(Date.now(), req.user.id, req.params.id);
     saveDb();
     ticket.has_unread = 0;
+    ticket.read_at = Date.now();
+    ticket.read_by_user_id = req.user.id;
   }
   res.json({ ticket: enrichTicket(db, ticket) });
 });
@@ -289,7 +298,7 @@ router.post('/:id/assign', requireAuth, (req, res) => {
   if (assigneeUser && assigneeUser.work_status === 'inactive' && req.user.role === 'coordinator')
     return res.status(400).json({ error: 'You are currently inactive. Set your status to Active to claim tickets.' });
   const now = Date.now();
-  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1 WHERE id = ?').run(userId || null, now, userId ? now : null, req.params.id);
+  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1, read_at = NULL, read_by_user_id = NULL WHERE id = ?').run(userId || null, now, userId ? now : null, req.params.id);
   saveDb();
   const assignee = userId ? db.prepare('SELECT name FROM users WHERE id = ?').get(userId) : null;
   addAudit(db, req.user.id, 'assignee_changed', 'ticket', req.params.id, userId ? 'Assigned to ' + assignee.name : 'Unassigned / returned to queue');
@@ -471,7 +480,7 @@ router.post('/bulk/reassign', requireAuth, requireSupervisor, (req, res) => {
   const db = getDb();
   const { fromUserId, toUserId } = req.body;
   const affected = db.prepare("SELECT id FROM tickets WHERE assignee_user_id = ? AND status != 'CLOSED'").all(fromUserId);
-  db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, has_unread = 1 WHERE assignee_user_id = ? AND status != 'CLOSED'").run(toUserId || null, Date.now(), fromUserId);
+  db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, has_unread = 1, read_at = NULL, read_by_user_id = NULL WHERE assignee_user_id = ? AND status != 'CLOSED'").run(toUserId || null, Date.now(), fromUserId);
   saveDb();
   const fromUser = db.prepare('SELECT name FROM users WHERE id = ?').get(fromUserId);
   const toUser = toUserId ? db.prepare('SELECT name FROM users WHERE id = ?').get(toUserId) : null;
@@ -491,7 +500,7 @@ router.post('/bulk/reassign-selected', requireAuth, (req, res) => {
   let count = 0;
   for (const tid of ticketIds) {
     const now = Date.now();
-    const r = db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1 WHERE id = ? AND status != 'CLOSED'").run(toUserId || null, now, toUserId ? now : null, tid);
+    const r = db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1, read_at = NULL, read_by_user_id = NULL WHERE id = ? AND status != 'CLOSED'").run(toUserId || null, now, toUserId ? now : null, tid);
     if (r.changes) count++;
   }
   saveDb();
