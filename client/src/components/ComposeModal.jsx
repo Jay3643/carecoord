@@ -63,12 +63,7 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-      onClick={() => {
-        const hasContent = toEmail.trim() || subject.trim() || body.trim() || attachments.length > 0;
-        if (hasContent) { if (confirm('You have unsaved content. Discard this message?')) onClose(); }
-        else onClose();
-      }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
       <div style={{ background: '#f0f4f9', borderRadius: 16, border: '1px solid #c0d0e4', width: 580, maxHeight: '90vh', overflow: 'auto', animation: 'fadeIn 0.2s ease' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
