@@ -39,15 +39,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
 
   useEffect(() => { fetchTickets(); }, [selectedRegion, searchQuery]);
 
-  // Auto-expand all groups when searching so results are visible
-  useEffect(() => {
-    if (searchQuery) {
-      setExpandedGroups(prev => {
-        const allKeys = groupedTickets.map(g => g.key);
-        return new Set(allKeys);
-      });
-    }
-  }, [searchQuery]);
+  // When searching, show flat results (no grouping needed)
+  const isSearching = searchQuery.trim().length > 0;
 
   // Polling for near-real-time
 
@@ -351,8 +344,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
             </button>
           </div>
         )}
-        {mode === 'personal' ? (
-          /* Personal queue: flat list, no grouping */
+        {(mode === 'personal' || isSearching) ? (
+          /* Flat list: personal queue or search results */
           filteredTickets.length > 0 && (
             <div style={{ border: '1px solid #dde8f2', borderRadius: 10, overflow: 'hidden' }}>
               {paginatedTickets.map(ticket => {
