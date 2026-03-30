@@ -78,6 +78,10 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [drilldownMinutes, setDrilldownMinutes] = useState(15);
   const [drilldownData, setDrilldownData] = useState(null);
+  const [auditUserId, setAuditUserId] = useState('');
+  const [auditDays, setAuditDays] = useState(30);
+  const [auditData, setAuditData] = useState(null);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [drilldownLoading, setDrilldownLoading] = useState(false);
 
   const loadData = async () => {
@@ -203,6 +207,7 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
             { key: 'overview', label: 'Overview' },
             { key: 'team', label: 'Team' },
             { key: 'feed', label: 'Activity Feed' },
+            { key: 'userAudit', label: 'User Audit' },
           ].map(t => (
             <button key={t.key} onClick={() => setActiveTab(t.key)}
               style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: activeTab === t.key ? '#1a5e9a' : 'transparent', color: activeTab === t.key ? '#fff' : '#5a7a8a', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -598,6 +603,143 @@ export default function ActivityDashboard({ currentUser, allUsers, showToast }) 
               ))}
             </Card>
           </>
+        )}
+        {activeTab === 'userAudit' && (
+          <div>
+            {/* User selector */}
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b8299' }}>Select User:</label>
+                <select value={auditUserId} onChange={e => setAuditUserId(e.target.value)}
+                  style={{ flex: 1, maxWidth: 300, padding: '8px 12px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, color: '#1e3a4f' }}>
+                  <option value="">Choose a team member...</option>
+                  {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                </select>
+                <select value={auditDays} onChange={e => setAuditDays(Number(e.target.value))}
+                  style={{ padding: '8px 12px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 12 }}>
+                  <option value={7}>7 days</option>
+                  <option value={14}>14 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={60}>60 days</option>
+                  <option value={90}>90 days</option>
+                </select>
+                <button onClick={async () => {
+                  if (!auditUserId) { showToast?.('Select a user'); return; }
+                  setAuditLoading(true);
+                  try { const d = await api.getUserAudit(auditUserId, auditDays); setAuditData(d); }
+                  catch(e) { showToast?.(e.message); }
+                  setAuditLoading(false);
+                }}
+                  style={{ padding: '8px 18px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  Run Audit
+                </button>
+              </div>
+            </Card>
+
+            {auditLoading && <div style={{ textAlign: 'center', padding: 32, color: '#8a9fb0' }}>Loading audit...</div>}
+
+            {auditData && !auditLoading && (
+              <>
+                {/* User header */}
+                <Card style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <Avatar user={auditData.user} size={48} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#1e3a4f' }}>{auditData.user.name}</div>
+                      <div style={{ fontSize: 12, color: '#6b8299' }}>{auditData.user.email} — {auditData.user.role}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: auditData.online?.isOnline ? '#4ade80' : '#94a3b8' }} />
+                      <span style={{ fontSize: 12, color: '#6b8299' }}>{auditData.online?.isOnline ? 'Online' : auditData.online?.lastActive ? 'Last seen ' + formatTs(auditData.online.lastActive) : 'Offline'}</span>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Stats row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <Card><div style={{ fontSize: 24, fontWeight: 700, color: '#1a5e9a' }}>{auditData.tickets.openCount}</div><div style={{ fontSize: 11, color: '#6b8299' }}>Open Tickets</div></Card>
+                  <Card><div style={{ fontSize: 24, fontWeight: 700, color: '#d94040' }}>{auditData.tickets.unreadCount}</div><div style={{ fontSize: 11, color: '#6b8299' }}>Unread</div></Card>
+                  <Card><div style={{ fontSize: 24, fontWeight: 700, color: '#2e7d32' }}>{auditData.tickets.closedCount}</div><div style={{ fontSize: 11, color: '#6b8299' }}>Closed ({auditDays}d)</div></Card>
+                  <Card><div style={{ fontSize: 24, fontWeight: 700, color: '#c96a1b' }}>{auditData.activity.totalActions}</div><div style={{ fontSize: 11, color: '#6b8299' }}>Actions ({auditDays}d)</div></Card>
+                  <Card>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: auditData.responseTime.avgMs ? (auditData.responseTime.avgMs < 3600000 ? '#2e7d32' : auditData.responseTime.avgMs < 14400000 ? '#c96a1b' : '#d94040') : '#8a9fb0' }}>
+                      {auditData.responseTime.avgMs ? (auditData.responseTime.avgMs < 60000 ? Math.round(auditData.responseTime.avgMs / 1000) + 's' : auditData.responseTime.avgMs < 3600000 ? Math.round(auditData.responseTime.avgMs / 60000) + 'm' : Math.round(auditData.responseTime.avgMs / 3600000 * 10) / 10 + 'h') : '--'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b8299' }}>Avg Response Time</div>
+                  </Card>
+                </div>
+
+                {/* Response time details */}
+                {auditData.responseTime.count > 0 && (
+                  <Card style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a4f', marginBottom: 12 }}>Response Times ({auditData.responseTime.count} tickets)</div>
+                    <div style={{ display: 'flex', gap: 24, marginBottom: 12, fontSize: 12 }}>
+                      <div><span style={{ color: '#6b8299' }}>Fastest: </span><span style={{ fontWeight: 600, color: '#2e7d32' }}>{formatHours(auditData.responseTime.fastestMs / 3600000)}</span></div>
+                      <div><span style={{ color: '#6b8299' }}>Slowest: </span><span style={{ fontWeight: 600, color: '#d94040' }}>{formatHours(auditData.responseTime.slowestMs / 3600000)}</span></div>
+                      <div><span style={{ color: '#6b8299' }}>Average: </span><span style={{ fontWeight: 600 }}>{formatHours(auditData.responseTime.avgMs / 3600000)}</span></div>
+                    </div>
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {auditData.responseTime.details.map(r => (
+                        <div key={r.ticketId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#8a9fb0', minWidth: 90 }}>{r.ticketId.slice(0, 15)}</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f' }}>{r.subject}</span>
+                          <span style={{ fontWeight: 600, minWidth: 50, textAlign: 'right', color: r.responseMs < 3600000 ? '#2e7d32' : r.responseMs < 14400000 ? '#c96a1b' : '#d94040' }}>
+                            {r.responseMs < 60000 ? Math.round(r.responseMs / 1000) + 's' : r.responseMs < 3600000 ? Math.round(r.responseMs / 60000) + 'm' : Math.round(r.responseMs / 3600000 * 10) / 10 + 'h'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Open tickets with wait times */}
+                {auditData.tickets.openTickets.length > 0 && (
+                  <Card style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a4f', marginBottom: 12 }}>Current Open Tickets ({auditData.tickets.openTickets.length})</div>
+                    <div style={{ maxHeight: 250, overflowY: 'auto' }}>
+                      {auditData.tickets.openTickets.map(t => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: t.hasUnread ? '#d94040' : '#4ade80', flexShrink: 0 }} />
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f', fontWeight: t.hasUnread ? 600 : 400 }}>{t.subject}</span>
+                          <span style={{ fontSize: 10, color: '#6b8299' }}>{t.hasUnread ? 'Unread' : 'Read'}</span>
+                          {t.waitingMs && <span style={{ fontSize: 10, fontWeight: 600, color: t.waitingMs > 14400000 ? '#d94040' : '#c96a1b' }}>waiting {Math.round(t.waitingMs / 3600000 * 10) / 10}h</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Action breakdown */}
+                <Card style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a4f', marginBottom: 12 }}>Action Breakdown ({auditDays} days)</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {Object.entries(auditData.activity.actionCounts).sort((a, b) => b[1] - a[1]).map(([action, count]) => (
+                      <div key={action} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#f0f4f9', borderRadius: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTION_COLORS[action] || '#94a3b8' }} />
+                        <span style={{ fontSize: 12, color: '#1e3a4f' }}>{ACTION_LABELS[action] || action}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#6b8299' }}>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Recent actions timeline */}
+                <Card>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a4f', marginBottom: 12 }}>Recent Actions</div>
+                  <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                    {auditData.activity.recentActions.map(a => (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTION_COLORS[a.actionType] || '#94a3b8', flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, color: '#8a9fb0', minWidth: 70 }}>{formatTs(a.ts)}</span>
+                        <span style={{ color: '#1a5e9a', fontWeight: 500 }}>{ACTION_LABELS[a.actionType] || a.actionType}</span>
+                        <span style={{ flex: 1, color: '#6b8299', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

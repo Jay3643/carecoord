@@ -54,6 +54,7 @@ export const api = {
   heartbeat: () => request('/dashboard/activity/heartbeat', { method: 'POST' }),
   getOnlineUsers: () => request('/dashboard/activity/online'),
   getUserRecentActivity: (userId, minutes) => request('/dashboard/activity/user/' + userId + '/recent?minutes=' + (minutes || 15)),
+  getUserAudit: (userId, days) => request('/dashboard/activity/user/' + userId + '/audit?days=' + (days || 30)),
   getAuditLog: (type, limit) => request('/audit?type=' + encodeURIComponent(type || 'all') + '&limit=' + (limit || 50)),
   getTags: () => cached('tags', 300000, () => request('/tags').catch(() => ({ tags: [] }))),
   getCloseReasons: () => cached('reasons', 300000, () => request('/close-reasons').catch(() => ({ reasons: [] }))),

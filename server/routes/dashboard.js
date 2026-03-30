@@ -328,6 +328,96 @@ router.get('/activity/user/:userId/recent', requireAuth, (req, res) => {
   } catch(e) { console.error('[Activity/user/recent]', e.message); res.json({ actions: [], totalActions: 0 }); }
 });
 
+// ── Full user audit ──
+router.get('/activity/user/:userId/audit', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const { userId } = req.params;
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+    const startTs = Date.now() - days * 86400000;
+    const now = Date.now();
+
+    const user = db.prepare('SELECT id, name, email, role, avatar, work_status, profile_photo_url as photoUrl FROM users WHERE id = ?').get(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Response time stats — all tickets this user has read
+    const readTickets = db.prepare(
+      "SELECT id, subject, assigned_at, read_at, read_by_user_id, status, created_at FROM tickets WHERE read_by_user_id = ? AND read_at IS NOT NULL AND assigned_at IS NOT NULL AND assigned_at >= ?"
+    ).all(userId, startTs);
+
+    const responseTimes = readTickets.map(t => ({
+      ticketId: t.id, subject: t.subject, status: t.status,
+      assignedAt: t.assigned_at, readAt: t.read_at,
+      responseMs: t.read_at - t.assigned_at,
+    }));
+    const avgResponseMs = responseTimes.length > 0 ? responseTimes.reduce((s, r) => s + r.responseMs, 0) / responseTimes.length : null;
+    const fastestMs = responseTimes.length > 0 ? Math.min(...responseTimes.map(r => r.responseMs)) : null;
+    const slowestMs = responseTimes.length > 0 ? Math.max(...responseTimes.map(r => r.responseMs)) : null;
+
+    // Currently assigned tickets (open)
+    const openTickets = db.prepare("SELECT id, subject, status, assigned_at, read_at, has_unread, last_activity_at, created_at FROM tickets WHERE assignee_user_id = ? AND status != 'CLOSED'").all(userId);
+    const unreadCount = openTickets.filter(t => t.has_unread).length;
+
+    // Tickets closed by this user in period
+    const closedCount = db.prepare("SELECT COUNT(*) as c FROM tickets WHERE assignee_user_id = ? AND status = 'CLOSED' AND closed_at >= ?").get(userId, startTs);
+
+    // All audit actions in period
+    const actions = db.prepare(
+      "SELECT a.id, a.action_type, a.entity_type, a.entity_id, a.ts, a.detail FROM audit_log a WHERE a.actor_user_id = ? AND a.ts >= ? ORDER BY a.ts DESC LIMIT 200"
+    ).all(userId, startTs);
+
+    // Action breakdown
+    const actionCounts = {};
+    for (const a of actions) {
+      const at = a.action_type || 'unknown';
+      actionCounts[at] = (actionCounts[at] || 0) + 1;
+    }
+
+    // Daily activity counts
+    const dailyActivity = {};
+    for (const a of actions) {
+      const day = new Date(Number(a.ts)).toISOString().slice(0, 10);
+      dailyActivity[day] = (dailyActivity[day] || 0) + 1;
+    }
+
+    // Session info
+    const session = db.prepare('SELECT MAX(last_active) as last_active FROM sessions WHERE user_id = ? AND expires > ?').get(userId, now);
+    const lastActive = session?.last_active ? Number(session.last_active) : null;
+    const isOnline = lastActive && (now - lastActive) < 5 * 60 * 1000;
+
+    res.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, photoUrl: user.photoUrl, workStatus: user.work_status },
+      period: days,
+      online: { isOnline, lastActive },
+      tickets: {
+        openCount: openTickets.length,
+        unreadCount,
+        closedCount: closedCount?.c || 0,
+        openTickets: openTickets.map(t => ({
+          id: t.id, subject: t.subject, status: t.status,
+          assignedAt: t.assigned_at, readAt: t.read_at, hasUnread: !!t.has_unread,
+          lastActivity: t.last_activity_at, createdAt: t.created_at,
+          waitingMs: t.has_unread && t.assigned_at ? now - t.assigned_at : null,
+        })),
+      },
+      responseTime: {
+        count: responseTimes.length,
+        avgMs: avgResponseMs, fastestMs, slowestMs,
+        details: responseTimes.sort((a, b) => b.readAt - a.readAt).slice(0, 50),
+      },
+      activity: {
+        totalActions: actions.length,
+        actionCounts,
+        dailyActivity,
+        recentActions: actions.slice(0, 50).map(a => ({
+          id: a.id, actionType: a.action_type, entityType: a.entity_type,
+          entityId: a.entity_id, detail: a.detail, ts: Number(a.ts),
+        })),
+      },
+    });
+  } catch(e) { console.error('[Activity/user/audit]', e.message); res.json({ error: e.message }); }
+});
+
 // Legacy catch-all
 router.get('/', requireAuth, (req, res) => {
   res.json({ totalOpen: 0, unassigned: 0, closedToday: 0, triageCount: 0, oldestOpen: null });
