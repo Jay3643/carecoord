@@ -247,7 +247,7 @@ router.get('/me', (req, res) => {
 router.post('/work-status', requireAuth, (req, res) => {
   const db = getDb();
   const { status } = req.body;
-  if (!['active', 'inactive'].includes(status)) return res.status(400).json({ error: 'Status must be active or inactive' });
+  if (!['active', 'inactive', 'paused'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
   db.prepare('UPDATE users SET work_status = ? WHERE id = ?').run(status, req.user.id);
 
@@ -260,6 +260,9 @@ router.post('/work-status', requireAuth, (req, res) => {
     }
     const { addAudit } = require('../middleware');
     addAudit(db, req.user.id, 'status_inactive', 'user', req.user.id, 'Set status to inactive — ' + affected.length + ' tickets returned to queue');
+  } else if (status === 'paused') {
+    const { addAudit } = require('../middleware');
+    addAudit(db, req.user.id, 'status_paused', 'user', req.user.id, 'Paused new messages — existing tickets kept');
   } else {
     const { addAudit } = require('../middleware');
     addAudit(db, req.user.id, 'status_active', 'user', req.user.id, 'Set status to active');

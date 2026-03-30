@@ -407,9 +407,10 @@ async function syncUser(db, row) {
         }
       } else {
         // Brand new email — create ticket
-        // If email was TO a region alias, leave unassigned; otherwise auto-assign to coordinator
+        // If email was TO a region alias or user is paused, leave unassigned; otherwise auto-assign
         const isRegionEmail = Object.keys(aliasMap).some(a => allRecipients.includes(a));
-        const assignTo = isRegionEmail ? null : uid;
+        const isPaused = userRow && toStr(userRow.work_status) === 'paused';
+        const assignTo = (isRegionEmail || isPaused) ? null : uid;
         const tid = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at) VALUES (?,?,?,?,?,?,?,?,?,1,?)')
           .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null);

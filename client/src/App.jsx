@@ -92,16 +92,14 @@ export default function App() {
     setScreen('login');
   };
 
-  const toggleWorkStatus = async () => {
-    const newStatus = workStatus === 'active' ? 'inactive' : 'active';
+  const cycleWorkStatus = async () => {
+    const next = workStatus === 'active' ? 'paused' : workStatus === 'paused' ? 'inactive' : 'active';
     try {
-      await api.setWorkStatus(newStatus);
-      setWorkStatus(newStatus);
-      if (newStatus === 'inactive') {
-        showToast('Status: Inactive — your tickets have been returned to the queue');
-      } else {
-        showToast('Status: Active — you can now receive tickets');
-      }
+      await api.setWorkStatus(next);
+      setWorkStatus(next);
+      if (next === 'inactive') showToast('Inactive — tickets returned to queue, sync stopped');
+      else if (next === 'paused') showToast('Paused — new messages go to unassigned, you keep your tickets');
+      else showToast('Active — receiving new messages');
       refreshCounts();
     } catch (e) { showToast(e.message); }
   };
@@ -472,10 +470,16 @@ export default function App() {
               )}
             </div>
             {!sidebarCollapsed && currentUser.role === 'coordinator' && (
-              <button onClick={toggleWorkStatus}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: workStatus === 'active' ? '#0d3b1e' : '#3b1a0d', border: '1px solid', borderColor: workStatus === 'active' ? '#2e7d32' : '#d94040', borderRadius: 6, color: workStatus === 'active' ? '#4ade80' : '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : '#f87171' }} />
-                {workStatus === 'active' ? 'Active' : 'Inactive'}
+              <button onClick={cycleWorkStatus}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+                  background: workStatus === 'active' ? '#0d3b1e' : workStatus === 'paused' ? '#3b2e0d' : '#3b1a0d',
+                  border: '1px solid',
+                  borderColor: workStatus === 'active' ? '#2e7d32' : workStatus === 'paused' ? '#c9963b' : '#d94040',
+                  borderRadius: 6,
+                  color: workStatus === 'active' ? '#4ade80' : workStatus === 'paused' ? '#fbbf24' : '#f87171',
+                  cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : workStatus === 'paused' ? '#fbbf24' : '#f87171' }} />
+                {workStatus === 'active' ? 'Active' : workStatus === 'paused' ? 'Paused' : 'Inactive'}
               </button>
             )}
             {!sidebarCollapsed && (
