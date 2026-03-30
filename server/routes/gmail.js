@@ -945,7 +945,7 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Supervisor or admin access required' });
   }
   const db = getDb();
-  const { ticketIds } = req.body;
+  const { ticketIds, destination } = req.body;
   if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
 
   let pulled = 0;
@@ -953,19 +953,51 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
     if (!ticket) continue;
 
-    // Restore emails to the original user's Gmail inbox
     const msgs = db.prepare('SELECT gmail_message_id, gmail_user_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
-    for (const m of msgs) {
-      const gmailUserId = toStr(m.gmail_user_id);
-      const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
-      if (userAuth) {
-        try {
-          const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
-          const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-          const modReq = { addLabelIds: ['INBOX'] };
-          if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
-          await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
-        } catch(e) {}
+
+    if (destination === 'me') {
+      // Forward to current user's inbox
+      const myAuth = getAuthForUser(req.user.id);
+      if (myAuth) {
+        const gm = google.gmail({ version: 'v1', auth: myAuth.auth });
+        for (const m of msgs) {
+          try {
+            const origUserId = toStr(m.gmail_user_id);
+            const origAuth = origUserId ? getAuthForUser(origUserId) : null;
+            if (origAuth) {
+              const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
+              const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
+              await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX'] } });
+            }
+          } catch(e) {}
+        }
+      }
+      // Clean up archived label from original
+      for (const m of msgs) {
+        const gmailUserId = toStr(m.gmail_user_id);
+        const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
+        if (userAuth) {
+          try {
+            const gm2 = google.gmail({ version: 'v1', auth: userAuth.auth });
+            const hiddenLabelId = await getOrCreateLabel(gm2, 'CareCoord/Archived');
+            if (hiddenLabelId) await gm2.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: { removeLabelIds: [hiddenLabelId] } });
+          } catch(e) {}
+        }
+      }
+    } else {
+      // Default: restore to original coordinator's inbox
+      for (const m of msgs) {
+        const gmailUserId = toStr(m.gmail_user_id);
+        const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
+        if (userAuth) {
+          try {
+            const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+            const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
+            const modReq = { addLabelIds: ['INBOX'] };
+            if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
+            await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
+          } catch(e) {}
+        }
       }
     }
 

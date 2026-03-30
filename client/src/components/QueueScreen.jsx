@@ -83,10 +83,17 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
 
   const bulkPullFromQueue = async () => {
     if (selectedTicketIds.size === 0) return;
+    const choice = window.confirm('Where should these emails go?\n\nOK = Return to original recipient\'s email\nCancel = Pull to YOUR email inbox');
+    const dest = choice ? 'original' : 'me';
+    if (!choice) {
+      const confirmMe = window.confirm('Pull ' + selectedTicketIds.size + ' email(s) to YOUR inbox?');
+      if (!confirmMe) return;
+    }
     try {
-      const d = await api.bulkPullFromQueue(Array.from(selectedTicketIds));
-      showToast?.(d.pulled + ' pulled from queue');
-    } catch(e) {}
+      const ids = Array.from(selectedTicketIds);
+      const d = await api.bulkPullFromQueue(ids, dest);
+      showToast?.(d.pulled + ' pulled — ' + (dest === 'original' ? 'returned to original' : 'sent to your inbox'));
+    } catch(e) { showToast?.(e.message); }
     setSelectedTicketIds(new Set());
     fetchTickets();
     if (refreshCounts) refreshCounts();
