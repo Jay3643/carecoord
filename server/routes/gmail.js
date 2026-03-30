@@ -806,10 +806,11 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
   if (db.prepare('SELECT 1 FROM messages WHERE gmail_message_id=?').get(gmailMessageId)) {
     return res.status(400).json({ error: 'Already in queue' });
   }
-  const t = getTokens(req.user.id);
-  if (!t) return res.status(400).json({ error: 'Not connected' });
+  const userAuth = getAuthForUser(req.user.id);
+  if (!userAuth) return res.status(400).json({ error: 'Not connected' });
+  const userEmail = userAuth.email;
   try {
-    const gm = google.gmail({ version: 'v1', auth: authClient(t) });
+    const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
     const msg = await gm.users.messages.get({ userId: 'me', id: gmailMessageId, format: 'full' });
     const h = msg.data.payload.headers;
     const from = hdr(h, 'From'), subj = hdr(h, 'Subject') || '(no subject)';
@@ -823,7 +824,7 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
       ticketId = existing.ticket_id;
       const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
       db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([toStr(t.email)]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
     } else {
       ticketId = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -831,7 +832,7 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
         .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
       const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
       db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([toStr(t.email)]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       try {
         const parts = msg.data.payload.parts || [];
         for (const part of parts) {
@@ -848,7 +849,7 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
     try {
       const archiveRow = db.prepare("SELECT value FROM settings WHERE key='archive_email'").get();
       const archiveAddr = archiveRow ? toStr(archiveRow.value) : 'thinkprompted@gmail.com';
-      const fwd = ['From: ' + toStr(t.email), 'To: ' + archiveAddr, 'Subject: Fwd: ' + subj,
+      const fwd = ['From: ' + userEmail, 'To: ' + archiveAddr, 'Subject: Fwd: ' + subj,
         'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '',
         '---------- Forwarded message ----------', 'From: ' + from,
         'Date: ' + hdr(h, 'Date'), 'Subject: ' + subj, '', bd || subj];
@@ -1024,9 +1025,10 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
   const { gmailMessageIds, regionId } = req.body;
   if (!gmailMessageIds || !gmailMessageIds.length) return res.status(400).json({ error: 'gmailMessageIds required' });
 
-  const t = getTokens(req.user.id);
-  if (!t) return res.status(400).json({ error: 'Not connected' });
-  const gm = google.gmail({ version: 'v1', auth: authClient(t) });
+  const userAuth = getAuthForUser(req.user.id);
+  if (!userAuth) return res.status(400).json({ error: 'Not connected' });
+  const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+  const userEmail = userAuth.email;
   const regions = db.prepare('SELECT region_id FROM user_regions WHERE user_id=?').all(req.user.id);
   const rid = regionId || (regions.length ? toStr(regions[0].region_id) : 'r1');
   const archiveRow = db.prepare("SELECT value FROM settings WHERE key='archive_email'").get();
@@ -1049,7 +1051,7 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
         ticketId = existing.ticket_id;
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([toStr(t.email)]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
         db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
       } else {
         ticketId = 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -1057,12 +1059,12 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
           .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([toStr(t.email)]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       }
 
       // Forward to archive
       try {
-        const fwd = ['From: ' + toStr(t.email), 'To: ' + archiveAddr, 'Subject: Fwd: ' + subj,
+        const fwd = ['From: ' + userEmail, 'To: ' + archiveAddr, 'Subject: Fwd: ' + subj,
           'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '',
           '---------- Forwarded message ----------', 'From: ' + from,
           'Date: ' + hdr(h, 'Date'), 'Subject: ' + subj, '', bd || subj];
