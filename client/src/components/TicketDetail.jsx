@@ -73,43 +73,29 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   }, [ticket?.region_id]);
 
-  // Discussion channel — check if one exists already, or auto-join via ticket-channel endpoint
+  // Chat channel — auto-create or join when tab is opened
   useEffect(() => {
     if (activeTab !== 'discussion') return;
     setDiscussionLoading(true);
-    // First check user's channels for an existing ticket discussion
-    fetch('/api/chat/channels', { credentials: 'include' }).then(r => r.json()).then(async (d) => {
-      const existing = (d.channels || []).find(ch => ch.ticketId === ticketId);
-      if (existing) {
-        setDiscussionChannelId(existing.id);
+    (async () => {
+      try {
+        // Auto-create/join the ticket channel (adds user as member if channel exists)
+        const tc = await api.chatTicketChannel(ticketId);
+        setDiscussionChannelId(tc.channelId);
         setShowMemberPicker(false);
-        const md = await api.chatMessages(existing.id);
+        const md = await api.chatMessages(tc.channelId);
         setDiscussionMsgs(md.messages || []);
         setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
-      } else {
-        // Try ticket-channel endpoint — auto-creates/joins if channel exists for this ticket
-        try {
-          const tc = await api.chatTicketChannel(ticketId);
-          if (tc.existing) {
-            // Channel exists, we were just added as a member
-            setDiscussionChannelId(tc.channelId);
-            setShowMemberPicker(false);
-            const md = await api.chatMessages(tc.channelId);
-            setDiscussionMsgs(md.messages || []);
-            setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
-          } else {
-            // No channel yet — show member picker
-            setShowMemberPicker(true);
-            setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
-            setSelectedMemberIds(new Set());
-          }
-        } catch(e) {
-          setShowMemberPicker(true);
-          setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id && u.is_active !== 0));
-          setSelectedMemberIds(new Set());
+        // If brand new channel, send ticket info as the first system-style message
+        if (!tc.existing && md.messages?.length === 0) {
+          const ticketInfo = 'Ticket: ' + ticketId + '\nSubject: ' + (ticket?.subject || '(no subject)') + '\nFrom: ' + (ticket?.external_participants?.[0] || ticket?.from_email || 'Unknown') + '\nStatus: ' + (ticket?.status || 'OPEN');
+          await api.chatSend(tc.channelId, { body: ticketInfo, type: 'text' });
+          const md2 = await api.chatMessages(tc.channelId);
+          setDiscussionMsgs(md2.messages || []);
         }
-      }
-    }).catch(() => {}).finally(() => setDiscussionLoading(false));
+      } catch(e) { showToast?.('Could not open chat'); }
+      setDiscussionLoading(false);
+    })();
   }, [activeTab, ticketId]);
 
   // Socket + polling for real-time discussion (Socket.IO may not work on Render)
@@ -438,7 +424,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <Icon name="note" size={12} /> Internal Note
               </button>
               <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'discussion' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'discussion' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> Discussion
+                <Icon name="send" size={12} /> Start a Chat
               </button>
               <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? '#52a8c7' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'contain' }} /> Seniority AI
@@ -525,32 +511,45 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 </div>
               </div>
             ) : activeTab === 'discussion' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 300 }}>
-                {/* Member picker for new discussions */}
-                {showMemberPicker && !discussionLoading && (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 6 }}>Select team members to discuss with:</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8, maxHeight: 120, overflowY: 'auto' }}>
-                      {discussionMembers.map(u => (
-                        <button key={u.id} onClick={() => setSelectedMemberIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: selectedMemberIds.has(u.id) ? '#1a5e9a20' : '#f0f4f9', border: '1px solid', borderColor: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#c0d0e4', borderRadius: 6, fontSize: 11, color: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#5a7a8a', cursor: 'pointer', fontWeight: selectedMemberIds.has(u.id) ? 600 : 400 }}>
-                          <Avatar user={u} size={18} />
-                          {u.name}
-                          {selectedMemberIds.has(u.id) && <span style={{ fontWeight: 700 }}>✓</span>}
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={startDiscussion} disabled={selectedMemberIds.size === 0}
-                      style={{ padding: '6px 18px', background: selectedMemberIds.size > 0 ? '#1a5e9a' : '#dde8f2', color: selectedMemberIds.size > 0 ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: selectedMemberIds.size > 0 ? 'pointer' : 'default' }}>
-                      Start Discussion ({selectedMemberIds.size} selected)
+              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 340 }}>
+                {/* Add members bar */}
+                {!discussionLoading && discussionChannelId && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => setShowMemberPicker(!showMemberPicker)}
+                      style={{ padding: '4px 10px', background: '#e8f0fe', color: '#1a5e9a', border: '1px solid #c5d7f2', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      + Add Team Members
                     </button>
                   </div>
                 )}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 120, maxHeight: 200 }}>
-                  {discussionLoading && <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>Loading discussion...</div>}
-                  {!discussionLoading && !showMemberPicker && discussionMsgs.length === 0 && (
-                    <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>No messages yet. Start the conversation about this ticket.</div>
-                  )}
+                {showMemberPicker && discussionChannelId && (
+                  <div style={{ marginBottom: 8, padding: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 100, overflowY: 'auto' }}>
+                      {discussionMembers.map(u => (
+                        <button key={u.id} onClick={() => setSelectedMemberIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: selectedMemberIds.has(u.id) ? '#1a5e9a20' : '#fff', border: '1px solid', borderColor: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#c0d0e4', borderRadius: 6, fontSize: 10, color: selectedMemberIds.has(u.id) ? '#1a5e9a' : '#5a7a8a', cursor: 'pointer', fontWeight: selectedMemberIds.has(u.id) ? 600 : 400 }}>
+                          <Avatar user={u} size={16} /> {u.name} {selectedMemberIds.has(u.id) && '✓'}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedMemberIds.size > 0 && (
+                      <button onClick={async () => {
+                        try {
+                          for (const uid of selectedMemberIds) {
+                            await api.chatCreateChannel({ type: 'ticket', ticketId, memberIds: [uid] });
+                          }
+                          showToast?.(selectedMemberIds.size + ' member(s) added');
+                          setSelectedMemberIds(new Set());
+                          setShowMemberPicker(false);
+                        } catch(e) { showToast?.(e.message); }
+                      }}
+                        style={{ marginTop: 6, padding: '4px 14px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                        Add {selectedMemberIds.size} Member(s)
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 120, maxHeight: 220 }}>
+                  {discussionLoading && <div style={{ textAlign: 'center', color: '#8a9fb0', fontSize: 12, padding: 16 }}>Opening chat...</div>}
                   {discussionMsgs.map(m => (
                     <div key={m.id} style={{ display: 'flex', gap: 8, padding: '4px 0', alignItems: 'flex-start' }}>
                       <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.userId === currentUser.id ? '#1a5e9a' : '#c0d0e4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
@@ -570,7 +569,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <input value={discussionText} onChange={e => setDiscussionText(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendDiscussion(); } }}
-                    placeholder="Discuss this ticket with your team..."
+                    placeholder="Type a message..."
                     style={{ flex: 1, padding: '10px 14px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 20, color: '#1e3a4f', fontSize: 13, outline: 'none' }} />
                   <button onClick={sendDiscussion} disabled={!discussionText.trim()}
                     style={{ padding: '10px 20px', background: discussionText.trim() ? '#1a5e9a' : '#dde8f2', color: discussionText.trim() ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 20, cursor: discussionText.trim() ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>

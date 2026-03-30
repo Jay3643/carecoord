@@ -23,6 +23,13 @@ router.get('/channels', requireAuth, (req, res) => {
       const other = members.find(m => toStr(m.id) !== req.user.id);
       displayName = other ? toStr(other.name) : 'Direct Message';
     }
+    if (toStr(ch.type) === 'ticket') {
+      const creatorId = toStr(ch.created_by);
+      if (creatorId && creatorId !== req.user.id) {
+        const creator = db.prepare('SELECT name FROM users WHERE id = ?').get(creatorId);
+        displayName = 'Chat from ' + (creator ? toStr(creator.name) : 'Unknown');
+      }
+    }
     return {
       id: toStr(ch.id), name: displayName, type: toStr(ch.type),
       ticketId: toStr(ch.ticket_id), unread: ch.unread || 0,
