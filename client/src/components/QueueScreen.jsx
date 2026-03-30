@@ -17,6 +17,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   const [error, setError] = useState(null);
   const [selectedTag, setSelectedTag] = useState('all');
   const [tagSortMode, setTagSortMode] = useState('filter'); // 'filter' or 'group'
+  const [showPullModal, setShowPullModal] = useState(false);
 
   const userRegions = useMemo(() =>
     regions.filter(r => currentUser.regionIds.includes(r.id)),
@@ -81,14 +82,9 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   };
   const [showReassignDropdown, setShowReassignDropdown] = useState(false);
 
-  const bulkPullFromQueue = async () => {
+  const bulkPullFromQueue = async (dest) => {
     if (selectedTicketIds.size === 0) return;
-    const choice = window.confirm('Where should these emails go?\n\nOK = Return to original recipient\'s email\nCancel = Pull to YOUR email inbox');
-    const dest = choice ? 'original' : 'me';
-    if (!choice) {
-      const confirmMe = window.confirm('Pull ' + selectedTicketIds.size + ' email(s) to YOUR inbox?');
-      if (!confirmMe) return;
-    }
+    setShowPullModal(false);
     try {
       const ids = Array.from(selectedTicketIds);
       const d = await api.bulkPullFromQueue(ids, dest);
@@ -317,7 +313,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
         {selectedTicketIds.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', marginBottom: 8, background: '#e8f0fe', borderRadius: 8, border: '1px solid #c0d0e4', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#1a5e9a' }}>{selectedTicketIds.size} selected</span>
-            <button onClick={bulkPullFromQueue}
+            <button onClick={() => setShowPullModal(true)}
               style={{ padding: '4px 14px', background: '#c96a1b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
               Pull from Queue
             </button>
@@ -507,6 +503,47 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
             style={{ padding: '4px 10px', background: currentPage === totalPages ? '#e8f0f8' : '#fff', border: '1px solid #c0d0e4', borderRadius: 6, cursor: currentPage === totalPages ? 'default' : 'pointer', fontSize: 12, color: currentPage === totalPages ? '#a0b0c0' : '#1a5e9a', fontWeight: 600 }}>
             Last
           </button>
+        </div>
+      )}
+      {/* Pull from Queue modal */}
+      {showPullModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={() => setShowPullModal(false)}>
+          <div style={{ background: '#f0f4f9', borderRadius: 14, border: '1px solid #c0d0e4', padding: 28, width: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f', marginBottom: 6 }}>Pull from Queue</h3>
+            <p style={{ fontSize: 13, color: '#6b8299', marginBottom: 20 }}>Where should {selectedTicketIds.size > 1 ? 'these ' + selectedTicketIds.size + ' emails' : 'this email'} go?</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={() => bulkPullFromQueue('original')}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#e8f0fe'; e.currentTarget.style.borderColor='#1a5e9a'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#c0d0e4'; }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a5e9a" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#1e3a4f' }}>Return to original recipient</div>
+                  <div style={{ fontSize: 12, color: '#6b8299', marginTop: 3 }}>Send back to the coordinator who received it</div>
+                </div>
+              </button>
+              <button onClick={() => bulkPullFromQueue('me')}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background='#e8f0fe'; e.currentTarget.style.borderColor='#1a5e9a'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#c0d0e4'; }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a5e9a" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#1e3a4f' }}>Pull to my inbox</div>
+                  <div style={{ fontSize: 12, color: '#6b8299', marginTop: 3 }}>Forward the email to your own Gmail</div>
+                </div>
+              </button>
+            </div>
+            <div style={{ marginTop: 18, textAlign: 'right' }}>
+              <button onClick={() => setShowPullModal(false)}
+                style={{ padding: '8px 20px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
