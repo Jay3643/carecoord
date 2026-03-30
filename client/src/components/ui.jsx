@@ -44,6 +44,11 @@ function fnv1a(s) {
   return h;
 }
 
+export function getUserColor(user) {
+  const key = user ? (user.id || '') + ':' + (user.name || '') : '';
+  return key ? AVATAR_COLORS[fnv1a(key) % AVATAR_COLORS.length] : '#5a7a8a';
+}
+
 export function Avatar({ user, size = 32 }) {
   // Combine id + name for maximum uniqueness
   const key = user ? (user.id || '') + ':' + (user.name || '') : '';

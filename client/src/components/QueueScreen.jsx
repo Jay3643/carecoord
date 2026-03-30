@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { fmt } from '../utils';
 import Icon from './Icons';
-import { StatusBadge, TagPill, Avatar } from './ui';
+import { StatusBadge, TagPill, Avatar, getUserColor } from './ui';
 
 export default function QueueScreen({ title, mode, currentUser, regions, allUsers, onOpenTicket, showToast, refreshCounts }) {
   const [tickets, setTickets] = useState([]);
@@ -371,11 +371,10 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                         <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                         <StatusBadge status={ticket.status} />
                         {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
-                        {!ticket.assignee_user_id && ticket.syncedFor && (
-                          <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
-                            For: {ticket.syncedFor.name}
-                          </span>
-                        )}
+                        {!ticket.assignee_user_id && ticket.syncedFor && (() => {
+                          const c = getUserColor(ticket.syncedFor);
+                          return <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 4, background: c + '18', color: c, border: '1px solid ' + c + '40' }}>To: {ticket.syncedFor.name}</span>;
+                        })()}
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                       <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
