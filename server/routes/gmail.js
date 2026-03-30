@@ -588,55 +588,156 @@ router.get('/contacts', requireAuth, async (req, res) => {
       return res.json({ contacts: contactsCache[userId].data });
     }
 
-    const auth = getContactsAuth(userId);
-    if (!auth) return res.json({ contacts: [] });
-    const people = google.people({ version: 'v1', auth });
-
-    // Fetch contacts with email addresses
     const contacts = [];
-    let nextPageToken = null;
-    do {
-      const resp = await people.people.connections.list({
-        resourceName: 'people/me',
-        pageSize: 1000,
-        personFields: 'names,emailAddresses,photos,organizations',
-        pageToken: nextPageToken || undefined,
-      });
-      for (const p of (resp.data.connections || [])) {
-        const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
-        if (emails.length === 0) continue;
-        const name = p.names?.[0]?.displayName || '';
-        const photo = p.photos?.[0]?.url || null;
-        const org = p.organizations?.[0]?.name || '';
-        for (const email of emails) {
-          contacts.push({ name, email: email.toLowerCase(), photo, org });
-        }
-      }
-      nextPageToken = resp.data.nextPageToken;
-    } while (nextPageToken);
 
-    // Also pull "Other Contacts" (people you've emailed but not saved)
+    // Strategy 1: Try People API (works if contacts.readonly scope is delegated)
     try {
-      const otherResp = await people.otherContacts.list({
-        pageSize: 1000,
-        readMask: 'names,emailAddresses',
-      });
-      for (const p of (otherResp.data.otherContacts || [])) {
-        const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
-        if (emails.length === 0) continue;
-        const name = p.names?.[0]?.displayName || '';
-        for (const email of emails) {
-          if (!contacts.find(c => c.email === email.toLowerCase())) {
-            contacts.push({ name, email: email.toLowerCase(), photo: null, org: '' });
+      const auth = getContactsAuth(userId);
+      if (auth) {
+        const people = google.people({ version: 'v1', auth });
+        let nextPageToken = null;
+        do {
+          const resp = await people.people.connections.list({
+            resourceName: 'people/me',
+            pageSize: 1000,
+            personFields: 'names,emailAddresses,photos,organizations',
+            pageToken: nextPageToken || undefined,
+          });
+          for (const p of (resp.data.connections || [])) {
+            const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
+            if (emails.length === 0) continue;
+            const name = p.names?.[0]?.displayName || '';
+            const photo = p.photos?.[0]?.url || null;
+            const org = p.organizations?.[0]?.name || '';
+            for (const email of emails) {
+              contacts.push({ name, email: email.toLowerCase(), photo, org });
+            }
           }
-        }
+          nextPageToken = resp.data.nextPageToken;
+        } while (nextPageToken);
+
+        // Also pull "Other Contacts"
+        try {
+          const otherResp = await people.otherContacts.list({ pageSize: 1000, readMask: 'names,emailAddresses' });
+          for (const p of (otherResp.data.otherContacts || [])) {
+            const emails = (p.emailAddresses || []).map(e => e.value).filter(Boolean);
+            if (emails.length === 0) continue;
+            const name = p.names?.[0]?.displayName || '';
+            for (const email of emails) {
+              if (!contacts.find(c => c.email === email.toLowerCase())) {
+                contacts.push({ name, email: email.toLowerCase(), photo: null, org: '' });
+              }
+            }
+          }
+        } catch(e) { /* otherContacts may not be available */ }
       }
-    } catch(e) { /* otherContacts may not be available */ }
+    } catch(e) {
+      console.log('[Contacts] People API not available:', e.message);
+    }
+
+    // Strategy 2: If People API returned nothing, extract contacts from Gmail history
+    if (contacts.length === 0) {
+      const userAuth = getAuthForUser(userId);
+      if (userAuth) {
+        const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+        const seen = new Set();
+
+        // Parse "Name <email>" or plain "email" format
+        function parseAddresses(header) {
+          if (!header) return [];
+          const results = [];
+          const parts = header.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+          for (const part of parts) {
+            const trimmed = part.trim();
+            const match = trimmed.match(/^"?(.+?)"?\s*<(.+@.+)>$/);
+            if (match) {
+              results.push({ name: match[1].trim().replace(/^"|"$/g, ''), email: match[2].toLowerCase().trim() });
+            } else if (trimmed.includes('@')) {
+              results.push({ name: '', email: trimmed.toLowerCase().replace(/[<>]/g, '').trim() });
+            }
+          }
+          return results;
+        }
+
+        // Scan recent sent messages for recipient addresses
+        try {
+          const sentList = await gm.users.messages.list({ userId: 'me', q: 'in:sent', maxResults: 200 });
+          if (sentList.data.messages) {
+            const batched = await Promise.allSettled(
+              sentList.data.messages.map(m =>
+                gm.users.messages.get({ userId: 'me', id: m.id, format: 'METADATA', metadataHeaders: ['To', 'Cc', 'From'] })
+              )
+            );
+            for (const r of batched) {
+              if (r.status !== 'fulfilled') continue;
+              const hdrs = r.value.data.payload?.headers || [];
+              const toH = hdrs.find(h => h.name === 'To')?.value || '';
+              const ccH = hdrs.find(h => h.name === 'Cc')?.value || '';
+              for (const addr of [...parseAddresses(toH), ...parseAddresses(ccH)]) {
+                if (!seen.has(addr.email) && !addr.email.includes('noreply') && !addr.email.includes('no-reply')) {
+                  seen.add(addr.email);
+                  contacts.push({ name: addr.name, email: addr.email, photo: null, org: '' });
+                }
+              }
+            }
+          }
+        } catch(e) { console.log('[Contacts] Sent scan error:', e.message); }
+
+        // Scan recent received messages for sender addresses
+        try {
+          const inboxList = await gm.users.messages.list({ userId: 'me', q: 'in:inbox', maxResults: 200 });
+          if (inboxList.data.messages) {
+            const batched = await Promise.allSettled(
+              inboxList.data.messages.map(m =>
+                gm.users.messages.get({ userId: 'me', id: m.id, format: 'METADATA', metadataHeaders: ['From'] })
+              )
+            );
+            for (const r of batched) {
+              if (r.status !== 'fulfilled') continue;
+              const fromH = (r.value.data.payload?.headers || []).find(h => h.name === 'From')?.value || '';
+              for (const addr of parseAddresses(fromH)) {
+                if (!seen.has(addr.email) && !addr.email.includes('noreply') && !addr.email.includes('no-reply')) {
+                  seen.add(addr.email);
+                  contacts.push({ name: addr.name, email: addr.email, photo: null, org: '' });
+                }
+              }
+            }
+          }
+        } catch(e) { console.log('[Contacts] Inbox scan error:', e.message); }
+
+        // Also include contacts from CareCoord tickets
+        const db = getDb();
+        const ticketContacts = db.prepare("SELECT DISTINCT from_email, external_participants FROM tickets WHERE from_email IS NOT NULL").all();
+        for (const tc of ticketContacts) {
+          const fe = toStr(tc.from_email);
+          if (fe && !seen.has(fe.toLowerCase())) {
+            const match = fe.match(/^"?(.+?)"?\s*<(.+@.+)>$/);
+            const email = match ? match[2].toLowerCase() : fe.toLowerCase().replace(/[<>]/g, '');
+            const name = match ? match[1] : '';
+            if (email.includes('@') && !seen.has(email)) {
+              seen.add(email);
+              contacts.push({ name, email, photo: null, org: '' });
+            }
+          }
+          try {
+            const extP = JSON.parse(toStr(tc.external_participants) || '[]');
+            for (const ep of extP) {
+              const parsed = parseAddresses(ep);
+              for (const addr of parsed) {
+                if (!seen.has(addr.email)) { seen.add(addr.email); contacts.push({ name: addr.name, email: addr.email, photo: null, org: '' }); }
+              }
+            }
+          } catch(e) {}
+        }
+
+        console.log('[Contacts] Extracted', contacts.length, 'contacts from Gmail history + tickets');
+      }
+    }
 
     // Deduplicate by email
     const seen = new Set();
     const deduped = contacts.filter(c => {
-      if (seen.has(c.email)) return false;
+      if (!c.email || seen.has(c.email)) return false;
       seen.add(c.email);
       return true;
     }).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
