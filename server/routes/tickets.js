@@ -396,12 +396,14 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   message.to_addresses = JSON.parse(message.to_addresses);
   message.reference_ids = JSON.parse(message.reference_ids);
-  // Auto-assign to replier if unassigned (skip if replier is inactive)
+  // Auto-assign to replier if not already assigned to them (skip if replier is inactive)
   const ticketCheck = db.prepare('SELECT assignee_user_id FROM tickets WHERE id = ?').get(req.params.id);
   const replierStatus = db.prepare('SELECT work_status FROM users WHERE id = ?').get(req.user.id);
-  if (ticketCheck && !ticketCheck.assignee_user_id && (!replierStatus || replierStatus.work_status !== 'inactive')) {
+  const currentAssignee = ticketCheck ? toStr(ticketCheck.assignee_user_id) : null;
+  if (ticketCheck && currentAssignee !== req.user.id && (!replierStatus || replierStatus.work_status !== 'inactive')) {
     db.prepare('UPDATE tickets SET assignee_user_id = ?, assigned_at = ? WHERE id = ?').run(req.user.id, Date.now(), req.params.id);
     addAudit(db, req.user.id, 'auto_assigned', 'ticket', req.params.id, 'Auto-assigned on reply');
+    saveDb();
   }
   res.json({ message });
 });

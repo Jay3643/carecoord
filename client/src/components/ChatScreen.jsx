@@ -183,7 +183,9 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                   <Avatar user={ch.members.find(m => m.id !== currentUser.id) || ch.members[0]} size={36} />
                 )}
                 {ch.type === 'ticket' && (
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a73e8', fontSize: 16 }}>
+                  <div onClick={(e) => { if (ch.ticketId && onOpenTicket) { e.stopPropagation(); onOpenTicket(ch.ticketId); } }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a73e8', fontSize: 16, cursor: ch.ticketId && onOpenTicket ? 'pointer' : 'default' }}
+                    title={ch.ticketId ? 'Open ticket' : ''}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
                   </div>
                 )}
@@ -206,6 +208,14 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                       {ch.unread > 0 && <span style={{ background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{ch.unread}</span>}
                     </div>
                   </div>
+                  {ch.type === 'ticket' && ch.ticketId && onOpenTicket && (
+                    <a onClick={(e) => { e.stopPropagation(); onOpenTicket(ch.ticketId); }}
+                      style={{ fontSize: 11, color: '#1a73e8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 2, fontWeight: 600 }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+                      View Ticket
+                    </a>
+                  )}
                   {ch.lastMessage && (
                     <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                       {ch.lastMessage.senderName}: {ch.lastMessage.type === 'file' ? '📎 ' + ch.lastMessage.body : ch.lastMessage.body}
