@@ -13,14 +13,14 @@ function MessageBody({ text }) {
   return <div style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', whiteSpace: 'pre-wrap' }}>{text}</div>;
 }
 
-export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, showToast }) {
+export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, showToast, initialTab }) {
   const [ticket, setTicket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [noteText, setNoteText] = useState('');
-  const [activeTab, setActiveTab] = useState('reply');
+  const [activeTab, setActiveTab] = useState(initialTab || 'reply');
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeReasonId, setCloseReasonId] = useState('');
   const [closeComment, setCloseComment] = useState('');
@@ -50,6 +50,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [clockElapsed, setClockElapsed] = useState(0);
   const [timeEntries, setTimeEntries] = useState([]);
   const [totalTimeMs, setTotalTimeMs] = useState(0);
+  const [timeByUser, setTimeByUser] = useState([]);
   const [timeLogExpanded, setTimeLogExpanded] = useState(false);
   const [clockManualStop, setClockManualStop] = useState(false); // user manually stopped — don't auto-restart
 
@@ -69,6 +70,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
         const td = await api.getTimeEntries(ticketId);
         setTimeEntries(td.entries || []);
         setTotalTimeMs(td.totalMs || 0);
+        setTimeByUser(td.byUser || []);
         if (td.running) {
           // Continue from previous total + current session elapsed
           const sessionElapsed = Math.max(0, Date.now() - td.running.startedAt);
@@ -203,6 +205,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       const td = await api.getTimeEntries(ticketId);
       setTimeEntries(td.entries || []);
       setTotalTimeMs(td.totalMs || 0);
+      setTimeByUser(td.byUser || []);
       setClockElapsed(td.totalMs || 0);
       showToast('Clock stopped');
     } catch(e) { showToast?.(e.message); }
@@ -892,26 +895,40 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
             )}
           </div>
 
-          {/* Time log — collapsed shows total only, expanded shows entries */}
-          {timeEntries.length > 0 && (
+          {/* Time log — collapsed: total + per-user, expanded: all entries */}
+          {(timeEntries.length > 0 || totalTimeMs > 0) && (
             <div style={{ marginTop: 16 }}>
-              <button onClick={() => setTimeLogExpanded(!timeLogExpanded)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: timeLogExpanded ? 8 : 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299' }}>Time Log ({timeEntries.length})</span>
-                  <span style={{ fontSize: 10, color: '#8a9fb0', transition: 'transform 0.15s', transform: timeLogExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a4f' }}>{formatDuration(totalTimeMs)}</span>
-              </button>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', marginBottom: 6 }}>Time Spent</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+                <span style={{ color: '#6b8299' }}>Total</span>
+                <span style={{ fontWeight: 700, color: '#1e3a4f' }}>{formatDuration(totalTimeMs + (clockRunning ? clockElapsed - totalTimeMs : 0))}</span>
+              </div>
+              {timeByUser.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
+                  {timeByUser.map(u => (
+                    <div key={u.userId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                      <span style={{ color: '#6b8299' }}>{u.userName}</span>
+                      <span style={{ color: '#1e3a4f' }}>{formatDuration(u.totalMs)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {timeEntries.length > 0 && (
+                <button onClick={() => setTimeLogExpanded(!timeLogExpanded)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 10, color: '#1a5e9a', fontWeight: 600 }}>
+                  {timeLogExpanded ? 'Hide' : 'Show'} {timeEntries.length} entries
+                  <span style={{ transition: 'transform 0.15s', transform: timeLogExpanded ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+                </button>
+              )}
               {timeLogExpanded && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 6 }}>
                   {timeEntries.map(e => (
-                    <div key={e.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f4f9' }}>
+                    <div key={e.id} style={{ padding: '5px 0', borderBottom: '1px solid #f0f4f9' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
                         <span style={{ color: '#6b8299' }}>{e.userName}</span>
                         <span style={{ fontWeight: 600, color: '#1e3a4f' }}>{e.durationMs ? formatDuration(e.durationMs) : e.running ? <span style={{ color: '#d94040' }}>Running</span> : '--'}</span>
                       </div>
-                      <div style={{ fontSize: 10, color: '#8a9fb0', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: '#8a9fb0', marginTop: 1 }}>
                         {e.startedAt ? new Date(e.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : ''}
                         {' '}
                         {e.startedAt ? new Date(e.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}

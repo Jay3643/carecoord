@@ -106,9 +106,12 @@ export default function App() {
     } catch (e) { showToast(e.message); }
   };
 
-  const openTicket = (id, subject) => {
+  const [openTicketWithChat, setOpenTicketWithChat] = useState(null);
+  const openTicket = (id, subject, showChat) => {
     setSelectedTicketId(id);
     setScreen('ticketDetail');
+    if (showChat) setOpenTicketWithChat(id);
+    else setOpenTicketWithChat(null);
     setOpenTicketTabs(prev => {
       if (prev.find(t => t.id === id)) return prev;
       return [...prev, { id, subject: subject || id }];
@@ -533,6 +536,7 @@ export default function App() {
                 allUsers={allUsers}
                 onBack={goBack}
                 showToast={showToast}
+                initialTab={openTicketWithChat === selectedTicketId ? 'discussion' : undefined}
               />
             </div>
           </div>

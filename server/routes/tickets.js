@@ -537,6 +537,16 @@ router.get('/:id/time', requireAuth, (req, res) => {
   // Total time for this ticket
   // Only count completed entries in the total — running entry is shown live on client
   const totalMs = entries.reduce((sum, e) => sum + (e.stopped_at ? (e.duration_ms || e.stopped_at - e.started_at) : 0), 0);
+  // Per-user breakdown
+  const byUser = {};
+  for (const e of entries) {
+    const uid = toStr(e.user_id);
+    const name = toStr(e.user_name) || 'Unknown';
+    if (!byUser[uid]) byUser[uid] = { userId: uid, userName: name, userAvatar: toStr(e.user_avatar), totalMs: 0, entries: 0 };
+    const dur = e.stopped_at ? (e.duration_ms || e.stopped_at - e.started_at) : 0;
+    byUser[uid].totalMs += dur;
+    byUser[uid].entries++;
+  }
   res.json({
     entries: entries.map(e => ({
       id: toStr(e.id), ticketId: toStr(e.ticket_id), userId: toStr(e.user_id),
@@ -547,6 +557,7 @@ router.get('/:id/time', requireAuth, (req, res) => {
     })),
     running: running ? { id: toStr(running.id), startedAt: running.started_at } : null,
     totalMs,
+    byUser: Object.values(byUser).sort((a, b) => b.totalMs - a.totalMs),
   });
 });
 

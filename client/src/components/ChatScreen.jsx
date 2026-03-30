@@ -183,7 +183,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                   <Avatar user={ch.members.find(m => m.id !== currentUser.id) || ch.members[0]} size={36} />
                 )}
                 {ch.type === 'ticket' && (
-                  <div onClick={(e) => { if (ch.ticketId && onOpenTicket) { e.stopPropagation(); onOpenTicket(ch.ticketId); } }}
+                  <div onClick={(e) => { if (ch.ticketId && onOpenTicket) { e.stopPropagation(); onOpenTicket(ch.ticketId, ch.name, true); } }}
                     style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a73e8', fontSize: 16, cursor: ch.ticketId && onOpenTicket ? 'pointer' : 'default' }}
                     title={ch.ticketId ? 'Open ticket' : ''}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
@@ -209,7 +209,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
                     </div>
                   </div>
                   {ch.type === 'ticket' && ch.ticketId && onOpenTicket && (
-                    <a onClick={(e) => { e.stopPropagation(); onOpenTicket(ch.ticketId); }}
+                    <a onClick={(e) => { e.stopPropagation(); onOpenTicket(ch.ticketId, ch.name, true); }}
                       style={{ fontSize: 11, color: '#1a73e8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 2, fontWeight: 600 }}
                       onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
@@ -295,7 +295,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
               <button onClick={() => setActiveChannel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4, display: isPanel ? 'block' : 'none' }}>←</button>
               <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>{activeChannel.name}</span>
               {activeChannel.type === 'ticket' && activeChannel.ticketId && onOpenTicket && (
-                <button onClick={() => onOpenTicket(activeChannel.ticketId)}
+                <button onClick={() => onOpenTicket(activeChannel.ticketId, activeChannel.name, true)}
                   style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d7f2', borderRadius: 12, padding: '2px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                   onMouseEnter={e => e.currentTarget.style.background='#d2e3fc'} onMouseLeave={e => e.currentTarget.style.background='#e8f0fe'}>
                   View Ticket
