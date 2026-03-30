@@ -107,16 +107,10 @@ export default function App() {
   };
 
   const [openTicketWithChat, setOpenTicketWithChat] = useState(null);
-  const openTicketChatKeyRef = React.useRef(0);
   const openTicket = (id, subject, showChat) => {
     setSelectedTicketId(id);
     setScreen('ticketDetail');
-    if (showChat) {
-      setOpenTicketWithChat(id);
-      openTicketChatKeyRef.current++;
-    } else {
-      setOpenTicketWithChat(null);
-    }
+    setOpenTicketWithChat(showChat ? id : null);
     setOpenTicketTabs(prev => {
       if (prev.find(t => t.id === id)) return prev;
       return [...prev, { id, subject: subject || id }];
@@ -124,7 +118,6 @@ export default function App() {
   };
 
   const closeTicketTab = (id) => {
-    // Stop clock when closing tab
     api.stopClock(id).catch(() => {});
     setOpenTicketTabs(prev => {
       const remaining = prev.filter(t => t.id !== id);
@@ -141,12 +134,12 @@ export default function App() {
   };
 
   const goBack = () => {
+    // Just close current tab, keep others
     if (selectedTicketId) {
-      api.stopClock(selectedTicketId).catch(() => {});
-      setOpenTicketTabs(prev => prev.filter(t => t.id !== selectedTicketId));
+      closeTicketTab(selectedTicketId);
+    } else {
+      setScreen('regionQueue');
     }
-    setSelectedTicketId(null);
-    setScreen('regionQueue');
   };
 
   const isSupervisor = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
@@ -505,6 +498,21 @@ export default function App() {
       {/* Main content + Chat panel */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        {/* Persistent ticket tabs — visible from any screen */}
+        {openTicketTabs.length > 0 && screen !== 'ticketDetail' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, background: '#e8edf3', borderBottom: '1px solid #c0d0e4', padding: '0 8px', flexShrink: 0, overflow: 'auto' }}>
+            {openTicketTabs.map(tab => (
+              <div key={tab.id} onClick={() => { setSelectedTicketId(tab.id); setScreen('ticketDetail'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                onMouseEnter={e => e.currentTarget.style.background='#dde8f2'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.subject || tab.id}</span>
+                <span onClick={(e) => { e.stopPropagation(); closeTicketTab(tab.id); }}
+                  style={{ fontSize: 13, color: '#8a9fb0', cursor: 'pointer', lineHeight: 1, flexShrink: 0, padding: '0 2px' }}
+                  onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#8a9fb0'}>×</span>
+              </div>
+            ))}
+          </div>
+        )}
         {screen === 'regionQueue' && (
           <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
@@ -514,16 +522,16 @@ export default function App() {
         {screen === 'ticketDetail' && selectedTicketId && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Ticket tabs */}
-            {openTicketTabs.length > 1 && (
+            {openTicketTabs.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, background: '#e8edf3', borderBottom: '1px solid #c0d0e4', padding: '0 8px', flexShrink: 0, overflow: 'auto' }}>
                 {openTicketTabs.map(tab => (
-                  <div key={tab.id} onClick={() => { setSelectedTicketId(tab.id); }}
+                  <div key={tab.id} onClick={() => setSelectedTicketId(tab.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: tab.id === selectedTicketId ? 600 : 400,
                       background: tab.id === selectedTicketId ? '#fff' : 'transparent', color: tab.id === selectedTicketId ? '#1e3a4f' : '#6b8299',
-                      borderBottom: tab.id === selectedTicketId ? '2px solid #1a5e9a' : '2px solid transparent', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      borderBottom: tab.id === selectedTicketId ? '2px solid #1a5e9a' : '2px solid transparent', whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.subject || tab.id}</span>
                     <span onClick={(e) => { e.stopPropagation(); closeTicketTab(tab.id); }}
-                      style={{ fontSize: 14, color: '#8a9fb0', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}
+                      style={{ fontSize: 14, color: '#8a9fb0', cursor: 'pointer', lineHeight: 1, flexShrink: 0, padding: '0 2px' }}
                       onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#8a9fb0'}>×</span>
                   </div>
                 ))}
@@ -531,7 +539,7 @@ export default function App() {
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <TicketDetail
-                key={selectedTicketId + '-' + openTicketChatKeyRef.current}
+                key={selectedTicketId}
                 ticketId={selectedTicketId}
                 currentUser={currentUser}
                 isSupervisor={isSupervisor}
