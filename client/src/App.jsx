@@ -535,6 +535,12 @@ export default function App() {
                       onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#8a9fb0'}>×</span>
                   </div>
                 ))}
+                <button onClick={() => setScreen('regionQueue')} title="Open another ticket"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, background: 'none', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', color: '#6b8299', fontSize: 16, fontWeight: 400, marginLeft: 4, flexShrink: 0 }}
+                  onMouseEnter={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#1a5e9a'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background='none'; e.currentTarget.style.color='#6b8299'; }}>
+                  +
+                </button>
               </div>
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
