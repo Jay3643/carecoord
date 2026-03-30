@@ -160,40 +160,31 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     }
 
     for (const t of ft) {
+      const key = t.assignee_user_id || '_unassigned';
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          assignee: t.assignee || null,
+          label: t.assignee ? t.assignee.name : 'Unassigned',
+          tickets: [],
+          pendingSubgroups: {},
+        };
+      }
+      groups[key].tickets.push(t);
+      // Track pending subgroups within unassigned
       if (!t.assignee_user_id && t.synced_for_user_id && t.syncedFor) {
-        // Unassigned ticket addressed to someone — group by "To: Name"
-        const key = '_to_' + t.synced_for_user_id;
-        if (!groups[key]) {
-          groups[key] = {
-            key,
-            assignee: null,
-            syncedFor: t.syncedFor,
-            label: 'To: ' + t.syncedFor.name,
-            isToGroup: true,
-            tickets: [],
-          };
+        const subKey = t.synced_for_user_id;
+        if (!groups[key].pendingSubgroups[subKey]) {
+          groups[key].pendingSubgroups[subKey] = { user: t.syncedFor, tickets: [] };
         }
-        groups[key].tickets.push(t);
-      } else {
-        const key = t.assignee_user_id || '_unassigned';
-        if (!groups[key]) {
-          groups[key] = {
-            key,
-            assignee: t.assignee || null,
-            label: t.assignee ? t.assignee.name : 'Unassigned',
-            tickets: [],
-          };
-        }
-        groups[key].tickets.push(t);
+        groups[key].pendingSubgroups[subKey].tickets.push(t);
       }
     }
 
-    // Sort: unassigned first, then "To:" groups, then assigned
+    // Sort: unassigned first, then by assignee name
     const sorted = Object.values(groups).sort((a, b) => {
       if (a.key === '_unassigned') return -1;
       if (b.key === '_unassigned') return 1;
-      if (a.isToGroup && !b.isToGroup) return -1;
-      if (!a.isToGroup && b.isToGroup) return 1;
       return a.label.localeCompare(b.label);
     });
     return sorted;
@@ -418,8 +409,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
               {/* Group Header */}
               <button onClick={() => toggleGroup(group.key)}
                 style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '10px 16px',
-                  background: group.isToGroup ? (getUserColor(group.syncedFor) + '08') : group.key === '_unassigned' ? '#fef8ec' : '#f0f4f9',
-                  border: '1px solid', borderColor: group.isToGroup ? (getUserColor(group.syncedFor) + '30') : group.key === '_unassigned' ? '#f0ddb0' : '#dde8f2',
+                  background: group.key === '_unassigned' ? '#fef8ec' : '#f0f4f9',
+                  border: '1px solid', borderColor: group.key === '_unassigned' ? '#f0ddb0' : '#dde8f2',
                   borderRadius: isExpanded ? '10px 10px 0 0' : 10,
                   cursor: 'pointer', textAlign: 'left', color: '#1e3a4f', gap: 10, transition: 'all 0.1s' }}
                 onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
@@ -431,8 +422,6 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                   <div style={{ width: 28, height: 28, borderRadius: '50%', background: group.tagColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.tagColor }} />
                   </div>
-                ) : group.isToGroup ? (
-                  <Avatar user={group.syncedFor} size={28} />
                 ) : group.assignee ? (
                   <Avatar user={group.assignee} size={28} />
                 ) : (
@@ -440,7 +429,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                     <Icon name="inbox" size={14} />
                   </div>
                 )}
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.isToGroup ? getUserColor(group.syncedFor) : group.key === '_unassigned' ? '#c9963b' : '#1e3a4f' }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.key === '_unassigned' ? '#c9963b' : '#1e3a4f' }}>
                   {group.label}
                 </span>
                 {unreadCount > 0 && (
@@ -454,7 +443,60 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
               </button>
               {isExpanded && (
                 <div style={{ border: '1px solid', borderColor: group.key === '_unassigned' ? '#f0ddb0' : '#dde8f2', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-                  {group.tickets.map(ticket => {
+                  {/* Pending To sub-folders inside Unassigned */}
+                  {group.key === '_unassigned' && Object.values(group.pendingSubgroups || {}).length > 0 && (
+                    Object.values(group.pendingSubgroups).sort((a, b) => a.user.name.localeCompare(b.user.name)).map(sub => {
+                      const subKey = '_pending_' + sub.user.id;
+                      const subExpanded = expandedGroups.has(subKey);
+                      const subColor = getUserColor(sub.user);
+                      const subUnread = sub.tickets.filter(t => t.has_unread).length;
+                      return (
+                        <div key={subKey}>
+                          <button onClick={() => toggleGroup(subKey)}
+                            style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '8px 16px 8px 32px', background: subColor + '06', border: 'none', borderBottom: '1px solid #f0f4f9', cursor: 'pointer', textAlign: 'left', gap: 8 }}
+                            onMouseEnter={e => e.currentTarget.style.background = subColor + '12'} onMouseLeave={e => e.currentTarget.style.background = subColor + '06'}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="#6b8299" style={{ transform: subExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s', flexShrink: 0 }}>
+                              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                            </svg>
+                            <Avatar user={sub.user} size={22} />
+                            <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: subColor }}>Pending To: {sub.user.name}</span>
+                            {subUnread > 0 && <span style={{ background: subColor, color: '#fff', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8 }}>{subUnread} new</span>}
+                            <span style={{ fontSize: 11, color: '#8a9fb0' }}>{sub.tickets.length}</span>
+                          </button>
+                          {subExpanded && sub.tickets.map(ticket => {
+                            const tags = ticket.tags || [];
+                            return (
+                              <button key={ticket.id} onClick={() => onOpenTicket(ticket.id, ticket.subject)}
+                                style={{ display: 'flex', alignItems: 'stretch', width: '100%', padding: '10px 8px 10px 48px', background: ticket.has_unread ? '#f8faff' : '#fff', border: 'none', borderBottom: '1px solid #f0f4f9', cursor: 'pointer', textAlign: 'left', color: '#1e3a4f', transition: 'background 0.1s', gap: 12 }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#e8f0f8'} onMouseLeave={e => e.currentTarget.style.background = ticket.has_unread ? '#f8faff' : '#fff'}>
+                                <div onClick={e => { e.stopPropagation(); toggleTicketSelect(ticket.id); }} style={{ width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer' }}>
+                                  <div style={{ width: 16, height: 16, border: selectedTicketIds.has(ticket.id) ? 'none' : '2px solid #c0d0e4', borderRadius: 3, background: selectedTicketIds.has(ticket.id) ? '#1a5e9a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {selectedTicketIds.has(ticket.id) && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                                  </div>
+                                </div>
+                                <div style={{ width: 8, display: 'flex', alignItems: 'center' }}>{ticket.has_unread ? <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#1a5e9a' }} /> : null}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
+                                    <StatusBadge status={ticket.status} />
+                                    {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
+                                  <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(ticket.external_participants || [])[0]}</div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 4, minWidth: 100, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.time(ticket.last_activity_at)}</span>
+                                  <span style={{ fontSize: 10, color: '#8a9fb0', background: '#f0f4f9', padding: '2px 8px', borderRadius: 4 }}>{ticket.region?.name}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })
+                  )}
+                  {/* Tickets not addressed to anyone (truly unassigned) or assigned group tickets */}
+                  {group.tickets.filter(t => !(group.key === '_unassigned' && t.synced_for_user_id && t.syncedFor)).map(ticket => {
                     const tags = ticket.tags || [];
                     return (
                       <button key={ticket.id} onClick={() => onOpenTicket(ticket.id, ticket.subject)}
@@ -477,10 +519,6 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                             <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                             <StatusBadge status={ticket.status} />
                             {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
-                            {!ticket.assignee_user_id && ticket.syncedFor && (() => {
-                              const c = getUserColor(ticket.syncedFor);
-                              return <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 4, background: c + '18', color: c, border: '1px solid ' + c + '40' }}>To: {ticket.syncedFor.name}</span>;
-                            })()}
                           </div>
                           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                           <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
