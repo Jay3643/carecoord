@@ -479,11 +479,15 @@ router.post('/bulk/reassign', requireAuth, requireSupervisor, (req, res) => {
   res.json({ reassigned: affected.length });
 });
 
-// Bulk reassign specific tickets by ID (supervisor/admin)
-router.post('/bulk/reassign-selected', requireAuth, requireSupervisor, (req, res) => {
+// Bulk reassign specific tickets by ID (any authenticated user — coordinators can assign to self)
+router.post('/bulk/reassign-selected', requireAuth, (req, res) => {
   const db = getDb();
   const { ticketIds, toUserId } = req.body;
   if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
+  // Coordinators can only assign to themselves or unassign
+  if (req.user.role === 'coordinator' && toUserId && toUserId !== req.user.id) {
+    return res.status(403).json({ error: 'Coordinators can only assign tickets to themselves' });
+  }
   let count = 0;
   for (const tid of ticketIds) {
     const now = Date.now();

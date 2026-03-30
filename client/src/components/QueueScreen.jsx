@@ -108,7 +108,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     if (refreshCounts) refreshCounts();
   };
 
-  const reassignableUsers = (allUsers || []).filter(u => u.id !== currentUser.id && u.role === 'coordinator');
+  const reassignableUsers = (allUsers || []).filter(u => u.role === 'coordinator' || u.role === 'supervisor' || u.role === 'admin');
 
   const toggleGroup = (key) => {
     setExpandedGroups(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -317,7 +317,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
               style={{ padding: '4px 14px', background: '#c96a1b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
               Pull from Queue
             </button>
-            {mode === 'region' && (currentUser.role === 'supervisor' || currentUser.role === 'admin') && (
+            {mode === 'region' && (
               <div style={{ position: 'relative' }}>
                 <button onClick={() => setShowReassignDropdown(!showReassignDropdown)}
                   style={{ padding: '4px 14px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
