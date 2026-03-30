@@ -23,7 +23,8 @@ export default function App() {
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
-  const [showCompose, setShowCompose] = useState(false);
+  const [showCompose, setShowCompose] = useState(false); // false | 'open' | 'minimized'
+  const [composeDraft, setComposeDraft] = useState(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [workStatus, setWorkStatus] = useState('active');
@@ -213,7 +214,7 @@ export default function App() {
         </div>
 
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 12px' }}>
-          <button onClick={() => setShowCompose(true)}
+          <button onClick={() => setShowCompose(showCompose === 'minimized' ? 'open' : 'open')}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: sidebarCollapsed ? '10px 14px' : '10px 14px',
@@ -506,15 +507,33 @@ export default function App() {
         )}
 
         {/* Compose Modal */}
-        {showCompose && (
+        {showCompose === 'open' && (
           <ComposeModal
             currentUser={currentUser}
             regions={regions}
             allTags={allTags}
-            onClose={() => setShowCompose(false)}
-            onCreated={(ticketId) => { setShowCompose(false); openTicket(ticketId); }}
+            onClose={() => { setShowCompose(false); setComposeDraft(null); }}
+            onMinimize={(draft) => { setComposeDraft(draft); setShowCompose('minimized'); }}
+            onCreated={(ticketId) => { setShowCompose(false); setComposeDraft(null); openTicket(ticketId); }}
             showToast={showToast}
+            initialDraft={composeDraft}
           />
+        )}
+
+        {/* Minimized compose bar */}
+        {showCompose === 'minimized' && composeDraft && (
+          <div style={{ position: 'fixed', bottom: 0, right: 24, zIndex: 150, display: 'flex', gap: 0 }}>
+            <button onClick={() => setShowCompose('open')}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: '10px 0 0 0', cursor: 'pointer', fontSize: 13, fontWeight: 600, boxShadow: '0 -2px 12px rgba(0,0,0,0.15)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              Draft: {composeDraft.subject || composeDraft.toEmail || 'New Message'}
+            </button>
+            <button onClick={() => { setShowCompose(false); setComposeDraft(null); }}
+              style={{ padding: '10px 14px', background: '#143d6b', color: '#a8c8e8', border: 'none', borderRadius: '0 10px 0 0', cursor: 'pointer', fontSize: 14 }}
+              title="Discard draft">
+              ✕
+            </button>
+          </div>
         )}
 
         {/* Toast */}

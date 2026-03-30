@@ -4,17 +4,19 @@ import Icon from './Icons';
 import { TagPill } from './ui';
 import EmailAutocomplete from './EmailAutocomplete';
 
-export default function ComposeModal({ currentUser, regions, allTags, onClose, onCreated, showToast }) {
-  const [toEmail, setToEmail] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [regionId, setRegionId] = useState(currentUser.regionIds?.[0] || '');
-  const [selectedTags, setSelectedTags] = useState([]);
+export default function ComposeModal({ currentUser, regions, allTags, onClose, onMinimize, onCreated, showToast, initialDraft }) {
+  const [toEmail, setToEmail] = useState(initialDraft?.toEmail || '');
+  const [subject, setSubject] = useState(initialDraft?.subject || '');
+  const [body, setBody] = useState(initialDraft?.body || '');
+  const [regionId, setRegionId] = useState(initialDraft?.regionId || currentUser.regionIds?.[0] || '');
+  const [selectedTags, setSelectedTags] = useState(initialDraft?.selectedTags || []);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [sending, setSending] = useState(false);
-  const [attachments, setAttachments] = useState([]);
+  const [attachments, setAttachments] = useState(initialDraft?.attachments || []);
   const [aiDrafting, setAiDrafting] = useState(false);
   const fileInputRef = useRef(null);
+
+  const getDraft = () => ({ toEmail, subject, body, regionId, selectedTags, attachments });
 
   const userRegions = regions.filter(r => currentUser.regionIds.includes(r.id));
   const canSend = toEmail.trim() && subject.trim() && body.trim() && regionId;
@@ -74,9 +76,16 @@ export default function ComposeModal({ currentUser, regions, allTags, onClose, o
             </div>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>New Message</h2>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', padding: 4 }}>
-            <Icon name="x" size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {onMinimize && (
+              <button onClick={() => onMinimize(getDraft())} title="Minimize" style={{ background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', padding: 4 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/></svg>
+              </button>
+            )}
+            <button onClick={onClose} title="Discard" style={{ background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', padding: 4 }}>
+              <Icon name="x" size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Form */}
