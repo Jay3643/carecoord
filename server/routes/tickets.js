@@ -289,7 +289,7 @@ router.post('/:id/assign', requireAuth, (req, res) => {
   if (assigneeUser && assigneeUser.work_status === 'inactive' && req.user.role === 'coordinator')
     return res.status(400).json({ error: 'You are currently inactive. Set your status to Active to claim tickets.' });
   const now = Date.now();
-  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = ? WHERE id = ?').run(userId || null, now, userId ? now : null, userId ? 1 : 0, req.params.id);
+  db.prepare('UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1 WHERE id = ?').run(userId || null, now, userId ? now : null, req.params.id);
   saveDb();
   const assignee = userId ? db.prepare('SELECT name FROM users WHERE id = ?').get(userId) : null;
   addAudit(db, req.user.id, 'assignee_changed', 'ticket', req.params.id, userId ? 'Assigned to ' + assignee.name : 'Unassigned / returned to queue');
@@ -471,7 +471,7 @@ router.post('/bulk/reassign', requireAuth, requireSupervisor, (req, res) => {
   const db = getDb();
   const { fromUserId, toUserId } = req.body;
   const affected = db.prepare("SELECT id FROM tickets WHERE assignee_user_id = ? AND status != 'CLOSED'").all(fromUserId);
-  db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, has_unread = ? WHERE assignee_user_id = ? AND status != 'CLOSED'").run(toUserId || null, Date.now(), toUserId ? 1 : 0, fromUserId);
+  db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, has_unread = 1 WHERE assignee_user_id = ? AND status != 'CLOSED'").run(toUserId || null, Date.now(), fromUserId);
   saveDb();
   const fromUser = db.prepare('SELECT name FROM users WHERE id = ?').get(fromUserId);
   const toUser = toUserId ? db.prepare('SELECT name FROM users WHERE id = ?').get(toUserId) : null;
@@ -491,7 +491,7 @@ router.post('/bulk/reassign-selected', requireAuth, (req, res) => {
   let count = 0;
   for (const tid of ticketIds) {
     const now = Date.now();
-    const r = db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = ? WHERE id = ? AND status != 'CLOSED'").run(toUserId || null, now, toUserId ? now : null, toUserId ? 1 : 0, tid);
+    const r = db.prepare("UPDATE tickets SET assignee_user_id = ?, last_activity_at = ?, assigned_at = ?, has_unread = 1 WHERE id = ? AND status != 'CLOSED'").run(toUserId || null, now, toUserId ? now : null, tid);
     if (r.changes) count++;
   }
   saveDb();
