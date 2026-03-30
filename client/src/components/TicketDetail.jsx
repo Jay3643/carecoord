@@ -125,9 +125,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
         const md = await api.chatMessages(tc.channelId);
         setDiscussionMsgs(md.messages || []);
         setDiscussionMembers((allUsers || []).filter(u => u.id !== currentUser.id));
-        // If brand new channel, send ticket info as the first system-style message
-        if (!tc.existing && md.messages?.length === 0) {
-          const ticketInfo = 'Ticket: ' + ticketId + '\nSubject: ' + (ticket?.subject || '(no subject)') + '\nFrom: ' + (ticket?.external_participants?.[0] || ticket?.from_email || 'Unknown') + '\nStatus: ' + (ticket?.status || 'OPEN');
+        // If brand new channel with no messages, send ticket info once ticket data is available
+        if (!tc.existing && md.messages?.length === 0 && ticket) {
+          const ticketInfo = 'Ticket: ' + ticketId + '\nSubject: ' + (ticket.subject || '(no subject)') + '\nFrom: ' + (ticket.external_participants?.[0] || ticket.from_email || 'Unknown') + '\nStatus: ' + (ticket.status || 'OPEN');
           await api.chatSend(tc.channelId, { body: ticketInfo, type: 'text' });
           const md2 = await api.chatMessages(tc.channelId);
           setDiscussionMsgs(md2.messages || []);
@@ -135,7 +135,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       } catch(e) { showToast?.('Could not open chat'); }
       setDiscussionLoading(false);
     })();
-  }, [activeTab, ticketId]);
+  }, [activeTab, ticketId, ticket?.id]);
 
   // Socket + polling for real-time discussion (Socket.IO may not work on Render)
   useEffect(() => {

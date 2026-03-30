@@ -107,11 +107,16 @@ export default function App() {
   };
 
   const [openTicketWithChat, setOpenTicketWithChat] = useState(null);
+  const openTicketChatKeyRef = React.useRef(0);
   const openTicket = (id, subject, showChat) => {
     setSelectedTicketId(id);
     setScreen('ticketDetail');
-    if (showChat) setOpenTicketWithChat(id);
-    else setOpenTicketWithChat(null);
+    if (showChat) {
+      setOpenTicketWithChat(id);
+      openTicketChatKeyRef.current++;
+    } else {
+      setOpenTicketWithChat(null);
+    }
     setOpenTicketTabs(prev => {
       if (prev.find(t => t.id === id)) return prev;
       return [...prev, { id, subject: subject || id }];
@@ -526,7 +531,7 @@ export default function App() {
             )}
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <TicketDetail
-                key={selectedTicketId}
+                key={selectedTicketId + '-' + openTicketChatKeyRef.current}
                 ticketId={selectedTicketId}
                 currentUser={currentUser}
                 isSupervisor={isSupervisor}
