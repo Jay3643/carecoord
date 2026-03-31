@@ -389,29 +389,35 @@ async function syncUser(db, row) {
       }
 
       if (existingTicketId) {
-        // Ticket already exists — check if this exact message (by RFC Message-ID) is already recorded
-        const alreadyRecorded = rfcMessageId ? db.prepare("SELECT 1 FROM messages WHERE ticket_id = ? AND provider_message_id = ?").get(existingTicketId, rfcMessageId) : null;
-        if (!alreadyRecorded) {
-          // New message in this thread (reply or first sync) — add it
+        // Check if this user already has their own ticket for this email
+        const myTicket = db.prepare("SELECT id FROM tickets WHERE synced_for_user_id = ? AND id IN (SELECT ticket_id FROM messages WHERE provider_message_id = ?)").get(uid, rfcMessageId || m.id);
+        if (myTicket) {
+          // Already have our own ticket — check for new reply messages
+          const alreadyRecorded = rfcMessageId ? db.prepare("SELECT 1 FROM messages WHERE ticket_id = ? AND provider_message_id = ?").get(myTicket.id, rfcMessageId) : null;
+          if (!alreadyRecorded) {
+            const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+            db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+              .run(msgId, toStr(myTicket.id), 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', toStr(myTicket.id));
+          }
+        } else {
+          // Another coordinator has a ticket for this email — create our own and link them
+          const tid = generateTicketId(db, rid);
+          db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids,linked_ticket_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)')
+            .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid, JSON.stringify([uid]), JSON.stringify([existingTicketId]));
           const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
           db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-            .run(msgId, existingTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
-          db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', existingTicketId);
-        }
-
-        // Add this user to the synced_for list if not already there
-        const existingTicket = db.prepare('SELECT assignee_user_id, synced_for_user_ids FROM tickets WHERE id = ?').get(existingTicketId);
-        if (existingTicket) {
-          const currentIds = JSON.parse(toStr(existingTicket.synced_for_user_ids) || '[]');
-          if (!currentIds.includes(uid)) {
-            currentIds.push(uid);
-            db.prepare('UPDATE tickets SET synced_for_user_ids = ? WHERE id = ?').run(JSON.stringify(currentIds), existingTicketId);
+            .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+          // Update the existing ticket to link back to this one
+          const existingLinks = JSON.parse(toStr(db.prepare('SELECT linked_ticket_ids FROM tickets WHERE id = ?').get(existingTicketId)?.linked_ticket_ids) || '[]');
+          if (!existingLinks.includes(tid)) {
+            existingLinks.push(tid);
+            db.prepare('UPDATE tickets SET linked_ticket_ids = ? WHERE id = ?').run(JSON.stringify(existingLinks), existingTicketId);
           }
-          // If a different coordinator already owns this ticket, unassign
-          if (existingTicket.assignee_user_id && toStr(existingTicket.assignee_user_id) !== uid) {
-            db.prepare('UPDATE tickets SET assignee_user_id = NULL WHERE id = ?').run(existingTicketId);
-            console.log('[Sync] Multi-recipient — unassigned ticket', existingTicketId);
-          }
+          // Also update our ticket with all known siblings
+          const allLinked = [...existingLinks.filter(id => id !== tid), existingTicketId];
+          db.prepare('UPDATE tickets SET linked_ticket_ids = ? WHERE id = ?').run(JSON.stringify(allLinked), tid);
+          console.log('[Sync] Multi-recipient — created', tid, 'for', uid, 'linked to', existingTicketId);
         }
       } else {
         // Brand new email — always create as unassigned, tag with who it was synced from

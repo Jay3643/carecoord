@@ -94,6 +94,17 @@ function enrichTicket(db, ticket) {
   if (syncedIds.length > 0) {
     ticket.syncedForUsers = syncedIds.map(uid => db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(uid)).filter(Boolean);
   }
+  // Linked tickets (multi-recipient siblings)
+  const linkedIds = JSON.parse(toStr(ticket.linked_ticket_ids) || '[]');
+  if (linkedIds.length > 0) {
+    ticket.linkedTickets = linkedIds.map(lid => {
+      const lt = db.prepare('SELECT id, subject, status, assignee_user_id, synced_for_user_id FROM tickets WHERE id = ?').get(lid);
+      if (!lt) return null;
+      const assignee = lt.assignee_user_id ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(lt.assignee_user_id) : null;
+      const syncedFor = lt.synced_for_user_id ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(lt.synced_for_user_id) : null;
+      return { id: toStr(lt.id), subject: toStr(lt.subject), status: toStr(lt.status), assignee, syncedFor };
+    }).filter(Boolean);
+  }
   return ticket;
 }
 
@@ -489,6 +500,57 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
     saveDb();
   }
   res.json({ message });
+});
+
+// Reply All — sends reply and copies to all linked tickets
+router.post('/:id/reply-all', requireAuth, async (req, res) => {
+  const db = getDb();
+  const { body: replyBody, attachments: replyAttachments } = req.body;
+  if (!replyBody?.trim()) return res.status(400).json({ error: 'Body required' });
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Not found' });
+
+  // Send the normal reply on this ticket (reuse existing reply logic inline)
+  const region = db.prepare('SELECT * FROM regions WHERE id = ?').get(ticket.region_id);
+  const aliases = JSON.parse(region?.routing_aliases || '[]');
+  const fromAddr = aliases[0] || 'intake@carecoord.org';
+  const extP = JSON.parse(ticket.external_participants || '[]');
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const fullBody = replyBody + '\n\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
+  const msgId = uuid();
+  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(msgId, req.params.id, fromAddr, JSON.stringify(extP), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), req.user.id, Date.now());
+  db.prepare("UPDATE tickets SET status = 'WAITING_ON_EXTERNAL', last_activity_at = ?, has_unread = 0 WHERE id = ?").run(Date.now(), req.params.id);
+
+  // Copy the reply as a message on all linked tickets
+  const linkedIds = JSON.parse(toStr(ticket.linked_ticket_ids) || '[]');
+  for (const lid of linkedIds) {
+    const lt = db.prepare('SELECT * FROM tickets WHERE id = ?').get(lid);
+    if (lt) {
+      const copyMsgId = uuid();
+      db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?)')
+        .run(copyMsgId, toStr(lt.id), fromAddr, JSON.stringify(JSON.parse(toStr(lt.external_participants) || '[]')), 'Re: ' + toStr(lt.subject), fullBody, Date.now(), req.user.id, Date.now());
+      db.prepare('UPDATE tickets SET last_activity_at = ?, has_unread = 1 WHERE id = ?').run(Date.now(), toStr(lt.id));
+    }
+  }
+
+  saveDb();
+  addAudit(db, req.user.id, 'reply_all_sent', 'ticket', req.params.id, 'Reply All to ' + (linkedIds.length + 1) + ' tickets');
+
+  // Send via Gmail (same as normal reply)
+  try {
+    const gmailAuth = getGmailAuth(req.user.id);
+    if (gmailAuth) {
+      const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
+      const toAddr = extP[0] || '';
+      const CRLF = '\r\n';
+      const emailLines = ['From: ' + (gmailAuth.email || fromAddr), 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
+      const raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+    }
+  } catch(e) { console.error('[Gmail] Reply-all send failed:', e.message); }
+
+  res.json({ sent: linkedIds.length + 1 });
 });
 
 router.post('/:id/notes', requireAuth, (req, res) => {

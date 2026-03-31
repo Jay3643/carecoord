@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Seniority Connect User Manual — Seniority Healthcare</title>
+<style>
+  @page { margin: 0.75in 0.85in; size: letter; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1e3a4f; }
+  h1 { font-size: 28pt; font-weight: 800; color: #143d6b; margin-bottom: 6px; }
+  h2 { font-size: 18pt; font-weight: 700; color: #1a5e9a; margin-top: 32px; margin-bottom: 10px; border-bottom: 2px solid #dde8f2; padding-bottom: 6px; page-break-after: avoid; }
+  h3 { font-size: 13pt; font-weight: 700; color: #143d6b; margin-top: 18px; margin-bottom: 6px; page-break-after: avoid; }
+  h4 { font-size: 11pt; font-weight: 700; color: #1a5e9a; margin-top: 12px; margin-bottom: 4px; }
+  p, li { margin-bottom: 6px; }
+  ul, ol { margin-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 10pt; }
+  th { background: #143d6b; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 6px 10px; border-bottom: 1px solid #dde8f2; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .cover { text-align: center; padding-top: 200px; page-break-after: always; }
+  .cover h1 { font-size: 36pt; margin-bottom: 12px; }
+  .cover .subtitle { font-size: 16pt; color: #6b8299; margin-bottom: 40px; }
+  .cover .org { font-size: 14pt; color: #1a5e9a; font-weight: 600; }
+  .cover .date { font-size: 11pt; color: #8a9fb0; margin-top: 20px; }
+  .toc { page-break-after: always; }
+  .toc h2 { border-bottom: none; }
+  .toc ul { list-style: none; margin-left: 0; }
+  .toc li { padding: 4px 0; border-bottom: 1px dotted #c0d0e4; }
+  .toc li a { text-decoration: none; color: #1a5e9a; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 9pt; font-weight: 600; }
+  .badge-admin { background: #e8f5e9; color: #2e7d32; }
+  .badge-super { background: #e3f2fd; color: #1565c0; }
+  .badge-coord { background: #fff3e0; color: #e65100; }
+  .badge-all { background: #f3e5f5; color: #7b1fa2; }
+  .tip { background: #e8f6fa; border-left: 4px solid #52a8c7; padding: 8px 12px; margin: 10px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .warn { background: #fff8e1; border-left: 4px solid #f9a825; padding: 8px 12px; margin: 10px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .section { page-break-inside: avoid; }
+  code { background: #f0f4f9; padding: 1px 5px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 10pt; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .dot-green { background: #4ade80; }
+  .dot-yellow { background: #fbbf24; }
+  .dot-gray { background: #d1d5db; }
+  .dot-red { background: #f87171; }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <h1>Seniority Connect</h1>
+  <div class="subtitle">User Instructional Manual</div>
+  <div class="org">Seniority Healthcare</div>
+  <div class="date">Version 2.0 &mdash; March 2026</div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ul>
+    <li><a href="#getting-started">1. Getting Started</a></li>
+    <li><a href="#navigation">2. Navigation &amp; Layout</a></li>
+    <li><a href="#roles">3. User Roles &amp; Permissions</a></li>
+    <li><a href="#login">4. Logging In &amp; Account Setup</a></li>
+    <li><a href="#queues">5. Ticket Queues &amp; Routing</a></li>
+    <li><a href="#tickets">6. Working with Tickets</a></li>
+    <li><a href="#tabs">7. Ticket Tabs &amp; Multi-Tasking</a></li>
+    <li><a href="#time">8. Time Tracking</a></li>
+    <li><a href="#compose">9. Creating New Messages</a></li>
+    <li><a href="#email">10. Personal Email Inbox</a></li>
+    <li><a href="#contacts">11. Contacts &amp; Autocomplete</a></li>
+    <li><a href="#labels">12. Gmail Labels</a></li>
+    <li><a href="#chat">13. Team Chat</a></li>
+    <li><a href="#ai">14. Seniority AI Assistant</a></li>
+    <li><a href="#dashboard">15. Supervisor Dashboard</a></li>
+    <li><a href="#activity">16. Activity Dashboard &amp; User Audit</a></li>
+    <li><a href="#audit">17. Audit Log</a></li>
+    <li><a href="#archive">18. Archive</a></li>
+    <li><a href="#admin">19. Admin Panel</a></li>
+    <li><a href="#workspace">20. Google Workspace Integration</a></li>
+    <li><a href="#pull">21. Pull from Queue</a></li>
+    <li><a href="#external">22. External Application Links</a></li>
+    <li><a href="#tips">23. Tips &amp; Best Practices</a></li>
+  </ul>
+</div>
+
+<!-- 1. GETTING STARTED -->
+<h2 id="getting-started">1. Getting Started</h2>
+<p>Seniority Connect is the care coordination platform for Seniority Healthcare. It provides a centralized workspace for managing patient and provider communications, team collaboration, email, time tracking, and AI-powered assistance.</p>
+
+<h3>What Seniority Connect Does</h3>
+<ul>
+  <li><strong>Ticket Management</strong> &mdash; Track and manage all communications as tickets with statuses, tags, assignments, regions, and time tracking.</li>
+  <li><strong>Smart Routing</strong> &mdash; All incoming emails land in the unassigned queue. Users import the tickets addressed to them on login, or claim them manually.</li>
+  <li><strong>Email Integration</strong> &mdash; Full Gmail inbox access with contacts autocomplete, label management, compose, reply, and AI-assisted drafting.</li>
+  <li><strong>Team Chat</strong> &mdash; Start chats directly from tickets. Members are added explicitly and stay until they leave.</li>
+  <li><strong>Time Tracking</strong> &mdash; Clock auto-starts when you open a ticket. Per-user time breakdown with expandable session details.</li>
+  <li><strong>AI Assistant</strong> &mdash; Powered by Claude, the AI can summarize tickets, extract patient data, draft replies, search emails, and answer questions about your caseload using 8 dynamic tools.</li>
+  <li><strong>Dashboards &amp; Analytics</strong> &mdash; Real-time dashboards, user audit with response time tracking, activity heatmaps, and online presence.</li>
+  <li><strong>Archive</strong> &mdash; Closed tickets live in a searchable archive with full history preserved.</li>
+  <li><strong>Administration</strong> &mdash; Manage users, regions, tags, and system settings.</li>
+</ul>
+
+<!-- 2. NAVIGATION -->
+<h2 id="navigation">2. Navigation &amp; Layout</h2>
+<p>The application has a left sidebar for navigation, a tab bar for open tickets, a main content area, and optional right-side panels for Chat and AI.</p>
+
+<h3>Sidebar Menu</h3>
+<table>
+  <tr><th>Menu Item</th><th>Description</th><th>Who Sees It</th></tr>
+  <tr><td><strong>New Message</strong></td><td>Create a new outbound ticket/message</td><td>All roles</td></tr>
+  <tr><td><strong>Region Queue</strong></td><td>All tickets in your assigned regions</td><td>All roles</td></tr>
+  <tr><td><strong>My Queue</strong></td><td>Tickets assigned to you personally</td><td>All roles</td></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Real-time KPIs and Bird's Eye View</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Activity</strong></td><td>Activity dashboard with online presence and user audit</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Audit Log</strong></td><td>Full audit trail with clickable ticket links</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Archive</strong></td><td>Searchable archive of closed tickets</td><td>All roles</td></tr>
+  <tr><td><strong>Email</strong></td><td>Personal Gmail inbox with contacts</td><td>All roles</td></tr>
+  <tr><td><strong>Chat</strong></td><td>Internal team messaging</td><td>All roles</td></tr>
+  <tr><td><strong>Seniority AI</strong></td><td>AI assistant panel</td><td>All roles</td></tr>
+  <tr><td><strong>Admin</strong></td><td>User, region, tag management</td><td>Supervisors, Admins</td></tr>
+  <tr><td><strong>Google Workspace</strong></td><td>Links to Calendar, Drive, Docs, etc.</td><td>All roles</td></tr>
+</table>
+
+<h3>Ticket Tab Bar</h3>
+<p>When you open tickets, they appear as tabs at the top of the content area. You can:</p>
+<ul>
+  <li><strong>Open multiple tickets</strong> simultaneously from the queue.</li>
+  <li><strong>Click a tab</strong> to switch between open tickets.</li>
+  <li><strong>Click X</strong> on a tab to close it (stops the time clock for that ticket).</li>
+  <li><strong>Click +</strong> at the end of the tab bar to return to the queue and open another ticket.</li>
+  <li>Tabs <strong>persist</strong> when you navigate to other screens &mdash; click any tab to jump back.</li>
+</ul>
+
+<h3>Right-Side Panels</h3>
+<p>Chat and Seniority AI open as resizable panels on the right side. You can drag the panel edge to resize, and both can be open simultaneously.</p>
+
+<!-- 3. ROLES -->
+<h2 id="roles">3. User Roles &amp; Permissions</h2>
+<p>Seniority Connect has three user roles with escalating permissions:</p>
+
+<table>
+  <tr><th>Feature</th><th><span class="badge badge-coord">Coordinator</span></th><th><span class="badge badge-super">Supervisor</span></th><th><span class="badge badge-admin">Admin</span></th></tr>
+  <tr><td>View &amp; manage own tickets</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Create new messages</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Access Email inbox</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Use Team Chat</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Use Seniority AI</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Set Active/Inactive status</td><td>Yes</td><td>No</td><td>No</td></tr>
+  <tr><td>Claim pending tickets on login</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Bulk reassign from queue</td><td>Self only</td><td>Anyone</td><td>Anyone</td></tr>
+  <tr><td>Push emails to queue</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Pull from queue</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Dashboard</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Activity &amp; User Audit</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>View Audit Log</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Manage Tags</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+  <tr><td>Manage Users &amp; Regions</td><td>No</td><td>No</td><td>Yes</td></tr>
+  <tr><td>Invite New Users</td><td>No</td><td>No</td><td>Yes</td></tr>
+</table>
+
+<!-- 4. LOGIN -->
+<h2 id="login">4. Logging In &amp; Account Setup</h2>
+
+<h3>New User Setup</h3>
+<ol>
+  <li>You will receive an invitation email with a setup link.</li>
+  <li>Click the link to open the setup wizard.</li>
+  <li>Create a password (minimum 8 characters).</li>
+  <li>Set up Two-Factor Authentication (2FA) by scanning the QR code with an authenticator app.</li>
+  <li>Enter the 6-digit code from your authenticator to confirm.</li>
+  <li>You're ready to log in!</li>
+</ol>
+
+<h3>Logging In</h3>
+<ol>
+  <li>Enter your email address and password.</li>
+  <li>Enter the 6-digit 2FA code from your authenticator app.</li>
+  <li>If there are unassigned tickets addressed to you, a <strong>Pending Import</strong> modal will appear.</li>
+</ol>
+
+<h3>Pending Import on Login</h3>
+<p>When you sign in, if there are unassigned messages in the queue that were addressed to you, a modal will show:</p>
+<ul>
+  <li>A list of all pending tickets with checkboxes, ticket ID, subject, and sender.</li>
+  <li><strong>Select All / Select None</strong> links to quickly toggle all.</li>
+  <li>A counter showing "X of Y selected".</li>
+  <li><strong>Import Selected</strong> &mdash; Claims the checked tickets into your personal queue.</li>
+  <li><strong>Leave All in Queue</strong> &mdash; Dismisses the modal; tickets stay unassigned for anyone to claim.</li>
+</ul>
+<div class="tip"><strong>Tip:</strong> All tickets are pre-selected by default. Uncheck any you don't want before importing.</div>
+
+<h3>Work Status (Coordinators)</h3>
+<p>Coordinators can toggle their status between <strong>Active</strong> and <strong>Inactive</strong> using the button at the bottom of the sidebar.</p>
+<ul>
+  <li><span class="dot dot-green"></span><strong>Active</strong> &mdash; You can claim and work tickets normally.</li>
+  <li><span class="dot dot-red"></span><strong>Inactive</strong> &mdash; Your assigned tickets are returned to the region queue. Email sync stops for your account.</li>
+</ul>
+
+<!-- 5. QUEUES -->
+<h2 id="queues">5. Ticket Queues &amp; Routing</h2>
+
+<h3>How Routing Works</h3>
+<p>All incoming emails land in the <strong>unassigned queue</strong>. No auto-assignment occurs. Instead:</p>
+<ul>
+  <li>Tickets are tagged with the intended recipient (the coordinator whose inbox received the email).</li>
+  <li>In the queue, unassigned tickets show <strong>"Pending To: [Name]"</strong> collapsible sub-folders inside the Unassigned group.</li>
+  <li>If an email was sent to multiple coordinators, the ticket appears in <strong>each person's folder</strong> with a purple <strong>"Sent to N"</strong> badge.</li>
+  <li>When someone claims a ticket, it moves out of all Pending To folders into their personal queue.</li>
+  <li>Tickets with no specific intended recipient show directly in the Unassigned group.</li>
+</ul>
+
+<h3>Region Queue</h3>
+<p>The Region Queue shows all tickets across your assigned regions, grouped by assignee. Unassigned tickets appear first with "Pending To" sub-folders.</p>
+<ul>
+  <li><strong>Click a group header</strong> to expand/collapse.</li>
+  <li><strong>Filter by status:</strong> Active, Unassigned, Open, Waiting, Closed.</li>
+  <li><strong>Filter by region:</strong> Use the region dropdown.</li>
+  <li><strong>Search:</strong> Type in the search box &mdash; results show as a flat list (no grouping needed).</li>
+</ul>
+
+<h3>Ticket IDs</h3>
+<p>New tickets get short, meaningful IDs based on the region:</p>
+<ul>
+  <li><code>CPA-0001</code> &mdash; Central PA, ticket #1</li>
+  <li><code>SNJ-0042</code> &mdash; South NJ, ticket #42</li>
+  <li><code>DV-0003</code> &mdash; Delaware Valley, ticket #3</li>
+</ul>
+
+<h3>Region Alias Routing</h3>
+<p>Emails sent to a region alias (e.g., <code>region1@seniorityhealthcare.com</code>) are automatically routed to the correct region based on the alias configured in Admin &gt; Regions.</p>
+
+<h3>My Queue</h3>
+<p>My Queue shows only tickets assigned to you. Same filters and search apply.</p>
+
+<h3>Bulk Actions</h3>
+<p>Use checkboxes to select multiple tickets, then:</p>
+<ul>
+  <li><strong>Pull from Queue</strong> &mdash; Remove selected tickets and return emails to Gmail (supervisors/admins).</li>
+  <li><strong>Reassign To...</strong> &mdash; Reassign selected tickets to any team member or return to queue. All roles can use this (coordinators can only assign to themselves).</li>
+</ul>
+<p>Reassigned tickets appear as <strong>unread/new</strong> for the recipient.</p>
+
+<!-- 6. TICKETS -->
+<h2 id="tickets">6. Working with Tickets</h2>
+
+<h3>Ticket Detail View</h3>
+<p>Click any ticket to open it. You'll see:</p>
+<ul>
+  <li><strong>Header</strong> &mdash; Ticket ID, status badge, subject, and a time clock.</li>
+  <li><strong>Message Thread</strong> &mdash; All inbound and outbound messages chronologically.</li>
+  <li><strong>Action Tabs</strong> &mdash; Reply, Internal Note, Start a Chat / Open Chat, Seniority AI.</li>
+  <li><strong>Sidebar</strong> &mdash; Assignee, region, tags, status controls, details (timestamps, response time), and time log.</li>
+</ul>
+
+<h3>Replying to a Ticket</h3>
+<ol>
+  <li>Click the <strong>Reply</strong> tab.</li>
+  <li>Type your message. Optionally click <strong>AI Draft</strong> for AI-generated text.</li>
+  <li>Attach files if needed (max 10MB per file).</li>
+  <li>Click <strong>Send</strong>.</li>
+</ol>
+<div class="tip"><strong>Note:</strong> Replying to a ticket from the regional queue automatically assigns it to you.</div>
+
+<h3>Internal Notes</h3>
+<ol>
+  <li>Click the <strong>Internal Note</strong> tab.</li>
+  <li>Type your note and click <strong>Add Note</strong>.</li>
+</ol>
+<div class="tip"><strong>Tip:</strong> Notes are only visible to your team &mdash; never sent to external parties.</div>
+
+<h3>Audit Details</h3>
+<p>The Details panel in the ticket sidebar shows:</p>
+<table>
+  <tr><th>Field</th><th>Description</th></tr>
+  <tr><td><strong>Received</strong></td><td>When the ticket was created.</td></tr>
+  <tr><td><strong>Assigned</strong></td><td>When it was assigned to someone.</td></tr>
+  <tr><td><strong>Read</strong></td><td>When the assignee first opened it, and who read it.</td></tr>
+  <tr><td><strong>Response Time</strong></td><td>Time between assigned and read. Color-coded: green (&lt;1h), yellow (1-4h), red (&gt;4h).</td></tr>
+  <tr><td><strong>Last Activity</strong></td><td>Most recent action on the ticket.</td></tr>
+  <tr><td><strong>Time Logged</strong></td><td>Total time tracked on this ticket.</td></tr>
+</table>
+
+<h3>Closing a Ticket</h3>
+<p>Click <strong>Close</strong>, select a closure reason, and optionally add a comment. When a ticket is closed:</p>
+<ul>
+  <li>Any active chat is <strong>archived</strong> as a note on the ticket (full transcript preserved).</li>
+  <li>The chat channel is removed from the Chat panel.</li>
+  <li>The ticket moves to the <strong>Archive</strong>.</li>
+  <li>Internal notes remain on the ticket permanently.</li>
+</ul>
+
+<!-- 7. TABS -->
+<h2 id="tabs">7. Ticket Tabs &amp; Multi-Tasking</h2>
+<p>You can have multiple tickets open simultaneously:</p>
+<ul>
+  <li>Opening a ticket from the queue adds it as a <strong>tab</strong> at the top.</li>
+  <li>Click between tabs to switch tickets.</li>
+  <li>Click <strong>+</strong> to go back to the queue and open another ticket without closing existing tabs.</li>
+  <li>Click <strong>X</strong> on a tab to close it (this stops the time clock for that ticket).</li>
+  <li>Tabs persist when you navigate to other screens (Dashboard, Email, etc.) &mdash; click any tab to return.</li>
+</ul>
+
+<!-- 8. TIME TRACKING -->
+<h2 id="time">8. Time Tracking</h2>
+<p>The time clock tracks how long each user spends on a ticket.</p>
+
+<h3>How It Works</h3>
+<ul>
+  <li>The clock <strong>auto-starts</strong> when you open a ticket and continues from the previous total.</li>
+  <li>A red pulsing button in the ticket header shows the running time.</li>
+  <li>Click <strong>Stop</strong> to manually pause the clock. It will not auto-restart until you click <strong>Start Clock</strong> again.</li>
+  <li>Closing a ticket tab stops the clock automatically.</li>
+  <li>Only one clock can run at a time &mdash; starting a new one auto-stops the previous.</li>
+</ul>
+
+<h3>Time Log</h3>
+<p>In the ticket sidebar, the <strong>Time Spent</strong> section shows:</p>
+<ul>
+  <li><strong>Total time</strong> across all users.</li>
+  <li><strong>Per-user breakdown</strong> showing each person's contribution.</li>
+  <li>Click <strong>"Show N entries"</strong> to expand and see individual sessions with exact date, start time, and stop time.</li>
+</ul>
+
+<!-- 9. COMPOSE -->
+<h2 id="compose">9. Creating New Messages</h2>
+<p>Click the <strong>New Message</strong> button in the sidebar to open the compose modal.</p>
+
+<h3>Compose Fields</h3>
+<ul>
+  <li><strong>To (Email)</strong> &mdash; Start typing to see contact suggestions from Gmail history and existing tickets.</li>
+  <li><strong>Subject</strong> &mdash; The email subject line (required).</li>
+  <li><strong>Send from Region</strong> &mdash; Select which region this ticket belongs to (required).</li>
+  <li><strong>Tags</strong> &mdash; Optionally tag the new ticket.</li>
+  <li><strong>Message Body</strong> &mdash; Write your message or click <strong>AI Draft</strong> to have the AI generate one.</li>
+  <li><strong>Attachments</strong> &mdash; Upload files (max 10MB each).</li>
+</ul>
+
+<h3>Minimize &amp; Resume</h3>
+<p>Click the <strong>&mdash;</strong> (minimize) button next to X to minimize the compose modal. A draft bar appears at the bottom-right showing the subject. Click it to resume editing. Click X on the bar to discard.</p>
+
+<div class="warn"><strong>Note:</strong> Clicking outside the compose modal does not close it &mdash; you must use X or Cancel to prevent accidental loss of drafts.</div>
+
+<!-- 10. EMAIL -->
+<h2 id="email">10. Personal Email Inbox</h2>
+<p>The Email screen provides full access to your Gmail inbox directly within Seniority Connect.</p>
+
+<h3>Navigation</h3>
+<ul>
+  <li><strong>Left sidebar</strong> &mdash; System folders (Inbox, Starred, Sent, Drafts, etc.), Categories, and your Gmail Labels.</li>
+  <li><strong>Search bar</strong> &mdash; Search across all mail.</li>
+</ul>
+
+<h3>Reading &amp; Managing Email</h3>
+<p>Click any message to open the full view. From the detail view you can Reply, AI Draft, Archive, Delete, Apply Labels, Star, or Mark Unread.</p>
+
+<h3>Push to Queue</h3>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span> can push individual or bulk-selected emails to the ticket queue using the <strong>Push to Queue</strong> button.</p>
+
+<!-- 11. CONTACTS -->
+<h2 id="contacts">11. Contacts &amp; Autocomplete</h2>
+<p>When composing a new message or email, the To field provides contact autocomplete:</p>
+<ul>
+  <li>Contacts are pulled from your <strong>Gmail sent/received history</strong> (last 200 messages each direction).</li>
+  <li>Also includes all <strong>external participants from existing tickets</strong>.</li>
+  <li>Search by name, email, or organization.</li>
+  <li>Contacts are cached for 10 minutes for fast lookup.</li>
+</ul>
+
+<!-- 12. LABELS -->
+<h2 id="labels">12. Gmail Labels</h2>
+<p>All your Gmail labels are synced into Seniority Connect, including nested labels and colors.</p>
+<ul>
+  <li><strong>View by label</strong> &mdash; Click any label in the email sidebar.</li>
+  <li><strong>Apply labels</strong> &mdash; Open a message, click the label icon, check/uncheck labels.</li>
+  <li><strong>Create labels</strong> &mdash; Click <strong>+</strong> next to "Labels" in the email sidebar.</li>
+  <li><strong>Rename/Delete</strong> &mdash; Right-click any label for options.</li>
+</ul>
+
+<!-- 13. CHAT -->
+<h2 id="chat">13. Team Chat</h2>
+
+<h3>Starting a Chat from a Ticket</h3>
+<p>In the ticket detail view, the chat tab shows:</p>
+<ul>
+  <li><strong>"Start a Chat"</strong> (gray) &mdash; No chat exists yet. Click to create one.</li>
+  <li><strong>"Open Chat"</strong> (blue) &mdash; A chat already exists. Click to view and continue the conversation.</li>
+</ul>
+
+<h3>Chat Membership</h3>
+<ul>
+  <li>Only the creator is added initially.</li>
+  <li>Click <strong>"+ Add Team Members"</strong> to invite others.</li>
+  <li>Members <strong>stay in the chat</strong> until they choose to leave (remove from their chat list).</li>
+  <li>Anyone who opens the ticket and clicks the chat tab is auto-joined.</li>
+</ul>
+
+<h3>Chat from the Chat Panel</h3>
+<p>The sidebar Chat panel shows all your conversations. For ticket chats:</p>
+<ul>
+  <li>Ticket chats show as <strong>"Chat from [sender name]"</strong> for recipients.</li>
+  <li>Click <strong>"View Ticket"</strong> to open the ticket with the chat visible.</li>
+  <li>Ticket icon in the channel list is also clickable.</li>
+</ul>
+
+<h3>Chat Archival</h3>
+<p>When a ticket is closed, the chat transcript is saved as an archived note on the ticket and the chat channel is removed from the Chat panel.</p>
+
+<h3>Direct &amp; Group Messages</h3>
+<p>Click <strong>+ New</strong> in the Chat panel to start direct messages or group conversations outside of tickets.</p>
+
+<!-- 14. AI -->
+<h2 id="ai">14. Seniority AI Assistant</h2>
+<p>The AI assistant uses 8 dynamic tools to fetch real-time data from the system. It can chain multiple lookups to answer complex questions.</p>
+
+<h3>Available Tools</h3>
+<table>
+  <tr><th>Tool</th><th>What It Does</th></tr>
+  <tr><td>search_tickets</td><td>Search/filter tickets by keyword, status, assignee, region, tag</td></tr>
+  <tr><td>get_ticket_detail</td><td>Read full ticket with message thread and notes</td></tr>
+  <tr><td>get_patient_encounters</td><td>Find all tickets for a patient by email or name</td></tr>
+  <tr><td>search_emails</td><td>Search your Gmail inbox</td></tr>
+  <tr><td>get_email_detail</td><td>Read full email content</td></tr>
+  <tr><td>get_team_info</td><td>Check team members, workload, online status</td></tr>
+  <tr><td>get_queue_stats</td><td>Queue metrics by status, region, coordinator</td></tr>
+  <tr><td>get_audit_log</td><td>Recent activity log with filtering</td></tr>
+</table>
+
+<h3>Ticket-Specific Actions</h3>
+<p>When a ticket is open, quick action buttons appear: <strong>Summarize</strong>, <strong>Patient Info</strong>, <strong>Draft Reply</strong>, <strong>Suggest Tags</strong>.</p>
+
+<!-- 15. DASHBOARD -->
+<h2 id="dashboard">15. Supervisor Dashboard</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>Shows KPIs (Total Open, Unassigned, Closed Today, Triage), region breakdown, coordinator workload, and a Bird's Eye View with aging cards and real-time team status.</p>
+
+<!-- 16. ACTIVITY -->
+<h2 id="activity">16. Activity Dashboard &amp; User Audit</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>Five tabs: Who's Online, Overview, Team, Activity Feed, and <strong>User Audit</strong>.</p>
+
+<h3>User Audit Tab</h3>
+<p>Select any user and a date range, then click <strong>Run Audit</strong> to see:</p>
+<ul>
+  <li><strong>Summary cards</strong> &mdash; Open tickets, unread count, closed count, total actions, average response time (color-coded).</li>
+  <li><strong>Response time details</strong> &mdash; Per-ticket assigned-to-read times with fastest/slowest/average.</li>
+  <li><strong>Open tickets</strong> &mdash; Which are read vs unread, with wait times. Click any to open.</li>
+  <li><strong>Action breakdown</strong> &mdash; Visual counts by action type.</li>
+  <li><strong>Recent actions timeline</strong> &mdash; Full audit trail with clickable ticket links.</li>
+</ul>
+
+<!-- 17. AUDIT LOG -->
+<h2 id="audit">17. Audit Log</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>Detailed record of every action. All ticket IDs in the log are <strong>clickable</strong> &mdash; click to open the ticket directly. Filter by action type using the dropdown.</p>
+
+<!-- 18. ARCHIVE -->
+<h2 id="archive">18. Archive</h2>
+<p>The Archive screen shows all closed tickets, sorted by close date. Available to all users.</p>
+<ul>
+  <li><strong>Search</strong> across archived tickets by subject, sender, or ticket ID.</li>
+  <li><strong>Pagination</strong> &mdash; 25 tickets per page.</li>
+  <li>Each ticket shows subject, sender, tags, who handled it, region, and close date.</li>
+  <li>Click any ticket to view full history (messages, notes, archived chat transcript).</li>
+  <li><strong>Reopen</strong> (supervisors/admins) &mdash; Click the Reopen button to move a ticket back to the active queue.</li>
+</ul>
+
+<!-- 19. ADMIN -->
+<h2 id="admin">19. Admin Panel</h2>
+
+<h3>Users Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li>View, edit, deactivate, reactivate users.</li>
+  <li>Manage region assignments and reset passwords.</li>
+  <li>Connect/disconnect Google Workspace per user.</li>
+</ul>
+
+<h3>Invitations Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li>Send invitations with name, email (@seniorityhealthcare.com), role, and regions.</li>
+  <li>View pending/accepted/expired invitations. Resend or revoke.</li>
+</ul>
+
+<h3>Regions Tab <span class="badge badge-admin">Admin</span></h3>
+<ul>
+  <li>Create, edit, deactivate regions.</li>
+  <li>Set routing email aliases (e.g., <code>region1@seniorityhealthcare.com</code>) for automatic email routing.</li>
+</ul>
+
+<h3>Tags Tab <span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></h3>
+<ul>
+  <li>Create, edit, delete tags with custom colors.</li>
+</ul>
+
+<!-- 20. WORKSPACE -->
+<h2 id="workspace">20. Google Workspace Integration</h2>
+<p>Seniority Connect integrates with Google Workspace via service account delegation. Email sync, contacts, calendar, and drive access are all available.</p>
+
+<!-- 21. PULL FROM QUEUE -->
+<h2 id="pull">21. Pull from Queue</h2>
+<p><span class="badge badge-super">Supervisors</span> <span class="badge badge-admin">Admins</span></p>
+<p>Click <strong>Pull from Queue</strong> on a ticket or select multiple tickets and click Pull. A modal asks where the email should go:</p>
+<ul>
+  <li><strong>Return to original recipient</strong> &mdash; Restores the email to the coordinator who originally received it. Appears as unread.</li>
+  <li><strong>Pull to my inbox</strong> &mdash; Forwards the email to your own Gmail inbox. Appears as unread.</li>
+</ul>
+<p>Both options remove the ticket from Seniority Connect entirely.</p>
+
+<!-- 22. EXTERNAL -->
+<h2 id="external">22. External Application Links</h2>
+<p>The sidebar includes direct links to external systems: Practice Fusion, Updox, CareLink, Prompted. Each opens in a new tab.</p>
+
+<!-- 23. TIPS -->
+<h2 id="tips">23. Tips &amp; Best Practices</h2>
+
+<h3>Working Efficiently</h3>
+<ul>
+  <li>Use the AI assistant to draft replies and summarize long threads &mdash; it saves significant time.</li>
+  <li>Open multiple tickets in tabs to compare or work on several at once.</li>
+  <li>Tag tickets consistently so the tag filter is useful for your team.</li>
+  <li>The time clock runs automatically &mdash; your time is always tracked.</li>
+  <li>Use the minimize feature on compose to save a draft while working on other things.</li>
+  <li>Start a chat on a ticket to discuss it with your team without emailing externally.</li>
+</ul>
+
+<h3>For Supervisors</h3>
+<ul>
+  <li>Use the <strong>User Audit</strong> tab to monitor response times and individual performance.</li>
+  <li>Check "Pending To" folders in the Unassigned section to see who has unclaimed messages.</li>
+  <li>The Audit Log has <strong>clickable ticket links</strong> &mdash; click any to jump directly to the ticket.</li>
+  <li>Use Bulk Reassign when a coordinator is overwhelmed or out.</li>
+  <li>The Archive preserves full history including chat transcripts.</li>
+</ul>
+
+<h3>Getting Help</h3>
+<p>Use the <strong>Seniority AI</strong> assistant &mdash; it can answer questions about tickets, patients, team workload, and more. For technical issues, contact your system administrator.</p>
+
+<div style="margin-top: 60px; text-align: center; color: #8a9fb0; font-size: 10pt; border-top: 1px solid #dde8f2; padding-top: 16px;">
+  Seniority Connect User Manual &mdash; Seniority Healthcare &mdash; March 2026<br>
+  Version 2.0 &mdash; Confidential &mdash; For internal use only
+</div>
+
+</body>
+</html>

@@ -83,6 +83,7 @@ export const api = {
   assignTicket: (id, userId) => request('/tickets/' + id + '/assign', { method: 'POST', body: { userId } }),
   changeStatus: (id, status, closeReasonId, comment) => request('/tickets/' + id + '/status', { method: 'POST', body: { status, closeReasonId, comment } }),
   sendReply: (id, body, attachments) => request('/tickets/' + id + '/reply', { method: 'POST', body: { body, attachments } }),
+  sendReplyAll: (id, body, attachments) => request('/tickets/' + id + '/reply-all', { method: 'POST', body: { body, attachments } }),
   addTag: (id, tagId) => request('/tickets/' + id + '/tags', { method: 'POST', body: { tagId } }),
   removeTag: (id, tagId) => request('/tickets/' + id + '/tags/' + tagId, { method: 'DELETE' }),
   changeRegion: (id, regionId) => request('/tickets/' + id + '/region', { method: 'POST', body: { regionId } }),

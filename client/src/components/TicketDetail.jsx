@@ -311,15 +311,21 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   };
 
-  const handleSendReply = async () => {
+  const handleSendReply = async (replyAll) => {
     if (!replyText.trim() || sending) return;
     setSending(true);
     try {
-      await api.sendReply(ticketId, replyText, replyAttachments.length > 0 ? replyAttachments : undefined);
+      const atts = replyAttachments.length > 0 ? replyAttachments : undefined;
+      if (replyAll) {
+        const d = await api.sendReplyAll(ticketId, replyText, atts);
+        showToast('Reply sent to ' + d.sent + ' recipients');
+      } else {
+        await api.sendReply(ticketId, replyText, atts);
+        showToast('Reply sent');
+      }
       setReplyText('');
       setReplyAttachments([]);
       await fetchData();
-      showToast('Reply sent');
     } catch (e) {
       showToast(e.message);
     } finally {
@@ -396,6 +402,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <StatusBadge status={ticket.status} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
+            {ticket.linkedTickets && ticket.linkedTickets.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, background: '#ede9fe', padding: '1px 8px', borderRadius: 4, border: '1px solid #ddd6fe' }}>
+                  Sent to {ticket.linkedTickets.length + 1} recipients
+                </span>
+                {ticket.linkedTickets.map(lt => (
+                  <span key={lt.id} style={{ fontSize: 10, color: '#6b8299', background: '#f0f4f9', padding: '1px 6px', borderRadius: 4 }}
+                    title={lt.syncedFor ? 'To: ' + lt.syncedFor.name + ' (' + lt.status + ')' : lt.id}>
+                    {lt.syncedFor ? lt.syncedFor.name : lt.id}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           {/* Clock */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -701,10 +720,18 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                       </button>
                     </div>
                   </div>
-                  <button onClick={handleSendReply} disabled={!replyText.trim() || sending}
-                    style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#1a5e9a' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13, alignSelf: 'flex-end' }}>
-                    {sending ? '...' : 'Send'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+                    <button onClick={() => handleSendReply(false)} disabled={!replyText.trim() || sending}
+                      style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#1a5e9a' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                      {sending ? '...' : 'Reply'}
+                    </button>
+                    {ticket.linkedTickets && ticket.linkedTickets.length > 0 && (
+                      <button onClick={() => handleSendReply(true)} disabled={!replyText.trim() || sending}
+                        style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#7c3aed' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                        {sending ? '...' : 'Reply All (' + (ticket.linkedTickets.length + 1) + ')'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
