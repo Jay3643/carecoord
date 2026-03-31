@@ -126,9 +126,7 @@ export default function LoginScreen({ onLogin }) {
 
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32, justifyContent: 'center' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg, #1a5e9a, #2878b8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="shield" size={18} />
-          </div>
+          <img src="/ai-logo.jpg" alt="Seniority" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain' }} />
           <span style={{ fontWeight: 700, fontSize: 20, color: '#1e3a4f', letterSpacing: -0.5 }}>Seniority</span>
         </div>
 

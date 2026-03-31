@@ -58,6 +58,7 @@ export default function SetupAccount({ onComplete }) {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0d2137 0%, #143d6b 50%, #1a5e9a 100%)', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
       <div style={cardStyle}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <img src="/ai-logo.jpg" alt="Seniority" style={{ width: 48, height: 48, borderRadius: 10, objectFit: 'contain', marginBottom: 8 }} />
           <div style={{ fontSize: 28, fontWeight: 700, color: '#1e3a4f', marginBottom: 4 }}>CareCoord</div>
           <div style={{ fontSize: 13, color: '#8a9fb0' }}>Seniority Healthcare</div>
         </div>

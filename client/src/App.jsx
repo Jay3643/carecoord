@@ -233,10 +233,11 @@ export default function App() {
       {/* Sidebar */}
       <aside style={{ width: sidebarCollapsed ? 64 : 240, background: '#f0f4f9', borderRight: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', overflow: 'hidden', flexShrink: 0 }}>
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
+          <img src="/ai-logo.jpg" alt="Seniority" style={{ width: sidebarCollapsed ? 32 : 28, height: sidebarCollapsed ? 32 : 28, borderRadius: 6, objectFit: 'contain' }} />
           {!sidebarCollapsed && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, lineHeight: 1.2 }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
-              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>Workspace</span>
+              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>CareCoord</span>
             </div>
           )}
           {sidebarCollapsed && (
