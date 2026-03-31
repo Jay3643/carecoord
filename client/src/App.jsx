@@ -30,6 +30,7 @@ export default function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [pendingImport, setPendingImport] = useState(null); // { tickets, count }
+  const [pendingSelected, setPendingSelected] = useState(new Set());
   const [workStatus, setWorkStatus] = useState('active');
   const [aiOpen, setAiOpen] = useState(false);
   const [chatWidth, setChatWidth] = useState(380);
@@ -80,7 +81,10 @@ export default function App() {
       }).catch(e => showToast('Error loading reference data'));
       // Check for pending tickets addressed to this user
       api.getPendingTickets().then(d => {
-        if (d.count > 0) setPendingImport(d);
+        if (d.count > 0) {
+          setPendingImport(d);
+          setPendingSelected(new Set(d.tickets.map(t => t.id)));
+        }
       }).catch(() => {});
     }
   }, [currentUser?.id]);
@@ -620,35 +624,60 @@ export default function App() {
         {/* Pending import modal */}
         {pendingImport && pendingImport.count > 0 && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-            <div style={{ background: '#f0f4f9', borderRadius: 14, border: '1px solid #c0d0e4', padding: 28, width: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#f0f4f9', borderRadius: 14, border: '1px solid #c0d0e4', padding: 28, width: 500, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f', marginBottom: 6 }}>New Messages for You</h3>
-              <p style={{ fontSize: 13, color: '#6b8299', marginBottom: 16 }}>
-                There {pendingImport.count === 1 ? 'is' : 'are'} <strong style={{ color: '#1a5e9a' }}>{pendingImport.count}</strong> unassigned {pendingImport.count === 1 ? 'message' : 'messages'} addressed to you in the queue.
+              <p style={{ fontSize: 13, color: '#6b8299', marginBottom: 12 }}>
+                {pendingImport.count} {pendingImport.count === 1 ? 'message' : 'messages'} addressed to you. Select which to import:
               </p>
-              <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                {pendingImport.tickets.slice(0, 15).map(t => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #f0f4f9', fontSize: 12 }}>
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#8a9fb0' }}>{t.id}</span>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f' }}>{t.subject}</span>
+              {/* Select all / none */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <button onClick={() => setPendingSelected(new Set(pendingImport.tickets.map(t => t.id)))}
+                  style={{ fontSize: 11, color: '#1a5e9a', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                  Select All
+                </button>
+                <span style={{ color: '#c0d0e4' }}>|</span>
+                <button onClick={() => setPendingSelected(new Set())}
+                  style={{ fontSize: 11, color: '#6b8299', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                  Select None
+                </button>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 11, color: '#6b8299' }}>{pendingSelected.size} of {pendingImport.count} selected</span>
+              </div>
+              {/* Ticket list with checkboxes */}
+              <div style={{ flex: 1, overflowY: 'auto', marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                {pendingImport.tickets.map(t => (
+                  <div key={t.id} onClick={() => setPendingSelected(prev => { const n = new Set(prev); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n; })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #f0f4f9', fontSize: 12, cursor: 'pointer',
+                      background: pendingSelected.has(t.id) ? '#e8f0fe' : '#fff' }}
+                    onMouseEnter={e => { if (!pendingSelected.has(t.id)) e.currentTarget.style.background = '#f8fafc'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = pendingSelected.has(t.id) ? '#e8f0fe' : '#fff'; }}>
+                    <div style={{ width: 18, height: 18, border: pendingSelected.has(t.id) ? 'none' : '2px solid #c0d0e4', borderRadius: 3,
+                      background: pendingSelected.has(t.id) ? '#1a5e9a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {pendingSelected.has(t.id) && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                    </div>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#8a9fb0', flexShrink: 0 }}>{t.id}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1e3a4f', fontWeight: pendingSelected.has(t.id) ? 600 : 400 }}>{t.subject}</span>
+                    <span style={{ fontSize: 10, color: '#8a9fb0', flexShrink: 0 }}>{t.external_participants?.[0] ? t.external_participants[0].split('<')[0].trim() : ''}</span>
                   </div>
                 ))}
-                {pendingImport.count > 15 && <div style={{ padding: '6px 12px', fontSize: 11, color: '#8a9fb0' }}>...and {pendingImport.count - 15} more</div>}
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={async () => {
+                  if (pendingSelected.size === 0) { showToast('Select at least one ticket'); return; }
                   try {
-                    const d = await api.claimPendingTickets();
-                    showToast(d.claimed + ' tickets imported to your queue');
+                    const d = await api.claimPendingTickets(Array.from(pendingSelected));
+                    showToast(d.claimed + ' ticket' + (d.claimed !== 1 ? 's' : '') + ' imported to your queue');
                     setPendingImport(null);
+                    setPendingSelected(new Set());
                     refreshCounts();
                   } catch(e) { showToast(e.message); }
                 }}
-                  style={{ flex: 1, padding: '10px 16px', background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  Import All to My Queue
+                  style={{ flex: 1, padding: '10px 16px', background: pendingSelected.size > 0 ? '#1a5e9a' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: pendingSelected.size > 0 ? 'pointer' : 'default' }}>
+                  Import {pendingSelected.size > 0 ? pendingSelected.size : ''} Selected
                 </button>
-                <button onClick={() => setPendingImport(null)}
+                <button onClick={() => { setPendingImport(null); setPendingSelected(new Set()); }}
                   style={{ padding: '10px 16px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  Leave in Queue
+                  Leave All in Queue
                 </button>
               </div>
             </div>
