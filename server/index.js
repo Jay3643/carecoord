@@ -116,7 +116,7 @@ initDb().then(() => {
     catch(e) { /* column already exists */ }
   } catch(e) { console.log('[DB] work_status migration:', e.message); }
   server.listen(PORT, () => {
-    console.log('\n🏥 CareCoord server running on http://localhost:' + PORT);
+    console.log('\n🏥 Seniority Connect running on http://localhost:' + PORT);
     console.log('   API: http://localhost:' + PORT + '/api/health\n');
     // Auto-sync profile photos for users without one
     setTimeout(async () => {

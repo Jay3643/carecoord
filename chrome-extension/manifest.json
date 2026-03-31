@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Seniority Healthcare CareCoord",
+  "name": "Seniority Connect",
   "version": "1.0.0",
-  "description": "Care coordination copilot for Practice Fusion — syncs patient data with CareCoord",
+  "description": "Care coordination copilot for Practice Fusion — syncs patient data with Seniority Connect",
   "permissions": [
     "activeTab",
     "sidePanel",
@@ -37,7 +37,7 @@
     }
   ],
   "action": {
-    "default_title": "Seniority CareCoord"
+    "default_title": "Seniority Connect"
   },
   "icons": {
     "16": "icons/icon16.png",

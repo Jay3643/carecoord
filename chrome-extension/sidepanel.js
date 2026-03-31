@@ -1,4 +1,4 @@
-// ── Seniority CareCoord Side Panel ──
+// ── Seniority Connect Side Panel ──
 
 let state = {
   loggedIn: false, user: null, serverUrl: '',
@@ -250,7 +250,7 @@ function render() {
 }
 
 function renderLogin() {
-  app.innerHTML = '<div class="login-screen"><img src="icons/icon128.jpg" style="width:64px;height:64px;border-radius:12px;margin-bottom:8px"><div style="font-size:16px;font-weight:700;color:#1e3a4f">Seniority CareCoord</div><div style="font-size:12px;color:#6b8299;margin-bottom:8px">Sign in to connect</div><div class="server-url"><input type="text" id="server-url" value="' + state.serverUrl + '" placeholder="Server URL"><button class="btn btn-secondary btn-small" id="save-url">Save</button></div><input type="email" id="login-email" placeholder="Email"><input type="password" id="login-password" placeholder="Password"><button class="btn btn-primary" id="login-btn" style="width:100%">Sign In</button></div>';
+  app.innerHTML = '<div class="login-screen"><img src="icons/icon128.jpg" style="width:64px;height:64px;border-radius:12px;margin-bottom:8px"><div style="font-size:16px;font-weight:700;color:#1e3a4f">Seniority Connect</div><div style="font-size:12px;color:#6b8299;margin-bottom:8px">Sign in to connect</div><div class="server-url"><input type="text" id="server-url" value="' + state.serverUrl + '" placeholder="Server URL"><button class="btn btn-secondary btn-small" id="save-url">Save</button></div><input type="email" id="login-email" placeholder="Email"><input type="password" id="login-password" placeholder="Password"><button class="btn btn-primary" id="login-btn" style="width:100%">Sign In</button></div>';
   document.getElementById('login-btn').addEventListener('click', () => login(document.getElementById('login-email').value, document.getElementById('login-password').value));
   document.getElementById('login-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('login-btn').click(); });
   document.getElementById('save-url').addEventListener('click', () => { state.serverUrl = document.getElementById('server-url').value.replace(/\/$/, ''); saveSettings(); showToast('Saved'); });

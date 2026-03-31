@@ -237,7 +237,7 @@ export default function App() {
           {!sidebarCollapsed && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, lineHeight: 1.2 }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
-              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>CareCoord</span>
+              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>Connect</span>
             </div>
           )}
           {sidebarCollapsed && (
@@ -363,7 +363,7 @@ export default function App() {
               );
             }
             if (item.key === '_user_manual') return (
-              <a key="_user_manual" href="/CareCoord-User-Manual.pdf" target="_blank" rel="noopener noreferrer"
+              <a key="_user_manual" href="/CareCoord-User-Manual.pdf" target="_blank" rel="noopener noreferrer" title="Seniority Connect User Manual"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                   borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
                   cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',

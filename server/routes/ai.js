@@ -17,7 +17,7 @@ function getClient() {
 const TOOLS = [
   {
     name: 'search_tickets',
-    description: 'Search and filter tickets in the CareCoord system. Can search by keyword, status, assignee, region, patient email, or tag. Returns matching tickets with key details.',
+    description: 'Search and filter tickets in the Seniority Connect system. Can search by keyword, status, assignee, region, patient email, or tag. Returns matching tickets with key details.',
     input_schema: {
       type: 'object',
       properties: {
@@ -409,7 +409,7 @@ function getGmailAuth(db, userId) {
 //  AGENTIC SYSTEM PROMPT
 // ══════════════════════════════════════════════════════════════════════
 
-const SYSTEM_PROMPT = `You are Seniority AI, an intelligent care coordination assistant for Seniority Healthcare. You are AGENTIC — you can dynamically fetch information from the CareCoord system using your tools rather than relying on pre-loaded data.
+const SYSTEM_PROMPT = `You are Seniority AI, an intelligent care coordination assistant for Seniority Healthcare. You are AGENTIC — you can dynamically fetch information from the Seniority Connect system using your tools rather than relying on pre-loaded data.
 
 IMPORTANT BEHAVIORS:
 - When the user asks about tickets, patients, encounters, emails, or team info — USE YOUR TOOLS to look it up in real-time. Do NOT guess or say you don't have access.

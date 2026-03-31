@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
   const is2FAEnabled = (totp === '1' || totp === 'true');
   if (!is2FAEnabled) {
     // Generate secret now and return QR code inline
-    const newSecret = speakeasy.generateSecret({ name: 'CareCoord (' + toStr(user.email) + ')' });
+    const newSecret = speakeasy.generateSecret({ name: 'Seniority Connect (' + toStr(user.email) + ')' });
     db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(newSecret.base32, toStr(user.id));
     saveDb();
     console.log('[2FA] Secret generated for', toStr(user.email), newSecret.base32.substring(0,8) + '...');
@@ -154,7 +154,7 @@ router.post('/setup-2fa', (req, res) => {
 
   const db = getDb();
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id);
-  const secret = speakeasy.generateSecret({ name: 'CareCoord (' + toStr(user.email) + ')' });
+  const secret = speakeasy.generateSecret({ name: 'Seniority Connect (' + toStr(user.email) + ')' });
   db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret.base32, session.user_id);
   saveDb();
   console.log('[2FA] Secret saved for user:', session.user_id, 'secret starts:', secret.base32.substring(0,8));
@@ -344,20 +344,20 @@ router.post('/invite', requireAuth, async (req, res) => {
       const emailBody = [
         'From: ' + senderEmail,
         'To: ' + email,
-        'Subject: You\'re invited to CareCoord',
+        'Subject: You\'re invited to Seniority Connect',
         'Content-Type: text/html; charset=utf-8',
         'MIME-Version: 1.0',
         '',
         '<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">',
-        '  <h2 style="color: #1e3a4f;">Welcome to CareCoord</h2>',
+        '  <h2 style="color: #1e3a4f;">Welcome to Seniority Connect</h2>',
         '  <p style="color: #5f6368; font-size: 15px; line-height: 1.6;">Hi ' + name + ',</p>',
-        '  <p style="color: #5f6368; font-size: 15px; line-height: 1.6;">You\'ve been invited to join CareCoord as a <strong>' + role + '</strong>. Click the button below to set up your account.</p>',
+        '  <p style="color: #5f6368; font-size: 15px; line-height: 1.6;">You\'ve been invited to join Seniority Connect as a <strong>' + role + '</strong>. Click the button below to set up your account.</p>',
         '  <div style="text-align: center; margin: 32px 0;">',
         '    <a href="' + inviteLink + '" style="background: #1a5e9a; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">Set Up My Account</a>',
         '  </div>',
         '  <p style="color: #999; font-size: 13px;">This link expires in 7 days. If you didn\'t expect this invitation, you can ignore this email.</p>',
         '  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">',
-        '  <p style="color: #bbb; font-size: 11px;">Seniority Healthcare — CareCoord</p>',
+        '  <p style="color: #bbb; font-size: 11px;">Seniority Healthcare — Seniority Connect</p>',
         '</div>',
       ].join('\r\n');
 
@@ -422,7 +422,7 @@ router.post('/invite/:token/accept', (req, res) => {
   // Generate TOTP secret for 2FA setup
   const speakeasy = require('speakeasy');
   const QRCode = require('qrcode');
-  const secret = speakeasy.generateSecret({ name: 'CareCoord (' + email + ')' });
+  const secret = speakeasy.generateSecret({ name: 'Seniority Connect (' + email + ')' });
   db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret.base32, userId);
   saveDb();
 
@@ -503,11 +503,11 @@ router.post('/invite/:id/resend', requireAuth, async (req, res) => {
       }
       const emailBody = [
         'From: ' + senderEmail2, 'To: ' + toStr(inv.email),
-        'Subject: Reminder: Set up your CareCoord account',
+        'Subject: Reminder: Set up your Seniority Connect account',
         'Content-Type: text/html; charset=utf-8', 'MIME-Version: 1.0', '',
         '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px;">',
-        '<h2 style="color:#1e3a4f;">CareCoord Account Setup Reminder</h2>',
-        '<p style="color:#5f6368;font-size:15px;">Hi ' + toStr(inv.name) + ', you still need to set up your CareCoord account.</p>',
+        '<h2 style="color:#1e3a4f;">Seniority Connect Account Setup Reminder</h2>',
+        '<p style="color:#5f6368;font-size:15px;">Hi ' + toStr(inv.name) + ', you still need to set up your Seniority Connect account.</p>',
         '<div style="text-align:center;margin:32px 0;"><a href="' + inviteLink + '" style="background:#1a5e9a;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Set Up My Account</a></div>',
         '<p style="color:#999;font-size:13px;">This link expires in 7 days.</p></div>',
       ].join('\r\n');
