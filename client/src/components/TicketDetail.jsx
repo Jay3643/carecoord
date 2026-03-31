@@ -532,7 +532,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
           <div style={{ padding: '16px 24px', borderTop: '1px solid #dde8f2', background: '#ffffff' }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               <button onClick={() => setActiveTab('reply')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'reply' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'reply' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> Reply
+                <Icon name="send" size={12} /> Compose Reply
               </button>
               <button onClick={() => setActiveTab('note')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'note' ? '#c9963b' : '#dde8f2', color: activeTab === 'note' ? '#000' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="note" size={12} /> Internal Note
