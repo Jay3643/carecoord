@@ -1,4 +1,5 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+process.env.TZ = 'America/New_York';
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');

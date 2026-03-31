@@ -4,6 +4,9 @@ const { getDb } = require('../database');
 const { requireAuth, toStr } = require('../middleware');
 const router = express.Router();
 
+const TZ = 'America/New_York';
+function fmtDate(ts) { return ts ? new Date(ts).toLocaleString('en-US', { timeZone: TZ }) : ''; }
+
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
@@ -173,9 +176,9 @@ function toolSearchTickets(db, { query, status, assignee_name, region_name, tag_
       tags: tags.map(tg => toStr(tg.name)),
       msg_count: t.msg_count,
       has_unread: !!t.has_unread,
-      created: t.created_at ? new Date(t.created_at).toLocaleString() : '?',
-      assigned: t.assigned_at ? new Date(t.assigned_at).toLocaleString() : null,
-      last_activity: t.last_activity_at ? new Date(t.last_activity_at).toLocaleString() : '?',
+      created: t.created_at ? fmtDate(t.created_at) : '?',
+      assigned: t.assigned_at ? fmtDate(t.assigned_at) : null,
+      last_activity: t.last_activity_at ? fmtDate(t.last_activity_at) : '?',
     };
   });
 }
@@ -198,19 +201,19 @@ function toolGetTicketDetail(db, { ticket_id }) {
     assignee: assignee ? { name: toStr(assignee.name), email: toStr(assignee.email) } : null,
     tags: tags.map(t => toStr(t.name)),
     external_participants: JSON.parse(toStr(ticket.external_participants) || '[]'),
-    created: ticket.created_at ? new Date(ticket.created_at).toLocaleString() : null,
-    assigned: ticket.assigned_at ? new Date(ticket.assigned_at).toLocaleString() : null,
-    last_activity: ticket.last_activity_at ? new Date(ticket.last_activity_at).toLocaleString() : null,
+    created: ticket.created_at ? fmtDate(ticket.created_at) : null,
+    assigned: ticket.assigned_at ? fmtDate(ticket.assigned_at) : null,
+    last_activity: ticket.last_activity_at ? fmtDate(ticket.last_activity_at) : null,
     messages: messages.map(m => ({
       direction: toStr(m.direction) === 'inbound' ? 'FROM EXTERNAL' : 'OUTBOUND (us)',
       from: toStr(m.from_address) || '',
       to: toStr(m.to_addresses) || '',
-      date: m.sent_at ? new Date(m.sent_at).toLocaleString() : '',
+      date: m.sent_at ? fmtDate(m.sent_at) : '',
       body: toStr(m.body_text) || toStr(m.body) || '',
     })),
     notes: notes.map(n => ({
       author: toStr(n.author_name) || '?',
-      date: n.created_at ? new Date(n.created_at).toLocaleString() : '',
+      date: n.created_at ? fmtDate(n.created_at) : '',
       body: toStr(n.body),
     })),
   };
@@ -241,7 +244,7 @@ function toolGetPatientEncounters(db, { patient_email, patient_name, limit }) {
     return {
       id: toStr(t.id), subject: toStr(t.subject), status: toStr(t.status),
       assignee: assignee ? toStr(assignee.name) : 'Unassigned',
-      created: t.created_at ? new Date(t.created_at).toLocaleString() : '?',
+      created: t.created_at ? fmtDate(t.created_at) : '?',
       message_count: msgs.length,
       last_message_preview: msgs.length > 0 ? (toStr(msgs[msgs.length - 1].body_text) || toStr(msgs[msgs.length - 1].body) || '').substring(0, 200) : '',
     };
@@ -375,7 +378,7 @@ function toolGetAuditLog(db, { action_type, user_name, limit }) {
   params.push(max);
 
   return db.prepare(sql).all(...params).map(a => ({
-    timestamp: a.ts ? new Date(Number(toStr(a.ts))).toLocaleString() : '?',
+    timestamp: a.ts ? fmtDate(Number(toStr(a.ts))) : '?',
     actor: toStr(a.actor_name) || '?',
     action: toStr(a.action_type),
     entity: toStr(a.entity_type) + ':' + toStr(a.entity_id),
@@ -410,6 +413,8 @@ function getGmailAuth(db, userId) {
 // ══════════════════════════════════════════════════════════════════════
 
 const SYSTEM_PROMPT = `You are Seniority AI, an intelligent care coordination assistant for Seniority Healthcare. You are AGENTIC — you can dynamically fetch information from the Seniority Connect system using your tools rather than relying on pre-loaded data.
+
+TIMEZONE: All timestamps in the system are in Eastern Time (ET / America/New_York). When reporting dates and times to the user, always present them in Eastern Time.
 
 IMPORTANT BEHAVIORS:
 - When the user asks about tickets, patients, encounters, emails, or team info — USE YOUR TOOLS to look it up in real-time. Do NOT guess or say you don't have access.

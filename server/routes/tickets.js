@@ -386,7 +386,7 @@ router.post('/:id/status', requireAuth, (req, res) => {
       const chatMsgs = db.prepare('SELECT cm.body, cm.created_at, u.name as sender_name FROM chat_messages cm LEFT JOIN users u ON u.id = cm.user_id WHERE cm.channel_id = ? ORDER BY cm.created_at ASC').all(chId);
       if (chatMsgs.length > 0) {
         const transcript = chatMsgs.map(m => {
-          const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+          const time = m.created_at ? new Date(m.created_at).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '';
           return '[' + (toStr(m.sender_name) || 'Unknown') + ' — ' + time + ']\n' + toStr(m.body);
         }).join('\n\n');
         const noteBody = '--- Archived Chat (' + chatMsgs.length + ' messages) ---\n\n' + transcript;
