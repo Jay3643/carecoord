@@ -223,11 +223,19 @@ router.get('/', requireAuth, (req, res) => {
   res.json({ tickets: tickets.map(t => enrichTicket(db, t)) });
 });
 
-// ── Pending import: unassigned tickets synced for this user ──
+// ── Pending import: unassigned tickets synced for this user (exclude ones they sent) ──
 router.get('/my/pending', requireAuth, (req, res) => {
   const db = getDb();
-  const tickets = db.prepare("SELECT * FROM tickets WHERE (synced_for_user_id = ? OR synced_for_user_ids LIKE ?) AND assignee_user_id IS NULL AND status != 'CLOSED' ORDER BY created_at DESC").all(req.user.id, '%' + req.user.id + '%');
-  res.json({ tickets: tickets.map(t => enrichTicket(db, t)), count: tickets.length });
+  const tickets = db.prepare(
+    "SELECT * FROM tickets WHERE (synced_for_user_id = ? OR synced_for_user_ids LIKE ?) AND assignee_user_id IS NULL AND status != 'CLOSED' ORDER BY created_at DESC"
+  ).all(req.user.id, '%' + req.user.id + '%');
+  // Filter out tickets where the first message is outbound from this user (they sent it)
+  const filtered = tickets.filter(t => {
+    const firstMsg = db.prepare("SELECT direction, created_by_user_id FROM messages WHERE ticket_id = ? ORDER BY sent_at ASC LIMIT 1").get(t.id);
+    if (firstMsg && toStr(firstMsg.direction) === 'outbound' && toStr(firstMsg.created_by_user_id) === req.user.id) return false;
+    return true;
+  });
+  res.json({ tickets: filtered.map(t => enrichTicket(db, t)), count: filtered.length });
 });
 
 // ── Claim pending tickets (import into my queue) ──
