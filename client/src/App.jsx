@@ -480,7 +480,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            {!sidebarCollapsed && currentUser.role === 'coordinator' && (
+            {!sidebarCollapsed && (
               <button onClick={cycleWorkStatus}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
                   background: workStatus === 'active' ? '#0d3b1e' : workStatus === 'busy' ? '#3b2e0d' : '#3b1a0d',
