@@ -25,4 +25,29 @@ export const fmt = {
     if (!ts) return '';
     return new Date(typeof ts === 'number' ? ts : Date.parse(ts)).toLocaleDateString();
   },
+  stamp(ts) {
+    if (!ts) return '';
+    const d = new Date(typeof ts === 'number' ? ts : Date.parse(ts));
+    if (isNaN(d)) return String(ts);
+    const date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const now = new Date();
+    const diff = now - d;
+    let ago = '';
+    if (diff < 60000) ago = 'just now';
+    else if (diff < 3600000) ago = Math.floor(diff / 60000) + 'm ago';
+    else if (diff < 86400000) ago = Math.floor(diff / 3600000) + 'h ago';
+    else if (diff < 604800000) ago = Math.floor(diff / 86400000) + 'd ago';
+    return date + ' ' + time + (ago ? ' (' + ago + ')' : '');
+  },
+  age(ts) {
+    if (!ts) return '';
+    const d = new Date(typeof ts === 'number' ? ts : Date.parse(ts));
+    if (isNaN(d)) return '';
+    const diff = Date.now() - d;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' min';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ' + Math.floor((diff % 3600000) / 60000) + 'm';
+    return Math.floor(diff / 86400000) + 'd ' + Math.floor((diff % 86400000) / 3600000) + 'h';
+  },
 };

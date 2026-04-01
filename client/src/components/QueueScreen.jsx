@@ -401,7 +401,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 4, minWidth: 100, flexShrink: 0 }}>
-                      <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.time(ticket.last_activity_at)}</span>
+                      <span style={{ fontSize: 10, color: '#6b8299', textAlign: 'right', lineHeight: 1.3 }}>{fmt.stamp(ticket.last_activity_at)}<br/><span style={{ color: '#8a9fb0' }}>Open {fmt.age(ticket.created_at)}</span></span>
                       <span style={{ fontSize: 10, color: '#8a9fb0', background: '#f0f4f9', padding: '2px 8px', borderRadius: 4 }}>{ticket.region?.name}</span>
                     </div>
                   </button>
@@ -501,7 +501,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                                   <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(ticket.external_participants || [])[0]}</div>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 4, minWidth: 100, flexShrink: 0 }}>
-                                  <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.time(ticket.last_activity_at)}</span>
+                                  <span style={{ fontSize: 10, color: '#6b8299', textAlign: 'right', lineHeight: 1.3 }}>{fmt.stamp(ticket.last_activity_at)}<br/><span style={{ color: '#8a9fb0' }}>Open {fmt.age(ticket.created_at)}</span></span>
                                   <span style={{ fontSize: 10, color: '#8a9fb0', background: '#f0f4f9', padding: '2px 8px', borderRadius: 4 }}>{ticket.region?.name}</span>
                                 </div>
                               </button>
@@ -542,7 +542,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 4, minWidth: 100, flexShrink: 0 }}>
-                          <span style={{ fontSize: 11, color: '#6b8299' }}>{fmt.time(ticket.last_activity_at)}</span>
+                          <span style={{ fontSize: 10, color: '#6b8299', textAlign: 'right', lineHeight: 1.3 }}>{fmt.stamp(ticket.last_activity_at)}<br/><span style={{ color: '#8a9fb0' }}>Open {fmt.age(ticket.created_at)}</span></span>
                           <span style={{ fontSize: 10, color: '#8a9fb0', background: '#f0f4f9', padding: '2px 8px', borderRadius: 4 }}>{ticket.region?.name}</span>
                         </div>
                       </button>
