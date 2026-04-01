@@ -210,7 +210,15 @@ router.get('/', requireAuth, (req, res) => {
   const { queue, region, status, search } = req.query;
   let where = [], params = [];
   if (queue === 'personal') { where.push('t.assignee_user_id = ?'); params.push(req.user.id); }
-  else { const rids = req.user.regionIds || []; if (rids.length) { const ph = rids.map(() => '?').join(','); where.push('t.region_id IN (' + ph + ')'); params.push(...rids); } else { where.push('1=0'); } }
+  else {
+    const rids = req.user.regionIds || [];
+    if (rids.length) { const ph = rids.map(() => '?').join(','); where.push('t.region_id IN (' + ph + ')'); params.push(...rids); } else { where.push('1=0'); }
+    // Coordinators only see unassigned tickets and their own in the region queue
+    if (req.user.role === 'coordinator') {
+      where.push('(t.assignee_user_id IS NULL OR t.assignee_user_id = ?)');
+      params.push(req.user.id);
+    }
+  }
   if (region && region !== 'all') { where.push('t.region_id = ?'); params.push(region); }
   if (status === 'unassigned') { where.push("t.assignee_user_id IS NULL AND t.status != ?"); params.push('CLOSED'); }
   else if (status === 'open') where.push("t.status = 'OPEN'");
