@@ -191,6 +191,24 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
       }
     }
 
+    // For supervisors/admins in region mode, add empty groups for all users in the region
+    if (mode === 'region' && (currentUser.role === 'supervisor' || currentUser.role === 'admin') && allUsers) {
+      const regionUserIds = new Set();
+      // Get users for the selected region (or all user regions)
+      for (const u of allUsers) {
+        if (u.id === currentUser.id) continue;
+        regionUserIds.add(u.id);
+      }
+      for (const uid of regionUserIds) {
+        if (!groups[uid]) {
+          const u = allUsers.find(x => x.id === uid);
+          if (u) {
+            groups[uid] = { key: uid, assignee: u, label: u.name, tickets: [], pendingSubgroups: {} };
+          }
+        }
+      }
+    }
+
     // Sort: unassigned first, then by assignee name
     const sorted = Object.values(groups).sort((a, b) => {
       if (a.key === '_unassigned') return -1;
@@ -198,7 +216,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
       return a.label.localeCompare(b.label);
     });
     return sorted;
-  }, [tickets, queueFilter, selectedTag, tagSortMode]);
+  }, [tickets, queueFilter, selectedTag, tagSortMode, mode, currentUser, allUsers]);
 
   const filteredTickets = useMemo(() => {
     let list;
