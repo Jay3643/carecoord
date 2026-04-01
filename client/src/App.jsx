@@ -103,11 +103,12 @@ export default function App() {
   };
 
   const cycleWorkStatus = async () => {
-    const next = workStatus === 'active' ? 'inactive' : 'active';
+    const next = workStatus === 'active' ? 'busy' : workStatus === 'busy' ? 'inactive' : 'active';
     try {
       await api.setWorkStatus(next);
       setWorkStatus(next);
-      if (next === 'inactive') showToast('Inactive — tickets returned to queue, sync stopped');
+      if (next === 'busy') showToast('Busy — new messages go to unassigned queue, you keep your tickets');
+      else if (next === 'inactive') showToast('Inactive — tickets returned to queue, sync stopped');
       else showToast('Active — you can claim tickets from the queue');
       refreshCounts();
     } catch (e) { showToast(e.message); }
@@ -482,12 +483,14 @@ export default function App() {
             {!sidebarCollapsed && currentUser.role === 'coordinator' && (
               <button onClick={cycleWorkStatus}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-                  background: workStatus === 'active' ? '#0d3b1e' : '#3b1a0d',
-                  border: '1px solid', borderColor: workStatus === 'active' ? '#2e7d32' : '#d94040',
-                  borderRadius: 6, color: workStatus === 'active' ? '#4ade80' : '#f87171',
+                  background: workStatus === 'active' ? '#0d3b1e' : workStatus === 'busy' ? '#3b2e0d' : '#3b1a0d',
+                  border: '1px solid',
+                  borderColor: workStatus === 'active' ? '#2e7d32' : workStatus === 'busy' ? '#c9963b' : '#d94040',
+                  borderRadius: 6,
+                  color: workStatus === 'active' ? '#4ade80' : workStatus === 'busy' ? '#fbbf24' : '#f87171',
                   cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : '#f87171' }} />
-                {workStatus === 'active' ? 'Active' : 'Inactive'}
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : workStatus === 'busy' ? '#fbbf24' : '#f87171' }} />
+                {workStatus === 'active' ? 'Active' : workStatus === 'busy' ? 'Busy' : 'Inactive'}
               </button>
             )}
             {!sidebarCollapsed && (

@@ -420,10 +420,14 @@ async function syncUser(db, row) {
           console.log('[Sync] Multi-recipient — created', tid, 'for', uid, 'linked to', existingTicketId);
         }
       } else {
-        // Brand new email — always create as unassigned, tag with who it was synced from
+        // Brand new email — always create as unassigned
+        // If user is busy, don't tag them as the intended recipient (goes to general unassigned)
+        const isBusy = userRow && toStr(userRow.work_status) === 'busy';
+        const syncForUid = isBusy ? null : uid;
+        const syncForIds = isBusy ? '[]' : JSON.stringify([uid]);
         const tid = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)')
-          .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid, JSON.stringify([uid]));
+          .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, syncForUid, syncForIds);
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
