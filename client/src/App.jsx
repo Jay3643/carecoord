@@ -481,17 +481,30 @@ export default function App() {
               )}
             </div>
             {!sidebarCollapsed && (
-              <button onClick={cycleWorkStatus}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+              <select value={workStatus} onChange={async (e) => {
+                const next = e.target.value;
+                try {
+                  await api.setWorkStatus(next);
+                  setWorkStatus(next);
+                  if (next === 'busy') showToast('Busy — new messages go to unassigned queue');
+                  else if (next === 'inactive') showToast('Inactive — tickets returned to queue');
+                  else showToast('Active — receiving messages');
+                  refreshCounts();
+                } catch (err) { showToast(err.message); }
+              }}
+                style={{ width: '100%', padding: '6px 10px',
                   background: workStatus === 'active' ? '#0d3b1e' : workStatus === 'busy' ? '#3b2e0d' : '#3b1a0d',
                   border: '1px solid',
                   borderColor: workStatus === 'active' ? '#2e7d32' : workStatus === 'busy' ? '#c9963b' : '#d94040',
                   borderRadius: 6,
                   color: workStatus === 'active' ? '#4ade80' : workStatus === 'busy' ? '#fbbf24' : '#f87171',
-                  cursor: 'pointer', fontSize: 11, fontWeight: 600, width: '100%', justifyContent: 'center' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: workStatus === 'active' ? '#4ade80' : workStatus === 'busy' ? '#fbbf24' : '#f87171' }} />
-                {workStatus === 'active' ? 'Active' : workStatus === 'busy' ? 'Busy' : 'Inactive'}
-              </button>
+                  cursor: 'pointer', fontSize: 11, fontWeight: 600, textAlign: 'center', appearance: 'none', WebkitAppearance: 'none',
+                  backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M0 0l5 6 5-6z\' fill=\'%23a8c8e8\'/%3E%3C/svg%3E")',
+                  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: 24 }}>
+                <option value="active" style={{ background: '#1e293b', color: '#4ade80' }}>Active</option>
+                <option value="busy" style={{ background: '#1e293b', color: '#fbbf24' }}>Busy</option>
+                <option value="inactive" style={{ background: '#1e293b', color: '#f87171' }}>Inactive</option>
+              </select>
             )}
             {!sidebarCollapsed && (
               <button onClick={handleLogout}

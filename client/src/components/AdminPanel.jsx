@@ -20,6 +20,7 @@ function TagsSection({ showToast, s, regions }) {
   const [editName, setEditName] = React.useState('');
   const [editColor, setEditColor] = React.useState('');
   const [filterRegion, setFilterRegion] = React.useState('all');
+  const [expandedTags, setExpandedTags] = React.useState(new Set());
 
   const loadTags = () => {
     api.adminGetTags().then(d => setTags(d.tags || [])).catch(() => {});
@@ -62,11 +63,15 @@ function TagsSection({ showToast, s, regions }) {
     } catch (e) { showToast(e.message || 'Failed'); }
   };
 
+  const toggleTagExpand = (id) => setExpandedTags(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
   const renderTag = (tag, indent) => {
     const subtags = getSubtags(tag.id);
+    const isExpanded = expandedTags.has(tag.id);
+    const isParent = subtags.length > 0 && !indent;
     return (
       <React.Fragment key={tag.id}>
-        <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 10, marginLeft: indent }}>
+        <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 10, marginLeft: indent || 0 }}>
           {editingId === tag.id ? (
             <>
               <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', maxWidth: 160 }}>
@@ -83,16 +88,28 @@ function TagsSection({ showToast, s, regions }) {
             </>
           ) : (
             <>
+              {isParent ? (
+                <button onClick={() => toggleTagExpand(tag.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#6b8299" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                  </svg>
+                </button>
+              ) : (
+                <div style={{ width: 12, flexShrink: 0 }} />
+              )}
               <div style={{ width: 14, height: 14, borderRadius: '50%', background: tag.color || '#6b7280', flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 13, fontWeight: indent ? 400 : 600 }}>{tag.name}</span>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: indent ? 400 : 600, cursor: isParent ? 'pointer' : 'default' }}
+                onClick={() => isParent && toggleTagExpand(tag.id)}>
+                {tag.name}
+              </span>
               {tag.regionId && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#e8f0fe', color: '#1a5e9a' }}>{regionName(tag.regionId)}</span>}
-              {subtags.length > 0 && <span style={{ fontSize: 9, color: '#8a9fb0' }}>{subtags.length} sub</span>}
+              {isParent && <span style={{ fontSize: 9, color: '#8a9fb0', background: '#f0f4f9', padding: '1px 6px', borderRadius: 4 }}>{subtags.length} subtag{subtags.length !== 1 ? 's' : ''}</span>}
               <button onClick={() => { setEditingId(tag.id); setEditName(tag.name); setEditColor(tag.color || '#6b7280'); }} style={s.btnOutline}>Edit</button>
               <button onClick={() => deleteTag(tag)} style={{ ...s.btnOutline, color: '#d94040', borderColor: '#d9404040' }}>Del</button>
             </>
           )}
         </div>
-        {subtags.map(sub => renderTag(sub, (indent || 0) + 24))}
+        {isExpanded && subtags.map(sub => renderTag(sub, (indent || 0) + 28))}
       </React.Fragment>
     );
   };
