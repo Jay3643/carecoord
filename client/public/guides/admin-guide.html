@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Guide — Seniority Connect</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { margin: 0.75in 0.85in; size: letter; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font-size: 11pt;
+    line-height: 1.7;
+    color: #1e3a4f;
+    background: #f4f7f8;
+    padding: 0;
+    margin: 0;
+  }
+  .page-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 40px 56px;
+    min-height: 100vh;
+    box-shadow: 0 0 40px rgba(20,61,107,0.06);
+  }
+  .guide-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 24px;
+    border-bottom: 3px solid #143d6b;
+    margin-bottom: 32px;
+  }
+  .guide-header img {
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    object-fit: contain;
+  }
+  .guide-header .title-block h1 {
+    font-size: 26pt;
+    font-weight: 800;
+    color: #143d6b;
+    line-height: 1.15;
+  }
+  .guide-header .title-block .subtitle {
+    font-size: 13pt;
+    color: #6b8299;
+    font-weight: 400;
+  }
+  .guide-header .role-badge {
+    margin-left: auto;
+    padding: 6px 18px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-weight: 700;
+    font-size: 11pt;
+    border-radius: 8px;
+    border: 2px solid #2e7d3230;
+  }
+  h2 {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #143d6b;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #dde8f2;
+    padding-bottom: 6px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1a5e9a;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #143d6b;
+    margin-top: 14px;
+    margin-bottom: 4px;
+  }
+  p { margin-bottom: 8px; }
+  ul, ol { margin-left: 22px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+  strong { color: #143d6b; }
+  code {
+    background: #f0f4f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', 'Consolas', monospace;
+    font-size: 10pt;
+    color: #1a5e9a;
+  }
+  .toc {
+    background: #f8fafc;
+    border: 1px solid #dde8f2;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 36px;
+  }
+  .toc h2 {
+    margin-top: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 12px;
+    font-size: 15pt;
+  }
+  .toc ol {
+    margin-left: 20px;
+  }
+  .toc li {
+    padding: 3px 0;
+    break-inside: avoid;
+  }
+  .toc a {
+    text-decoration: none;
+    color: #1a5e9a;
+    font-weight: 500;
+  }
+  .toc a:hover { text-decoration: underline; }
+  .toc .supervisor-section a { color: #1565c0; font-weight: 600; }
+  .toc .admin-section a { color: #2e7d32; font-weight: 700; }
+  .toc-columns {
+    columns: 2;
+    column-gap: 32px;
+  }
+  .tip {
+    background: #e8f6fa;
+    border-left: 4px solid #52a8c7;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10.5pt;
+    line-height: 1.6;
+  }
+  .tip strong { color: #2a7a94; }
+  .warn {
+    background: #fff8e1;
+    border-left: 4px solid #f9a825;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10.5pt;
+    line-height: 1.6;
+  }
+  .warn strong { color: #b57a00; }
+  .steps { counter-reset: step-counter; list-style: none; margin-left: 0; padding-left: 0; }
+  .steps li {
+    counter-increment: step-counter;
+    padding: 8px 0 8px 44px;
+    position: relative;
+    border-left: 2px solid #dde8f2;
+    margin-left: 16px;
+    margin-bottom: 0;
+  }
+  .steps li:last-child { border-left-color: transparent; }
+  .steps li::before {
+    content: counter(step-counter);
+    position: absolute;
+    left: -14px;
+    top: 6px;
+    width: 26px;
+    height: 26px;
+    background: #1a5e9a;
+    color: #fff;
+    font-size: 10pt;
+    font-weight: 700;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 10.5pt; }
+  th { background: #143d6b; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #dde8f2; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 9.5pt;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #1e3a4f;
+    background: #f0f4f9;
+    border: 1px solid #c0d0e4;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 #c0d0e4;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .dot-green { background: #4ade80; }
+  .dot-red { background: #f87171; }
+  .dot-yellow { background: #fbbf24; }
+  .dot-gray { background: #d1d5db; }
+  .supervisor-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-weight: 600;
+    font-size: 9pt;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .admin-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-weight: 600;
+    font-size: 9pt;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .section-divider {
+    margin: 48px 0 24px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #143d6b, #1a5e9a);
+    color: #fff;
+    border-radius: 10px;
+    font-size: 14pt;
+    font-weight: 700;
+  }
+  .section-divider span {
+    font-size: 10pt;
+    font-weight: 400;
+    opacity: 0.85;
+    display: block;
+    margin-top: 2px;
+  }
+  .section-divider-admin {
+    background: linear-gradient(135deg, #1b5e20, #2e7d32);
+  }
+  .guide-footer {
+    margin-top: 60px;
+    text-align: center;
+    color: #8a9fb0;
+    font-size: 10pt;
+    border-top: 1px solid #dde8f2;
+    padding-top: 16px;
+  }
+  @media print {
+    body { background: #fff; }
+    .page-wrapper { box-shadow: none; padding: 0; max-width: 100%; }
+    .toc { page-break-after: always; }
+    h2 { page-break-after: avoid; }
+    .tip, .warn { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+<!-- HEADER -->
+<div class="guide-header">
+  <img src="/ai-logo.jpg" alt="Seniority Connect Logo">
+  <div class="title-block">
+    <h1>Admin Guide</h1>
+    <div class="subtitle">Seniority Connect &mdash; Complete Reference Manual</div>
+  </div>
+  <div class="role-badge">Admin</div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol class="toc-columns">
+    <li><a href="#getting-started">Getting Started &amp; First Login</a></li>
+    <li><a href="#pending-import">Importing Pending Tickets on Login</a></li>
+    <li><a href="#region-queue">Understanding the Region Queue</a></li>
+    <li><a href="#working-tickets">Opening &amp; Working Tickets</a></li>
+    <li><a href="#composing-replies">Composing Replies</a></li>
+    <li><a href="#internal-notes">Internal Notes</a></li>
+    <li><a href="#ticket-chat">Starting a Chat on a Ticket</a></li>
+    <li><a href="#new-messages">Creating New Messages</a></li>
+    <li><a href="#personal-email">Personal Email Inbox</a></li>
+    <li><a href="#seniority-ai">Using Seniority AI</a></li>
+    <li><a href="#archive">Archive</a></li>
+    <li><a href="#active-inactive">Setting Active/Inactive Status</a></li>
+    <li><a href="#tips">Tips &amp; Keyboard Shortcuts</a></li>
+    <li class="supervisor-section"><a href="#supervisor-dashboard">Supervisor Dashboard</a></li>
+    <li class="supervisor-section"><a href="#activity-dashboard">Activity Dashboard &amp; User Audit</a></li>
+    <li class="supervisor-section"><a href="#audit-log">Audit Log</a></li>
+    <li class="supervisor-section"><a href="#pull-from-queue">Pull from Queue</a></li>
+    <li class="supervisor-section"><a href="#bulk-reassign">Bulk Reassign from Queue</a></li>
+    <li class="supervisor-section"><a href="#reopen-tickets">Reopening Closed Tickets</a></li>
+    <li class="admin-section"><a href="#admin-users">Admin Panel &mdash; Managing Users</a></li>
+    <li class="admin-section"><a href="#admin-regions">Admin Panel &mdash; Managing Regions</a></li>
+    <li class="admin-section"><a href="#admin-tags">Admin Panel &mdash; Managing Tags</a></li>
+    <li class="admin-section"><a href="#google-workspace">Google Workspace Integration</a></li>
+    <li class="admin-section"><a href="#workspace-other-users">Connecting Workspace for Other Users</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<!-- COORDINATOR SECTIONS (1-13) -->
+<!-- ============================================================ -->
+
+<!-- 1. GETTING STARTED -->
+<h2 id="getting-started">1. Getting Started &amp; First Login</h2>
+
+<p>Seniority Connect is the care coordination platform for Seniority Healthcare. As an Admin, you have the highest level of access: all coordinator and supervisor capabilities, plus user management, region management, and system configuration.</p>
+
+<h3>Setting Up Your Account</h3>
+<ol class="steps">
+  <li>Check your email for an invitation from Seniority Connect with a setup link.</li>
+  <li>Click the <strong>Setup Account</strong> link to open the setup wizard.</li>
+  <li>Create a password (minimum 8 characters).</li>
+  <li>Set up <strong>Two-Factor Authentication (2FA)</strong> by scanning the QR code with your authenticator app (Google Authenticator, Microsoft Authenticator, or Authy).</li>
+  <li>Enter the <strong>6-digit code</strong> from your authenticator to confirm.</li>
+  <li>You are now ready to log in.</li>
+</ol>
+
+<h3>Logging In</h3>
+<ol class="steps">
+  <li>Navigate to the Seniority Connect login page.</li>
+  <li>Enter your email address and password.</li>
+  <li>Enter the 6-digit 2FA code from your authenticator app.</li>
+  <li>If pending tickets exist for you, the Pending Import modal appears (see Section 2).</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> As the first Admin, you may need to set up your own account through a direct database configuration or initial deployment process. Subsequent admins can be invited through the Admin Panel.</div>
+
+<!-- 2. PENDING IMPORT -->
+<h2 id="pending-import">2. Importing Pending Tickets on Login</h2>
+
+<p>On login, if unassigned tickets were originally sent to your email, a <strong>Pending Import</strong> modal appears.</p>
+
+<ul>
+  <li>All pending tickets are listed with checkboxes (checked by default), ticket IDs, subjects, and senders</li>
+  <li><strong>Select All / Select None</strong> links and an "X of Y selected" counter</li>
+</ul>
+
+<h3>Your Options</h3>
+<ol class="steps">
+  <li><strong>Import all:</strong> Click <strong>Import Selected</strong> with all boxes checked.</li>
+  <li><strong>Import some:</strong> Uncheck tickets you don't want, then click <strong>Import Selected</strong>.</li>
+  <li><strong>Import none:</strong> Click <strong>Leave All in Queue</strong>.</li>
+</ol>
+
+<!-- 3. REGION QUEUE -->
+<h2 id="region-queue">3. Understanding the Region Queue</h2>
+
+<p>The <strong>Region Queue</strong> shows all tickets across your assigned regions, grouped by assignee. Unassigned tickets appear first with <strong>"Pending To: [Name]"</strong> sub-folders showing intended recipients.</p>
+
+<h3>Key Features</h3>
+<ul>
+  <li>Groups collapse/expand by clicking headers. Unassigned is always first.</li>
+  <li>Multi-recipient tickets show a purple <strong>"Sent to N"</strong> badge</li>
+  <li>Ticket IDs are region-based: <code>CPA-0001</code>, <code>SNJ-0042</code>, <code>DV-0003</code></li>
+  <li><strong>Filters:</strong> Status tabs (Active, Unassigned, Open, Waiting, Closed), Region dropdown, Tag filter, Search</li>
+  <li><strong>My Queue:</strong> Shows only your personally assigned tickets</li>
+</ul>
+
+<!-- 4. WORKING TICKETS -->
+<h2 id="working-tickets">4. Opening &amp; Working Tickets</h2>
+
+<p>Click any ticket to open it. You see the header (ID, status, subject, clock), message thread, action tabs (Reply, Internal Note, Chat, AI), and right sidebar (assignee, region, tags, audit details, time log).</p>
+
+<h3>Tabs &amp; Multi-Tasking</h3>
+<ul>
+  <li>Multiple tickets open as tabs. Click between them to switch.</li>
+  <li>Click X to close a tab (stops clock); click + to return to queue</li>
+  <li>Tabs persist across navigation to Email, Chat, Dashboard, etc.</li>
+</ul>
+
+<h3>Time Tracking</h3>
+<ul>
+  <li>Clock auto-starts on open, continues from previous total</li>
+  <li>Stop manually with the Stop button; Start Clock to resume</li>
+  <li>One clock at a time; closing a tab auto-stops</li>
+  <li>Time Log shows total, per-user breakdown, and expandable sessions</li>
+</ul>
+
+<h3>Audit Details</h3>
+<table>
+  <tr><th>Field</th><th>Description</th></tr>
+  <tr><td><strong>Received</strong></td><td>When created</td></tr>
+  <tr><td><strong>Assigned</strong></td><td>When assigned</td></tr>
+  <tr><td><strong>Read</strong></td><td>When first opened by assignee</td></tr>
+  <tr><td><strong>Response Time</strong></td><td><span class="dot dot-green"></span>&lt;1h, <span class="dot dot-yellow"></span>1-4h, <span class="dot dot-red"></span>&gt;4h</td></tr>
+  <tr><td><strong>Last Activity</strong></td><td>Most recent action</td></tr>
+  <tr><td><strong>Time Logged</strong></td><td>Total tracked time</td></tr>
+</table>
+
+<h3>Closing a Ticket</h3>
+<ol class="steps">
+  <li>Click <strong>Close</strong>, select a closure reason, optionally add a comment.</li>
+  <li>Active chats are archived as notes. Ticket moves to Archive.</li>
+</ol>
+
+<!-- 5. COMPOSING REPLIES -->
+<h2 id="composing-replies">5. Composing Replies</h2>
+
+<ol class="steps">
+  <li>Open a ticket, click the <strong>Reply</strong> tab.</li>
+  <li>Type your message. Optionally use <strong>AI Draft</strong> for AI-generated text.</li>
+  <li>Attach files (max 10 MB each) via the paperclip icon.</li>
+  <li>Click <strong>Send</strong> (single recipient) or <strong>Reply All</strong> (all original recipients).</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> Replying to an unassigned ticket automatically assigns it to you.</div>
+<div class="warn"><strong>Warning:</strong> Use Reply All carefully. Verify your message is appropriate for all recipients.</div>
+
+<!-- 6. INTERNAL NOTES -->
+<h2 id="internal-notes">6. Internal Notes</h2>
+
+<ol class="steps">
+  <li>Open a ticket, click the <strong>Internal Note</strong> tab.</li>
+  <li>Type your note and click <strong>Add Note</strong>.</li>
+</ol>
+
+<p>Notes are team-only, permanent, never sent externally, and appear with a yellow background in the timeline. They persist after ticket closure.</p>
+
+<!-- 7. TICKET CHAT -->
+<h2 id="ticket-chat">7. Starting a Chat on a Ticket</h2>
+
+<ol class="steps">
+  <li>Open a ticket. Chat tab shows <strong>"Start a Chat"</strong> (gray) or <strong>"Open Chat"</strong> (blue).</li>
+  <li>Click <strong>Start a Chat</strong>, select team members (at least one), click <strong>Start Discussion</strong>.</li>
+  <li>Type messages and press <kbd>Enter</kbd> to send. Anyone who opens the chat tab is auto-joined.</li>
+</ol>
+
+<p>Chats are archived as notes when the ticket is closed. Use <strong>"+ Add Team Members"</strong> to invite more people.</p>
+
+<!-- 8. NEW MESSAGES -->
+<h2 id="new-messages">8. Creating New Messages</h2>
+
+<ol class="steps">
+  <li>Click <strong>New Message</strong> in the sidebar.</li>
+  <li>Fill in <strong>To</strong> (autocomplete from contacts), <strong>Subject</strong>, <strong>Region</strong>, optional <strong>Tags</strong>, and message body.</li>
+  <li>Use <strong>AI Draft</strong> or attach files (max 10 MB each).</li>
+  <li>Click <strong>Send</strong>. A new ticket is created and assigned to you.</li>
+</ol>
+
+<p>Minimize the compose modal with <strong>&mdash;</strong> to save your draft. Click the draft bar at the bottom-right to resume.</p>
+
+<!-- 9. PERSONAL EMAIL -->
+<h2 id="personal-email">9. Personal Email Inbox</h2>
+
+<p>Click <strong>Email</strong> in the sidebar for full Gmail access. Browse folders and labels, search mail, read/reply/archive/delete/label/star messages.</p>
+
+<h3>Push to Queue <span class="admin-badge">Admin</span></h3>
+<p>Push individual or bulk-selected emails from your inbox into the ticket queue using the <strong>Push to Queue</strong> button. Emails become unassigned tickets in the appropriate region.</p>
+
+<!-- 10. SENIORITY AI -->
+<h2 id="seniority-ai">10. Using Seniority AI</h2>
+
+<p>Access via <strong>Seniority AI</strong> in the sidebar (general) or the <strong>AI tab</strong> on a ticket (ticket-specific). Uses 8 tools:</p>
+
+<table>
+  <tr><th>Tool</th><th>What It Does</th></tr>
+  <tr><td><code>search_tickets</code></td><td>Search/filter tickets by keyword, status, assignee, region, tag</td></tr>
+  <tr><td><code>get_ticket_detail</code></td><td>Read full ticket with messages and notes</td></tr>
+  <tr><td><code>get_patient_encounters</code></td><td>Find all tickets for a patient</td></tr>
+  <tr><td><code>search_emails</code></td><td>Search your Gmail inbox</td></tr>
+  <tr><td><code>get_email_detail</code></td><td>Read full email content</td></tr>
+  <tr><td><code>get_team_info</code></td><td>Team members, workload, online status</td></tr>
+  <tr><td><code>get_queue_stats</code></td><td>Queue metrics by status, region, coordinator</td></tr>
+  <tr><td><code>get_audit_log</code></td><td>Activity log with filtering</td></tr>
+</table>
+
+<p>Quick actions on tickets: <strong>Summarize</strong>, <strong>Patient Info</strong>, <strong>Draft Reply</strong>, <strong>Suggest Tags</strong>.</p>
+
+<!-- 11. ARCHIVE -->
+<h2 id="archive">11. Archive</h2>
+
+<p>Click <strong>Archive</strong> to view closed tickets sorted by close date (25 per page). Search by subject, sender, or ticket ID. Click any ticket to see full history including messages, notes, and archived chats. As an admin, you can <strong>Reopen</strong> tickets (see Section 19).</p>
+
+<!-- 12. ACTIVE/INACTIVE STATUS -->
+<h2 id="active-inactive">12. Setting Active/Inactive Status</h2>
+
+<p>The Active/Inactive toggle is a <strong>Coordinator-only</strong> feature. As an Admin, your status is always Active. You can monitor coordinator statuses via the Activity Dashboard.</p>
+
+<!-- 13. TIPS -->
+<h2 id="tips">13. Tips &amp; Keyboard Shortcuts</h2>
+
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Enter</kbd> (in chat)</td><td>Send chat message</td></tr>
+  <tr><td><kbd>Enter</kbd> (in AI input)</td><td>Send AI question</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Close dropdowns, modals, pickers</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Navigate between compose fields</td></tr>
+</table>
+
+<ul>
+  <li>Use AI drafts for routine replies</li>
+  <li>Open multiple tickets in tabs to compare and multitask</li>
+  <li>Tag tickets consistently for effective filtering</li>
+  <li>Minimize compose to save drafts while navigating</li>
+</ul>
+
+<!-- ============================================================ -->
+<!-- SUPERVISOR SECTIONS (14-19) -->
+<!-- ============================================================ -->
+
+<div class="section-divider">
+  Supervisor-Level Features
+  <span>The following sections cover oversight and management tools available to Supervisors and Admins.</span>
+</div>
+
+<!-- 14. SUPERVISOR DASHBOARD -->
+<h2 id="supervisor-dashboard">14. Supervisor Dashboard <span class="supervisor-badge">Supervisor+</span></h2>
+
+<p>Click <strong>Dashboard</strong> in the sidebar for a real-time operational overview.</p>
+
+<h3>KPI Cards</h3>
+<ul>
+  <li><strong>Total Open</strong> &mdash; Currently open tickets across all regions</li>
+  <li><strong>Unassigned</strong> &mdash; Unclaimed tickets</li>
+  <li><strong>Closed Today</strong> &mdash; Tickets closed during the current day</li>
+  <li><strong>Triage</strong> &mdash; Tickets needing immediate attention</li>
+</ul>
+
+<h3>Bird's Eye View</h3>
+<p>A command center showing every open ticket with aging indicators and team status.</p>
+
+<h4>Aging Cards</h4>
+<table>
+  <tr><th>Category</th><th>Time</th><th>Color</th></tr>
+  <tr><td>Fresh</td><td>&lt;1 hour</td><td><span class="dot dot-green"></span> Green</td></tr>
+  <tr><td>1-4 hours</td><td>1 to 4 hours</td><td><span class="dot dot-yellow"></span> Yellow</td></tr>
+  <tr><td>4-24 hours</td><td>4 to 24 hours</td><td>Orange</td></tr>
+  <tr><td>24+ hours</td><td>&gt;24 hours</td><td><span class="dot dot-red"></span> Red</td></tr>
+</table>
+
+<p>Click aging cards to filter. The Team Status Bar shows each coordinator with online indicator and ticket count. Click a name to filter. Filter by Region and Status dropdowns. The view auto-refreshes every 10 seconds.</p>
+
+<p>The ticket table shows: Ticket ID, Subject (clickable), From, Region, Assigned To, Age badge, Status, and Reassign action.</p>
+
+<!-- 15. ACTIVITY DASHBOARD -->
+<h2 id="activity-dashboard">15. Activity Dashboard &amp; User Audit <span class="supervisor-badge">Supervisor+</span></h2>
+
+<p>Click <strong>Activity</strong> in the sidebar. Five tabs:</p>
+
+<h4>1. Who's Online</h4>
+<p>Real-time user status (polls every 15 seconds). Click a user to drill down into their recent activity with time presets (15 min, 30 min, 1 hour).</p>
+
+<h4>2. Overview</h4>
+<p>Trend charts for ticket volume over 7/14/30 days: daily created, closed, and net open.</p>
+
+<h4>3. Team</h4>
+<p>Per-coordinator cards: open count, closed count, average response time, comparison bar charts.</p>
+
+<h4>4. Activity Feed</h4>
+<p>Filterable feed of all actions. Filter by user, action type, and time window.</p>
+
+<h4>5. User Audit</h4>
+<ol class="steps">
+  <li>Select a <strong>user</strong> and <strong>date range</strong>.</li>
+  <li>Click <strong>Run Audit</strong> to see: summary cards (open, unread, closed, actions, avg response time), response time details per ticket, open tickets with read/unread status, action breakdown chart, and recent actions with clickable ticket links.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> Use User Audit regularly to identify overloaded coordinators and redistribute work before response times suffer.</div>
+
+<!-- 16. AUDIT LOG -->
+<h2 id="audit-log">16. Audit Log <span class="supervisor-badge">Supervisor+</span></h2>
+
+<p>Click <strong>Audit Log</strong> in the sidebar. Each entry shows timestamp, user, action type, clickable ticket ID, and details. Filter by action type using the dropdown. All ticket IDs are <strong>clickable links</strong> that open the ticket directly.</p>
+
+<div class="tip"><strong>Tip:</strong> Use the Audit Log to investigate issues. Click ticket links to jump directly to any ticket referenced in the log.</div>
+
+<!-- 17. PULL FROM QUEUE -->
+<h2 id="pull-from-queue">17. Pull from Queue <span class="supervisor-badge">Supervisor+</span></h2>
+
+<p>Pull removes tickets from Seniority Connect and returns the email to Gmail.</p>
+
+<h3>Single Ticket</h3>
+<ol class="steps">
+  <li>Open the ticket, click <strong>Pull from Queue</strong>.</li>
+  <li>Choose: <strong>Return to original recipient</strong> (email goes to the coordinator's Gmail as unread) or <strong>Pull to my inbox</strong> (email goes to your Gmail as unread).</li>
+  <li>Confirm. The ticket is removed from Seniority Connect.</li>
+</ol>
+
+<h3>Multiple Tickets</h3>
+<ol class="steps">
+  <li>Select tickets with checkboxes in the queue.</li>
+  <li>Click <strong>Pull from Queue</strong>, choose destination, confirm.</li>
+  <li>Toast confirms: "N pulled -- returned to original" or "sent to your inbox."</li>
+</ol>
+
+<div class="warn"><strong>Warning:</strong> Pulling is irreversible within Seniority Connect. The ticket and its notes/chat are removed. The email must be re-imported through normal sync if needed later.</div>
+
+<!-- 18. BULK REASSIGN -->
+<h2 id="bulk-reassign">18. Bulk Reassign from Queue <span class="supervisor-badge">Supervisor+</span></h2>
+
+<ol class="steps">
+  <li>In the Region Queue, select tickets with checkboxes.</li>
+  <li>Click <strong>Reassign To...</strong> in the bulk action bar.</li>
+  <li>Select a team member from the dropdown, or choose <strong>"Unassigned"</strong> to return to queue.</li>
+  <li>Reassigned tickets appear as unread/new for the recipient. An audit entry is recorded.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> Check the Activity Dashboard's Team tab first to see who has capacity before reassigning.</div>
+
+<!-- 19. REOPEN TICKETS -->
+<h2 id="reopen-tickets">19. Reopening Closed Tickets from Archive <span class="supervisor-badge">Supervisor+</span></h2>
+
+<ol class="steps">
+  <li>Go to <strong>Archive</strong>, find the ticket (browse or search).</li>
+  <li>Click the ticket to open its detail view.</li>
+  <li>Click the <strong>Reopen</strong> button (visible to supervisors and admins only).</li>
+  <li>The ticket returns to the active queue as Open, with full history preserved.</li>
+</ol>
+
+<!-- ============================================================ -->
+<!-- ADMIN-ONLY SECTIONS (20-24) -->
+<!-- ============================================================ -->
+
+<div class="section-divider section-divider-admin">
+  Admin-Only Features
+  <span>The following sections cover system administration tools available exclusively to the Admin role.</span>
+</div>
+
+<!-- 20. MANAGING USERS -->
+<h2 id="admin-users">20. Admin Panel &mdash; Managing Users <span class="admin-badge">Admin Only</span></h2>
+
+<p>Click <strong>Admin</strong> in the left sidebar, then select the <strong>Users</strong> tab. This is where you manage all user accounts in the system.</p>
+
+<h3>Viewing Users</h3>
+<p>The Users tab displays a table of all active users showing:</p>
+<ul>
+  <li><strong>Name</strong> and <strong>email</strong></li>
+  <li><strong>Role</strong> (Coordinator, Supervisor, or Admin) shown as a colored badge</li>
+  <li><strong>Assigned regions</strong></li>
+  <li><strong>Google Workspace connection status</strong> (connected/disconnected)</li>
+  <li><strong>Action buttons:</strong> Edit, Deactivate, Reset Password, Manage Regions, Connect/Disconnect Workspace</li>
+</ul>
+
+<p>Toggle <strong>"Show Inactive"</strong> to also display deactivated users (grayed out with a Reactivate option).</p>
+
+<h3>Inviting a New User</h3>
+<ol class="steps">
+  <li>Click the <strong>Invitations</strong> tab in the Admin Panel.</li>
+  <li>Fill in the <strong>Full Name</strong> field.</li>
+  <li>Enter the <strong>Email</strong> address. It must end with <code>@seniorityhealthcare.com</code>.</li>
+  <li>Select a <strong>Role</strong> from the dropdown: Coordinator, Supervisor, or Admin.</li>
+  <li>Check one or more <strong>Regions</strong> to assign the user to. At least one region is required.</li>
+  <li>Click <strong>Send Invitation</strong>. The system sends an email with a setup link to the new user.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> The invitation email contains a time-limited setup link. If it expires before the user completes setup, you can resend it from the Invitations table.</div>
+
+<h3>Managing Invitations</h3>
+<p>Below the invitation form, a table shows all sent invitations with status:</p>
+<ul>
+  <li><strong>Pending</strong> (yellow) &mdash; Sent but not yet accepted</li>
+  <li><strong>Accepted</strong> (green) &mdash; User has completed setup</li>
+  <li><strong>Expired</strong> (red) &mdash; Link has expired without being used</li>
+</ul>
+<p>For pending or expired invitations, you can:</p>
+<ul>
+  <li><strong>Resend</strong> &mdash; Sends a fresh invitation email with a new setup link</li>
+  <li><strong>Revoke</strong> &mdash; Cancels the invitation entirely</li>
+</ul>
+
+<h3>Editing a User</h3>
+<ol class="steps">
+  <li>Find the user in the Users table and click <strong>Edit</strong>.</li>
+  <li>A modal opens with the user's current name, email, and role.</li>
+  <li>Modify any fields as needed:
+    <ul>
+      <li><strong>Name</strong> &mdash; Update the display name</li>
+      <li><strong>Email</strong> &mdash; Change their email address</li>
+      <li><strong>Role</strong> &mdash; Promote or change role (Coordinator, Supervisor, Admin)</li>
+    </ul>
+  </li>
+  <li>Update their <strong>Region assignments</strong> by checking/unchecking regions.</li>
+  <li>Click <strong>Save</strong>. Changes take effect immediately.</li>
+</ol>
+
+<h3>Deactivating a User</h3>
+<ol class="steps">
+  <li>Find the user in the Users table and click <strong>Deactivate</strong>.</li>
+  <li>A confirmation prompt appears: "Deactivate [Name]? Their open tickets will be returned to the queue."</li>
+  <li>Click <strong>OK</strong> to confirm.</li>
+</ol>
+<p>When a user is deactivated:</p>
+<ul>
+  <li>They can no longer log in</li>
+  <li>All their open tickets are automatically returned to the unassigned region queue</li>
+  <li>Their email sync stops</li>
+  <li>They appear in the "Inactive" users list (visible when "Show Inactive" is toggled on)</li>
+</ul>
+
+<h3>Reactivating a User</h3>
+<ol class="steps">
+  <li>Toggle <strong>"Show Inactive"</strong> in the Users tab to reveal deactivated users.</li>
+  <li>Find the user and click <strong>Reactivate</strong>.</li>
+  <li>The user can log in again and will need to reclaim tickets from the queue.</li>
+</ol>
+
+<h3>Resetting a User's Password</h3>
+<ol class="steps">
+  <li>Find the user in the Users table and click <strong>Reset Password</strong>.</li>
+  <li>The system generates a new temporary password and displays it on screen.</li>
+  <li><strong>Copy the temporary password</strong> and communicate it securely to the user (do not email it in plain text).</li>
+  <li>The user will use this temporary password to log in and should change it immediately.</li>
+</ol>
+
+<div class="warn"><strong>Important:</strong> The temporary password is shown only once. Make sure to copy it before closing the dialog. If you lose it, you can reset again to generate a new one.</div>
+
+<h3>Managing Region Assignments</h3>
+<ol class="steps">
+  <li>Find the user in the Users table.</li>
+  <li>Click <strong>Edit</strong> to open their profile, or use the region assignment shortcut if available.</li>
+  <li>Check or uncheck regions to control which queues the user can see and work in.</li>
+  <li>Click <strong>Save</strong>. The user's queue access updates immediately.</li>
+</ol>
+
+<!-- 21. MANAGING REGIONS -->
+<h2 id="admin-regions">21. Admin Panel &mdash; Managing Regions <span class="admin-badge">Admin Only</span></h2>
+
+<p>Click <strong>Admin</strong> in the sidebar, then the <strong>Regions</strong> tab. Regions define how tickets are organized and how emails are routed.</p>
+
+<h3>Viewing Regions</h3>
+<p>The Regions tab shows all configured regions with their name, routing aliases, and status (active/inactive).</p>
+
+<h3>Creating a New Region</h3>
+<ol class="steps">
+  <li>Click <strong>Create Region</strong> (or the + button).</li>
+  <li>Enter the <strong>Region Name</strong> (e.g., "Central PA", "South NJ", "Delaware Valley").</li>
+  <li>Enter <strong>Routing Aliases</strong> &mdash; these are the email addresses that, when an email is sent to them, will cause the ticket to be routed to this region. Enter multiple aliases separated by commas.
+    <br>Example: <code>centralpa@seniorityhealthcare.com, region1@seniorityhealthcare.com</code></li>
+  <li>Click <strong>Save</strong>. The region is created and immediately available for ticket routing and user assignment.</li>
+</ol>
+
+<h3>How Email Routing Works</h3>
+<p>When an inbound email arrives and the system detects that it was sent to (or CC'd to) an address matching a region's routing alias, the resulting ticket is automatically placed in that region's queue. This enables automatic routing without manual intervention.</p>
+
+<div class="tip"><strong>Tip:</strong> Configure routing aliases to match the actual email addresses used in your Google Workspace. For example, if your team uses <code>centralpa@seniorityhealthcare.com</code> for the Central PA region, add that as a routing alias for the Central PA region.</div>
+
+<h3>Editing a Region</h3>
+<ol class="steps">
+  <li>Find the region in the list and click <strong>Edit</strong>.</li>
+  <li>Modify the <strong>name</strong> or <strong>routing aliases</strong> as needed.</li>
+  <li>Click <strong>Save</strong>. Changes take effect immediately. Existing tickets in this region are not affected.</li>
+</ol>
+
+<h3>Deactivating a Region</h3>
+<ol class="steps">
+  <li>Click <strong>Deactivate</strong> next to the region.</li>
+  <li>A confirmation prompt warns: "Deactivate [Region]? Only works if no open tickets remain."</li>
+  <li>If there are open tickets in the region, the deactivation will fail. You must close or move all tickets first.</li>
+  <li>Once deactivated, the region no longer accepts new tickets via email routing and does not appear in region dropdowns for new tickets.</li>
+</ol>
+
+<div class="warn"><strong>Warning:</strong> Before deactivating a region, ensure all open tickets have been closed or moved to another region. Deactivation is blocked if open tickets exist.</div>
+
+<!-- 22. MANAGING TAGS -->
+<h2 id="admin-tags">22. Admin Panel &mdash; Managing Tags <span class="supervisor-badge">Supervisor+</span></h2>
+
+<p>Click <strong>Admin</strong> in the sidebar, then the <strong>Tags</strong> tab. Tags help categorize and filter tickets. Both Supervisors and Admins can manage tags.</p>
+
+<h3>Creating a Tag</h3>
+<ol class="steps">
+  <li>At the top of the Tags tab, you see a <strong>color palette</strong> with 24 preset colors. Click a color to select it for your new tag.</li>
+  <li>The selected color appears as a preview circle next to the text input.</li>
+  <li>Type the <strong>tag name</strong> in the text field (e.g., "Authorization", "Follow-up", "Urgent").</li>
+  <li>Click <strong>+ Add Tag</strong> or press <kbd>Enter</kbd>.</li>
+  <li>The new tag appears in the list and is immediately available for use on tickets.</li>
+</ol>
+
+<h3>Editing a Tag</h3>
+<ol class="steps">
+  <li>Find the tag in the list and click <strong>Edit</strong>.</li>
+  <li>The row switches to edit mode: you can change the <strong>color</strong> (click a new color from the palette) and the <strong>name</strong> (edit the text field).</li>
+  <li>Click <strong>Save</strong> to apply changes, or <strong>Cancel</strong> to discard.</li>
+  <li>Changes are reflected immediately on all tickets that already have this tag.</li>
+</ol>
+
+<h3>Deleting a Tag</h3>
+<ol class="steps">
+  <li>Find the tag and click <strong>Delete</strong>.</li>
+  <li>A confirmation prompt warns: "Delete tag [name]? It will be removed from all tickets."</li>
+  <li>Click <strong>OK</strong>. The tag is permanently removed from the system and stripped from all tickets.</li>
+</ol>
+
+<div class="warn"><strong>Warning:</strong> Deleting a tag removes it from every ticket in the system, including archived tickets. This cannot be undone. Consider renaming a tag instead if you just want to change its label.</div>
+
+<h3>Tag Information</h3>
+<p>Each tag in the list shows:</p>
+<ul>
+  <li>The colored dot representing the tag's color</li>
+  <li>The tag name</li>
+  <li>The tag's internal ID (in monospace font, useful for technical reference)</li>
+  <li>Edit and Delete buttons</li>
+</ul>
+
+<!-- 23. GOOGLE WORKSPACE INTEGRATION -->
+<h2 id="google-workspace">23. Google Workspace Integration <span class="admin-badge">Admin Only</span></h2>
+
+<p>Seniority Connect integrates with Google Workspace using a service account delegation model. This powers email sync, contacts autocomplete, calendar access, and Google Drive integration.</p>
+
+<h3>How It Works</h3>
+<p>The integration uses a Google Workspace service account with domain-wide delegation. This means:</p>
+<ul>
+  <li>The service account can access Gmail, Calendar, and Drive on behalf of any user in the domain</li>
+  <li>Each user's Workspace connection must be authorized individually (see Section 24)</li>
+  <li>Email sync runs automatically for connected users, pulling new emails into the ticket queue</li>
+</ul>
+
+<h3>What Workspace Powers</h3>
+<table>
+  <tr><th>Feature</th><th>Description</th></tr>
+  <tr><td><strong>Email Sync</strong></td><td>Inbound emails are automatically detected and created as tickets in the appropriate region queue</td></tr>
+  <tr><td><strong>Send Emails</strong></td><td>Outbound replies and new messages are sent through the user's Gmail account</td></tr>
+  <tr><td><strong>Contacts</strong></td><td>Autocomplete suggestions pulled from Gmail sent/received history</td></tr>
+  <tr><td><strong>Personal Inbox</strong></td><td>Full Gmail inbox access within Seniority Connect (read, reply, archive, delete, label, star)</td></tr>
+  <tr><td><strong>Calendar</strong></td><td>Access to Google Calendar (available via sidebar links)</td></tr>
+  <tr><td><strong>Drive</strong></td><td>Access to Google Drive (available via sidebar links)</td></tr>
+</table>
+
+<h3>External Application Links</h3>
+<p>The sidebar includes direct links to external Google Workspace tools (Calendar, Drive, Docs, etc.) as well as other external systems (Practice Fusion, Updox, CareLink, Prompted). Each opens in a new browser tab.</p>
+
+<div class="tip"><strong>Tip:</strong> If email sync stops working for a user, check their Workspace connection status in the Admin Panel &gt; Users tab. The connection may need to be re-established.</div>
+
+<!-- 24. CONNECTING WORKSPACE FOR OTHER USERS -->
+<h2 id="workspace-other-users">24. Connecting Workspace for Other Users <span class="admin-badge">Admin Only</span></h2>
+
+<p>As an Admin, you can connect and disconnect Google Workspace for any user in the system. This is essential for new users and for troubleshooting email sync issues.</p>
+
+<h3>Checking Connection Status</h3>
+<ol class="steps">
+  <li>Go to <strong>Admin</strong> &gt; <strong>Users</strong> tab.</li>
+  <li>For each user, you will see their Workspace status:
+    <ul>
+      <li><span class="dot dot-green"></span> <strong>Connected</strong> &mdash; Workspace is linked. The connected email address is shown.</li>
+      <li><span class="dot dot-gray"></span> <strong>Not connected</strong> &mdash; Workspace needs to be set up.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Connecting Workspace for a User</h3>
+<ol class="steps">
+  <li>Find the user in the Admin &gt; Users table.</li>
+  <li>Click the <strong>Connect Workspace</strong> button next to their name.</li>
+  <li>A Google OAuth authorization window opens in a popup (width 500px, height 600px).</li>
+  <li>In the popup, sign in with the <strong>user's Google Workspace account</strong> (their @seniorityhealthcare.com Gmail account) and grant the requested permissions.</li>
+  <li>Once authorized, the popup closes automatically.</li>
+  <li>The user's status in the table updates to <strong>"Connected"</strong> with their email address shown.</li>
+  <li>A toast notification confirms: "Workspace connected for [email]."</li>
+</ol>
+
+<div class="warn"><strong>Important:</strong> You need access to the user's Google account credentials or the user's cooperation to complete the OAuth flow. The popup requires signing into their specific Google account.</div>
+
+<h3>Disconnecting Workspace for a User</h3>
+<ol class="steps">
+  <li>Find the connected user in the Admin &gt; Users table.</li>
+  <li>Click <strong>Disconnect Workspace</strong>.</li>
+  <li>The connection is removed immediately. The user's status changes to "Not connected."</li>
+  <li>A toast notification confirms: "Workspace disconnected."</li>
+</ol>
+
+<p>When Workspace is disconnected for a user:</p>
+<ul>
+  <li>Email sync stops &mdash; new emails will not be pulled into the ticket queue for this user</li>
+  <li>They can no longer send replies or new messages from within Seniority Connect</li>
+  <li>Their personal email inbox will not load</li>
+  <li>Contacts autocomplete will not function</li>
+  <li>Existing tickets and data are <strong>not affected</strong> &mdash; only the live email connection is severed</li>
+</ul>
+
+<div class="tip"><strong>Tip:</strong> If a user reports that their email is not syncing or they cannot send replies, the first thing to check is their Workspace connection status. Disconnecting and reconnecting often resolves token-related issues.</div>
+
+<h3>Troubleshooting Workspace Issues</h3>
+<table>
+  <tr><th>Symptom</th><th>Likely Cause</th><th>Fix</th></tr>
+  <tr><td>Email not syncing</td><td>Workspace disconnected or token expired</td><td>Disconnect and reconnect Workspace</td></tr>
+  <tr><td>"Not authorized" error when sending</td><td>OAuth token revoked or expired</td><td>Disconnect, then reconnect with fresh OAuth</td></tr>
+  <tr><td>Contacts not loading</td><td>Workspace not connected</td><td>Connect Workspace for the user</td></tr>
+  <tr><td>OAuth popup blocked</td><td>Browser popup blocker</td><td>Allow popups from Seniority Connect's domain</td></tr>
+  <tr><td>Wrong Gmail account connected</td><td>Wrong account selected during OAuth</td><td>Disconnect, then reconnect with the correct account</td></tr>
+</table>
+
+<h3>Admin Tips &amp; Best Practices</h3>
+<ul>
+  <li><strong>Onboard new users completely:</strong> After sending an invitation, remember to connect their Workspace once they have completed account setup. Without Workspace, they cannot use email features.</li>
+  <li><strong>Audit region aliases regularly:</strong> Make sure each region's routing aliases match the actual email addresses in use. Mismatched aliases cause emails to land in the wrong region or not be routed at all.</li>
+  <li><strong>Use the Invitations tab proactively:</strong> Check for expired invitations periodically and resend as needed.</li>
+  <li><strong>Tag management affects everyone:</strong> Deleting a tag removes it system-wide. Rename instead of delete when possible.</li>
+  <li><strong>Deactivate, don't delete:</strong> When a user leaves, deactivate their account. This preserves their ticket history and audit trail while preventing login.</li>
+  <li><strong>Monitor Workspace connections:</strong> Periodically check the Users table for disconnected Workspace accounts, especially after Google password changes or security events.</li>
+  <li><strong>Use the User Audit</strong> to evaluate team performance before making staffing or assignment changes.</li>
+  <li><strong>The Dashboard's Bird's Eye View</strong> is your best tool for real-time situational awareness across all regions.</li>
+</ul>
+
+<!-- FOOTER -->
+<div class="guide-footer">
+  Seniority Connect &mdash; Seniority Healthcare &mdash; Confidential<br>
+  Admin Reference Guide &mdash; Version 2.0 &mdash; March 2026
+</div>
+
+</div>
+</body>
+</html>
