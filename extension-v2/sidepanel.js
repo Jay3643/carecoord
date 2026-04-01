@@ -7,6 +7,7 @@ const loading = document.getElementById('loading');
 const offlineBanner = document.getElementById('offline-banner');
 const btnRefresh = document.getElementById('btn-refresh');
 const btnPopout = document.getElementById('btn-popout');
+const btnLogout = document.getElementById('btn-logout');
 
 // Load the app
 function loadApp() {
@@ -28,6 +29,15 @@ btnRefresh.addEventListener('click', () => {
 // Pop out to new window
 btnPopout.addEventListener('click', () => {
   window.open(APP_URL, '_blank', 'width=1200,height=800');
+});
+
+// Logout
+btnLogout.addEventListener('click', async () => {
+  try {
+    await fetch(APP_URL + '/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } catch (e) {}
+  loading.classList.remove('hidden');
+  frame.src = APP_URL + '?t=' + Date.now();
 });
 
 // Online/offline detection
