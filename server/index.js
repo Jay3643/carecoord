@@ -16,7 +16,7 @@ const io = new Server(server, { cors: { origin: ['http://localhost:5173', 'http:
 app.io = io;
 const PORT = process.env.PORT || 3001;
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: false, frameguard: false }));
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests from known origins and Chrome extensions
