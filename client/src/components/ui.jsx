@@ -19,6 +19,7 @@ export function StatusBadge({ status }) {
 export function TagPill({ tag, onRemove }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, fontSize: onRemove ? 11 : 10, fontWeight: onRemove ? 500 : 600, background: tag.color + '18', color: tag.color, border: `1px solid ${tag.color}40`, marginRight: 4 }}>
+      {tag.parentName && <span style={{ opacity: 0.6 }}>{tag.parentName} /</span>}
       {tag.name}
       {onRemove && <button onClick={onRemove} style={{ background: 'none', border: 'none', color: tag.color, cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>}
     </span>

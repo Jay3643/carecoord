@@ -10,25 +10,34 @@ const TAG_COLORS = [
   '#15803d', '#7e22ce', '#0e7490', '#a16207', '#be123c', '#4338ca',
 ];
 
-function TagsSection({ showToast, s }) {
+function TagsSection({ showToast, s, regions }) {
   const [tags, setTags] = React.useState([]);
   const [newName, setNewName] = React.useState('');
   const [newColor, setNewColor] = React.useState('#1a5e9a');
+  const [newParentId, setNewParentId] = React.useState('');
+  const [newRegionId, setNewRegionId] = React.useState('');
   const [editingId, setEditingId] = React.useState(null);
   const [editName, setEditName] = React.useState('');
   const [editColor, setEditColor] = React.useState('');
+  const [filterRegion, setFilterRegion] = React.useState('all');
 
   const loadTags = () => {
     api.adminGetTags().then(d => setTags(d.tags || [])).catch(() => {});
   };
   React.useEffect(() => { loadTags(); }, []);
 
+  const parentTags = tags.filter(t => !t.parentId);
+  const getSubtags = (parentId) => tags.filter(t => t.parentId === parentId);
+  const regionName = (rid) => { const r = (regions || []).find(r => r.id === rid); return r ? r.name : ''; };
+
+  const filteredParents = filterRegion === 'all' ? parentTags : parentTags.filter(t => !t.regionId || t.regionId === filterRegion);
+
   const createTag = async () => {
     if (!newName.trim()) { showToast('Tag name required'); return; }
     try {
-      await api.adminCreateTag({ name: newName.trim(), color: newColor });
+      await api.adminCreateTag({ name: newName.trim(), color: newColor, parentId: newParentId || null, regionId: newRegionId || null });
       showToast('Tag created');
-      setNewName(''); setNewColor('#1a5e9a');
+      setNewName(''); setNewColor('#1a5e9a'); setNewParentId(''); setNewRegionId('');
       loadTags();
     } catch (e) { showToast(e.message || 'Failed'); }
   };
@@ -43,7 +52,9 @@ function TagsSection({ showToast, s }) {
   };
 
   const deleteTag = async (tag) => {
-    if (!confirm('Delete tag "' + tag.name + '"? It will be removed from all tickets.')) return;
+    const subs = getSubtags(tag.id);
+    const msg = subs.length > 0 ? 'Delete "' + tag.name + '" and its ' + subs.length + ' subtag(s)?' : 'Delete tag "' + tag.name + '"?';
+    if (!confirm(msg)) return;
     try {
       await api.adminDeleteTag(tag.id);
       showToast('Tag deleted');
@@ -51,39 +62,17 @@ function TagsSection({ showToast, s }) {
     } catch (e) { showToast(e.message || 'Failed'); }
   };
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{tags.length} Tags</span>
-      </div>
-
-      {/* Create new tag */}
-      <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 200 }}>
-          {TAG_COLORS.map(c => (
-            <button key={c} onClick={() => setNewColor(c)}
-              style={{ width: 20, height: 20, borderRadius: '50%', background: c, border: newColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
-          ))}
-        </div>
-        <div style={{ width: 20, height: 20, borderRadius: '50%', background: newColor, flexShrink: 0 }} />
-        <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New tag name..."
-          onKeyDown={e => e.key === 'Enter' && createTag()}
-          style={{ flex: 1, padding: '8px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, outline: 'none' }} />
-        <button onClick={createTag} disabled={!newName.trim()}
-          style={s.btn(newName.trim() ? '#1a5e9a' : '#dde8f2', newName.trim() ? '#fff' : '#8a9fb0')}>
-          + Add Tag
-        </button>
-      </div>
-
-      {/* Tag list */}
-      {tags.map(tag => (
-        <div key={tag.id} style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 12 }}>
+  const renderTag = (tag, indent) => {
+    const subtags = getSubtags(tag.id);
+    return (
+      <React.Fragment key={tag.id}>
+        <div style={{ ...s.card, display: 'flex', alignItems: 'center', gap: 10, marginLeft: indent }}>
           {editingId === tag.id ? (
             <>
-              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', maxWidth: 180 }}>
+              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', maxWidth: 160 }}>
                 {TAG_COLORS.map(c => (
                   <button key={c} onClick={() => setEditColor(c)}
-                    style={{ width: 16, height: 16, borderRadius: '50%', background: c, border: editColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+                    style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: editColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
                 ))}
               </div>
               <input value={editName} onChange={e => setEditName(e.target.value)}
@@ -94,18 +83,72 @@ function TagsSection({ showToast, s }) {
             </>
           ) : (
             <>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', background: tag.color || '#6b7280', flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{tag.name}</span>
-              <span style={{ fontSize: 10, color: '#8a9fb0', fontFamily: "'IBM Plex Mono', monospace" }}>{tag.id}</span>
+              <div style={{ width: 14, height: 14, borderRadius: '50%', background: tag.color || '#6b7280', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: indent ? 400 : 600 }}>{tag.name}</span>
+              {tag.regionId && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#e8f0fe', color: '#1a5e9a' }}>{regionName(tag.regionId)}</span>}
+              {subtags.length > 0 && <span style={{ fontSize: 9, color: '#8a9fb0' }}>{subtags.length} sub</span>}
               <button onClick={() => { setEditingId(tag.id); setEditName(tag.name); setEditColor(tag.color || '#6b7280'); }} style={s.btnOutline}>Edit</button>
-              <button onClick={() => deleteTag(tag)} style={{ ...s.btnOutline, color: '#d94040', borderColor: '#d9404040' }}>Delete</button>
+              <button onClick={() => deleteTag(tag)} style={{ ...s.btnOutline, color: '#d94040', borderColor: '#d9404040' }}>Del</button>
             </>
           )}
         </div>
-      ))}
+        {subtags.map(sub => renderTag(sub, (indent || 0) + 24))}
+      </React.Fragment>
+    );
+  };
 
-      {tags.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#8a9fb0' }}>No tags yet. Create one above.</div>
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{tags.length} Tags</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: '#6b8299' }}>Filter:</span>
+          <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)}
+            style={{ padding: '4px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, background: '#f0f4f9' }}>
+            <option value="all">All Regions</option>
+            <option value="">Global (no region)</option>
+            {(regions || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Create new tag */}
+      <div style={{ ...s.card, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', maxWidth: 180 }}>
+            {TAG_COLORS.map(c => (
+              <button key={c} onClick={() => setNewColor(c)}
+                style={{ width: 18, height: 18, borderRadius: '50%', background: c, border: newColor === c ? '2px solid #1e3a4f' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+            ))}
+          </div>
+          <div style={{ width: 18, height: 18, borderRadius: '50%', background: newColor, flexShrink: 0 }} />
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Tag name..."
+            onKeyDown={e => e.key === 'Enter' && createTag()}
+            style={{ flex: 1, padding: '8px 12px', border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, outline: 'none', minWidth: 120 }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <select value={newParentId} onChange={e => setNewParentId(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, background: '#f0f4f9' }}>
+            <option value="">No parent (top-level tag)</option>
+            {parentTags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <select value={newRegionId} onChange={e => setNewRegionId(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, background: '#f0f4f9' }}>
+            <option value="">Global (all regions)</option>
+            {(regions || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <button onClick={createTag} disabled={!newName.trim()}
+            style={s.btn(newName.trim() ? '#1a5e9a' : '#dde8f2', newName.trim() ? '#fff' : '#8a9fb0')}>
+            + Add Tag
+          </button>
+        </div>
+      </div>
+
+      {/* Tag tree */}
+      {filteredParents.map(tag => renderTag(tag, 0))}
+
+      {filteredParents.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#8a9fb0' }}>No tags found. Create one above.</div>
       )}
     </div>
   );
@@ -554,7 +597,7 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
 
         {/* ── TAGS TAB ── */}
         {!loading && tab === 'tags' && (
-          <TagsSection showToast={showToast} s={s} />
+          <TagsSection showToast={showToast} s={s} regions={regions} />
         )}
       </div>
 

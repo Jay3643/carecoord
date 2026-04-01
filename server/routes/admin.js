@@ -199,23 +199,28 @@ router.delete('/regions/:id', requireAuth, requireAdmin, (req, res) => {
 router.get('/tags', requireAuth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return res.status(403).json({ error: 'Not authorized' });
   const tags = getDb().prepare('SELECT * FROM tags ORDER BY name').all();
-  res.json({ tags: tags.map(t => ({ id: toStr(t.id), name: toStr(t.name), color: toStr(t.color) })) });
+  const regionId = req.query.regionId;
+  const filtered = regionId ? tags.filter(t => !t.region_id || toStr(t.region_id) === regionId) : tags;
+  res.json({ tags: filtered.map(t => ({ id: toStr(t.id), name: toStr(t.name), color: toStr(t.color), parentId: toStr(t.parent_id) || null, regionId: toStr(t.region_id) || null })) });
 });
 
 router.post('/tags', requireAuth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return res.status(403).json({ error: 'Not authorized' });
-  const { name, color } = req.body;
+  const { name, color, parentId, regionId } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const id = 't' + Date.now();
-  getDb().prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(id, name, color || '#6b7280');
+  getDb().prepare('INSERT INTO tags (id, name, color, parent_id, region_id) VALUES (?, ?, ?, ?, ?)').run(id, name, color || '#6b7280', parentId || null, regionId || null);
   saveDb();
-  res.json({ id, name, color: color || '#6b7280' });
+  res.json({ id, name, color: color || '#6b7280', parentId: parentId || null, regionId: regionId || null });
 });
 
 router.put('/tags/:id', requireAuth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return res.status(403).json({ error: 'Not authorized' });
-  const { name, color } = req.body;
-  getDb().prepare('UPDATE tags SET name = COALESCE(?, name), color = COALESCE(?, color) WHERE id = ?').run(name || null, color || null, req.params.id);
+  const { name, color, parentId, regionId } = req.body;
+  const db = getDb();
+  db.prepare('UPDATE tags SET name = COALESCE(?, name), color = COALESCE(?, color) WHERE id = ?').run(name || null, color || null, req.params.id);
+  if (parentId !== undefined) db.prepare('UPDATE tags SET parent_id = ? WHERE id = ?').run(parentId || null, req.params.id);
+  if (regionId !== undefined) db.prepare('UPDATE tags SET region_id = ? WHERE id = ?').run(regionId || null, req.params.id);
   saveDb();
   res.json({ ok: true });
 });
@@ -223,6 +228,9 @@ router.put('/tags/:id', requireAuth, (req, res) => {
 router.delete('/tags/:id', requireAuth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return res.status(403).json({ error: 'Not authorized' });
   const db = getDb();
+  // Also delete subtags
+  db.prepare('DELETE FROM ticket_tags WHERE tag_id IN (SELECT id FROM tags WHERE parent_id = ?)').run(req.params.id);
+  db.prepare('DELETE FROM tags WHERE parent_id = ?').run(req.params.id);
   db.prepare('DELETE FROM ticket_tags WHERE tag_id = ?').run(req.params.id);
   db.prepare('DELETE FROM tags WHERE id = ?').run(req.params.id);
   saveDb();

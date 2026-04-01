@@ -73,7 +73,15 @@ function enrichTicket(db, ticket) {
   if (!ticket) return null;
   sanitize(ticket);
   ticket.external_participants = JSON.parse(ticket.external_participants || '[]');
-  const tags = db.prepare('SELECT t.* FROM tags t JOIN ticket_tags tt ON tt.tag_id = t.id WHERE tt.ticket_id = ?').all(ticket.id);
+  const rawTags = db.prepare('SELECT t.* FROM tags t JOIN ticket_tags tt ON tt.tag_id = t.id WHERE tt.ticket_id = ?').all(ticket.id);
+  const tags = rawTags.map(t => {
+    const tag = { id: toStr(t.id), name: toStr(t.name), color: toStr(t.color), parentId: toStr(t.parent_id) || null, regionId: toStr(t.region_id) || null };
+    if (tag.parentId) {
+      const parent = db.prepare('SELECT name, color FROM tags WHERE id = ?').get(tag.parentId);
+      if (parent) tag.parentName = toStr(parent.name);
+    }
+    return tag;
+  });
   ticket.tags = tags;
   ticket.tagIds = tags.map(t => t.id);
   if (ticket.assignee_user_id)
