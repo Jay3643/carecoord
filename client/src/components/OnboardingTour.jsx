@@ -448,6 +448,16 @@ export default function OnboardingTour({ currentUser, onComplete }) {
 
   // ------ Actions ------
 
+  const finishTour = useCallback(() => {
+    localStorage.setItem('onboarding_completed', 'true');
+    setFadeIn(false);
+    setTimeout(() => {
+      setActive(false);
+      setStepIndex(0);
+      if (onComplete) onComplete();
+    }, 300);
+  }, [onComplete]);
+
   const goNext = useCallback(() => {
     if (isLast) {
       finishTour();
@@ -459,16 +469,6 @@ export default function OnboardingTour({ currentUser, onComplete }) {
   const goBack = useCallback(() => {
     setStepIndex((i) => Math.max(0, i - 1));
   }, []);
-
-  const finishTour = useCallback(() => {
-    localStorage.setItem('onboarding_completed', 'true');
-    setFadeIn(false);
-    setTimeout(() => {
-      setActive(false);
-      setStepIndex(0);
-      if (onComplete) onComplete();
-    }, 300);
-  }, [onComplete]);
 
   const skipTour = useCallback(() => {
     finishTour();
