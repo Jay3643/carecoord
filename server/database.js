@@ -32,8 +32,8 @@ async function initDb() {
   r('CREATE TABLE IF NOT EXISTS user_regions (user_id TEXT, region_id TEXT, PRIMARY KEY(user_id, region_id))');
   r('CREATE TABLE IF NOT EXISTS close_reasons (id TEXT PRIMARY KEY, label TEXT, requires_comment INTEGER DEFAULT 0)');
   r('CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT)');
-  try { r('ALTER TABLE tags ADD COLUMN parent_id TEXT'); } catch(e) {}
-  try { r('ALTER TABLE tags ADD COLUMN region_id TEXT'); } catch(e) {}
+  try { rawDb.exec('ALTER TABLE tags ADD COLUMN parent_id TEXT'); } catch(e) {}
+  try { rawDb.exec('ALTER TABLE tags ADD COLUMN region_id TEXT'); } catch(e) {}
   r('CREATE TABLE IF NOT EXISTS tickets (id TEXT PRIMARY KEY, region_id TEXT, status TEXT DEFAULT \'OPEN\', assignee_user_id TEXT, subject TEXT, external_participants TEXT, last_activity_at INTEGER, created_at INTEGER, closed_at INTEGER, close_reason_id TEXT, locked_closed INTEGER DEFAULT 0, has_unread INTEGER DEFAULT 0, from_email TEXT, to_email TEXT, priority TEXT, category TEXT)');
   r('CREATE TABLE IF NOT EXISTS ticket_tags (ticket_id TEXT, tag_id TEXT, PRIMARY KEY(ticket_id, tag_id))');
   r('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, ticket_id TEXT, direction TEXT, channel TEXT, from_address TEXT, to_addresses TEXT, subject TEXT, body_text TEXT, sent_at INTEGER, provider_message_id TEXT, in_reply_to TEXT, reference_ids TEXT, created_by_user_id TEXT, created_at INTEGER, gmail_message_id TEXT, gmail_thread_id TEXT, gmail_user_id TEXT, sender TEXT, body TEXT, timestamp INTEGER)');

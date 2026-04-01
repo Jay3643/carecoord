@@ -201,7 +201,11 @@ router.get('/tags', requireAuth, (req, res) => {
   const tags = getDb().prepare('SELECT * FROM tags ORDER BY name').all();
   const regionId = req.query.regionId;
   const filtered = regionId ? tags.filter(t => !t.region_id || toStr(t.region_id) === regionId) : tags;
-  res.json({ tags: filtered.map(t => ({ id: toStr(t.id), name: toStr(t.name), color: toStr(t.color), parentId: toStr(t.parent_id) || null, regionId: toStr(t.region_id) || null })) });
+  res.json({ tags: filtered.map(t => {
+    const pid = t.parent_id != null ? toStr(t.parent_id) : null;
+    const rid = t.region_id != null ? toStr(t.region_id) : null;
+    return { id: toStr(t.id), name: toStr(t.name), color: toStr(t.color), parentId: pid || null, regionId: rid || null };
+  }) });
 });
 
 router.post('/tags', requireAuth, (req, res) => {
@@ -209,7 +213,14 @@ router.post('/tags', requireAuth, (req, res) => {
   const { name, color, parentId, regionId } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
   const id = 't' + Date.now();
-  getDb().prepare('INSERT INTO tags (id, name, color, parent_id, region_id) VALUES (?, ?, ?, ?, ?)').run(id, name, color || '#6b7280', parentId || null, regionId || null);
+  const db = getDb();
+  try {
+    db.prepare('INSERT INTO tags (id, name, color, parent_id, region_id) VALUES (?, ?, ?, ?, ?)').run(id, name, color || '#6b7280', parentId || null, regionId || null);
+  } catch(e) {
+    // Fallback if parent_id/region_id columns don't exist yet
+    db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(id, name, color || '#6b7280');
+    try { db.prepare('UPDATE tags SET parent_id = ?, region_id = ? WHERE id = ?').run(parentId || null, regionId || null, id); } catch(e2) {}
+  }
   saveDb();
   res.json({ id, name, color: color || '#6b7280', parentId: parentId || null, regionId: regionId || null });
 });
