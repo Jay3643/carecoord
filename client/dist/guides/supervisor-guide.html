@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supervisor Guide — Seniority Connect</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { margin: 0.75in 0.85in; size: letter; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    font-size: 11pt;
+    line-height: 1.7;
+    color: #1e3a4f;
+    background: #f4f7f8;
+    padding: 0;
+    margin: 0;
+  }
+  .page-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 40px 56px;
+    min-height: 100vh;
+    box-shadow: 0 0 40px rgba(20,61,107,0.06);
+  }
+  .guide-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 24px;
+    border-bottom: 3px solid #143d6b;
+    margin-bottom: 32px;
+  }
+  .guide-header img {
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    object-fit: contain;
+  }
+  .guide-header .title-block h1 {
+    font-size: 26pt;
+    font-weight: 800;
+    color: #143d6b;
+    line-height: 1.15;
+  }
+  .guide-header .title-block .subtitle {
+    font-size: 13pt;
+    color: #6b8299;
+    font-weight: 400;
+  }
+  .guide-header .role-badge {
+    margin-left: auto;
+    padding: 6px 18px;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-weight: 700;
+    font-size: 11pt;
+    border-radius: 8px;
+    border: 2px solid #1565c030;
+  }
+  h2 {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #143d6b;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #dde8f2;
+    padding-bottom: 6px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #1a5e9a;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+  h4 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #143d6b;
+    margin-top: 14px;
+    margin-bottom: 4px;
+  }
+  p { margin-bottom: 8px; }
+  ul, ol { margin-left: 22px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+  strong { color: #143d6b; }
+  code {
+    background: #f0f4f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', 'Consolas', monospace;
+    font-size: 10pt;
+    color: #1a5e9a;
+  }
+  .toc {
+    background: #f8fafc;
+    border: 1px solid #dde8f2;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 36px;
+  }
+  .toc h2 {
+    margin-top: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 12px;
+    font-size: 15pt;
+  }
+  .toc ol {
+    margin-left: 20px;
+    columns: 2;
+    column-gap: 32px;
+  }
+  .toc li {
+    padding: 3px 0;
+    break-inside: avoid;
+  }
+  .toc a {
+    text-decoration: none;
+    color: #1a5e9a;
+    font-weight: 500;
+  }
+  .toc a:hover { text-decoration: underline; }
+  .toc .supervisor-section a { color: #1565c0; font-weight: 600; }
+  .tip {
+    background: #e8f6fa;
+    border-left: 4px solid #52a8c7;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10.5pt;
+    line-height: 1.6;
+  }
+  .tip strong { color: #2a7a94; }
+  .warn {
+    background: #fff8e1;
+    border-left: 4px solid #f9a825;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10.5pt;
+    line-height: 1.6;
+  }
+  .warn strong { color: #b57a00; }
+  .steps { counter-reset: step-counter; list-style: none; margin-left: 0; padding-left: 0; }
+  .steps li {
+    counter-increment: step-counter;
+    padding: 8px 0 8px 44px;
+    position: relative;
+    border-left: 2px solid #dde8f2;
+    margin-left: 16px;
+    margin-bottom: 0;
+  }
+  .steps li:last-child { border-left-color: transparent; }
+  .steps li::before {
+    content: counter(step-counter);
+    position: absolute;
+    left: -14px;
+    top: 6px;
+    width: 26px;
+    height: 26px;
+    background: #1a5e9a;
+    color: #fff;
+    font-size: 10pt;
+    font-weight: 700;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 10.5pt; }
+  th { background: #143d6b; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #dde8f2; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    font-size: 9.5pt;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #1e3a4f;
+    background: #f0f4f9;
+    border: 1px solid #c0d0e4;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 #c0d0e4;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .dot-green { background: #4ade80; }
+  .dot-red { background: #f87171; }
+  .dot-yellow { background: #fbbf24; }
+  .dot-gray { background: #d1d5db; }
+  .supervisor-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-weight: 600;
+    font-size: 9pt;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .section-divider {
+    margin: 48px 0 24px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #143d6b, #1a5e9a);
+    color: #fff;
+    border-radius: 10px;
+    font-size: 14pt;
+    font-weight: 700;
+  }
+  .section-divider span {
+    font-size: 10pt;
+    font-weight: 400;
+    opacity: 0.85;
+    display: block;
+    margin-top: 2px;
+  }
+  .guide-footer {
+    margin-top: 60px;
+    text-align: center;
+    color: #8a9fb0;
+    font-size: 10pt;
+    border-top: 1px solid #dde8f2;
+    padding-top: 16px;
+  }
+  @media print {
+    body { background: #fff; }
+    .page-wrapper { box-shadow: none; padding: 0; max-width: 100%; }
+    .toc { page-break-after: always; }
+    h2 { page-break-after: avoid; }
+    .tip, .warn { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+<!-- HEADER -->
+<div class="guide-header">
+  <img src="/ai-logo.jpg" alt="Seniority Connect Logo">
+  <div class="title-block">
+    <h1>Supervisor Guide</h1>
+    <div class="subtitle">Seniority Connect &mdash; Reference Manual</div>
+  </div>
+  <div class="role-badge">Supervisor</div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#getting-started">Getting Started &amp; First Login</a></li>
+    <li><a href="#pending-import">Importing Pending Tickets on Login</a></li>
+    <li><a href="#region-queue">Understanding the Region Queue</a></li>
+    <li><a href="#working-tickets">Opening &amp; Working Tickets</a></li>
+    <li><a href="#composing-replies">Composing Replies</a></li>
+    <li><a href="#internal-notes">Internal Notes</a></li>
+    <li><a href="#ticket-chat">Starting a Chat on a Ticket</a></li>
+    <li><a href="#new-messages">Creating New Messages</a></li>
+    <li><a href="#personal-email">Personal Email Inbox</a></li>
+    <li><a href="#seniority-ai">Using Seniority AI</a></li>
+    <li><a href="#archive">Archive</a></li>
+    <li><a href="#active-inactive">Setting Active/Inactive Status</a></li>
+    <li><a href="#tips">Tips &amp; Keyboard Shortcuts</a></li>
+    <li class="supervisor-section"><a href="#supervisor-dashboard">Supervisor Dashboard (KPIs &amp; Bird's Eye View)</a></li>
+    <li class="supervisor-section"><a href="#activity-dashboard">Activity Dashboard &amp; User Audit</a></li>
+    <li class="supervisor-section"><a href="#audit-log">Audit Log</a></li>
+    <li class="supervisor-section"><a href="#pull-from-queue">Pull from Queue</a></li>
+    <li class="supervisor-section"><a href="#bulk-reassign">Bulk Reassign from Queue</a></li>
+    <li class="supervisor-section"><a href="#reopen-tickets">Reopening Closed Tickets from Archive</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<!-- COORDINATOR SECTIONS (1-13) -->
+<!-- ============================================================ -->
+
+<!-- 1. GETTING STARTED -->
+<h2 id="getting-started">1. Getting Started &amp; First Login</h2>
+
+<p>Seniority Connect is the care coordination platform used by Seniority Healthcare. As a Supervisor, you have all the capabilities of a Care Coordinator plus additional tools for oversight, analytics, and team management.</p>
+
+<h3>Setting Up Your Account</h3>
+<p>An Admin must send you an invitation before you can log in.</p>
+<ol class="steps">
+  <li>Check your email for an invitation from Seniority Connect with a setup link.</li>
+  <li>Click the <strong>Setup Account</strong> link to open the setup wizard.</li>
+  <li>Create a password (minimum 8 characters).</li>
+  <li>Set up <strong>Two-Factor Authentication (2FA)</strong> by scanning the QR code with your authenticator app (Google Authenticator, Microsoft Authenticator, or Authy).</li>
+  <li>Enter the <strong>6-digit code</strong> from your authenticator to confirm.</li>
+  <li>You are now ready to log in.</li>
+</ol>
+
+<h3>Logging In</h3>
+<ol class="steps">
+  <li>Navigate to the Seniority Connect login page.</li>
+  <li>Enter your email address and password.</li>
+  <li>Enter the 6-digit 2FA code from your authenticator app.</li>
+  <li>If pending tickets exist for you, the Pending Import modal appears (see Section 2).</li>
+</ol>
+
+<!-- 2. PENDING IMPORT -->
+<h2 id="pending-import">2. Importing Pending Tickets on Login</h2>
+
+<p>When you sign in, Seniority Connect checks the unassigned queue for tickets originally sent to your email. If found, a <strong>Pending Import</strong> modal appears.</p>
+
+<h3>What You See</h3>
+<ul>
+  <li>A list of pending tickets with <strong>checkboxes</strong> (all checked by default), ticket IDs, subjects, and senders</li>
+  <li><strong>Select All / Select None</strong> links and an "X of Y selected" counter</li>
+</ul>
+
+<h3>Your Options</h3>
+<ol class="steps">
+  <li><strong>Import all:</strong> Click <strong>Import Selected</strong> with all boxes checked. Tickets move to your personal queue.</li>
+  <li><strong>Import some:</strong> Uncheck tickets you don't want, then click <strong>Import Selected</strong>.</li>
+  <li><strong>Import none:</strong> Click <strong>Leave All in Queue</strong>. Tickets remain unassigned.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> As a supervisor, you can always claim tickets later from the Region Queue or use Bulk Reassign to distribute them.</div>
+
+<!-- 3. REGION QUEUE -->
+<h2 id="region-queue">3. Understanding the Region Queue</h2>
+
+<p>The <strong>Region Queue</strong> shows all tickets across your assigned regions, grouped by assignee.</p>
+
+<h3>Layout</h3>
+<ul>
+  <li>Tickets are grouped by coordinator. <strong>Unassigned</strong> appears first at the top.</li>
+  <li>Inside Unassigned, <strong>"Pending To: [Name]"</strong> sub-folders show which coordinator each email was originally addressed to.</li>
+  <li>Multi-recipient emails show a purple <strong>"Sent to N"</strong> badge and appear in each recipient's folder.</li>
+  <li>Click group headers to expand/collapse.</li>
+</ul>
+
+<h3>Ticket IDs</h3>
+<p>Each ticket gets a short, region-based ID: <code>CPA-0001</code> (Central PA #1), <code>SNJ-0042</code> (South NJ #42), <code>DV-0003</code> (Delaware Valley #3).</p>
+
+<h3>Filtering &amp; Searching</h3>
+<ul>
+  <li><strong>Status tabs:</strong> Active, Unassigned, Open, Waiting, Closed (each with count)</li>
+  <li><strong>Region dropdown:</strong> Filter to a specific region or view all</li>
+  <li><strong>Tag filter:</strong> Filter by tag, sort by tag, or group by tag</li>
+  <li><strong>Search:</strong> Keyword search across subject, sender, ticket ID, and content. Results display as a flat list.</li>
+</ul>
+
+<h3>My Queue</h3>
+<p>Click <strong>My Queue</strong> in the sidebar to see only tickets assigned to you personally.</p>
+
+<!-- 4. WORKING TICKETS -->
+<h2 id="working-tickets">4. Opening &amp; Working Tickets</h2>
+
+<h3>Opening a Ticket</h3>
+<ol class="steps">
+  <li>Click any ticket in the Region Queue or My Queue to open it.</li>
+  <li>A tab appears at the top. The time clock <strong>auto-starts</strong> with a red pulsing indicator.</li>
+</ol>
+
+<h3>Ticket Detail View</h3>
+<ul>
+  <li><strong>Header:</strong> Ticket ID, status badge, subject, running clock</li>
+  <li><strong>Message thread:</strong> Chronological inbound/outbound messages</li>
+  <li><strong>Action tabs:</strong> Reply, Internal Note, Chat, Seniority AI</li>
+  <li><strong>Right sidebar:</strong> Assignee, region, tags, status controls, audit details, time log</li>
+</ul>
+
+<h3>Tabs &amp; Multi-Tasking</h3>
+<ul>
+  <li>Multiple tickets open as tabs simultaneously</li>
+  <li>Click between tabs to switch; click X to close a tab (stops clock)</li>
+  <li>Click + to return to queue without closing tabs</li>
+  <li>Tabs persist across screen navigation</li>
+</ul>
+
+<h3>Time Tracking</h3>
+<ul>
+  <li>Clock auto-starts when you open a ticket, continues from previous total</li>
+  <li>Click <strong>Stop</strong> to pause manually; click <strong>Start Clock</strong> to resume</li>
+  <li>Only one clock runs at a time; starting one auto-stops the previous</li>
+  <li>Time Log in sidebar shows total time, per-user breakdown, and expandable session details</li>
+</ul>
+
+<h3>Audit Details</h3>
+<table>
+  <tr><th>Field</th><th>Description</th></tr>
+  <tr><td><strong>Received</strong></td><td>When the ticket was created</td></tr>
+  <tr><td><strong>Assigned</strong></td><td>When it was assigned</td></tr>
+  <tr><td><strong>Read</strong></td><td>When the assignee first opened it</td></tr>
+  <tr><td><strong>Response Time</strong></td><td>Time from assigned to read. <span class="dot dot-green"></span>green (&lt;1h), <span class="dot dot-yellow"></span>yellow (1-4h), <span class="dot dot-red"></span>red (&gt;4h)</td></tr>
+  <tr><td><strong>Last Activity</strong></td><td>Most recent action</td></tr>
+  <tr><td><strong>Time Logged</strong></td><td>Total tracked time</td></tr>
+</table>
+
+<h3>Closing a Ticket</h3>
+<ol class="steps">
+  <li>Click <strong>Close</strong> in the ticket sidebar.</li>
+  <li>Select a closure reason and optionally add a comment.</li>
+  <li>Click <strong>Confirm Close</strong>. Any active chat is archived as a note, and the ticket moves to the Archive.</li>
+</ol>
+
+<!-- 5. COMPOSING REPLIES -->
+<h2 id="composing-replies">5. Composing Replies</h2>
+
+<ol class="steps">
+  <li>Open a ticket and click the <strong>Reply</strong> tab.</li>
+  <li>Type your message. Optionally click <strong>AI Draft</strong> for an AI-generated reply.</li>
+  <li>Attach files if needed (max 10 MB per file via the paperclip icon).</li>
+  <li>Click <strong>Send</strong> for a single-recipient reply, or <strong>Reply All</strong> to send to all original recipients.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> Replying to an unassigned ticket automatically assigns it to you.</div>
+<div class="warn"><strong>Warning:</strong> Use Reply All carefully. Verify your message is appropriate for all recipients.</div>
+
+<!-- 6. INTERNAL NOTES -->
+<h2 id="internal-notes">6. Internal Notes</h2>
+
+<ol class="steps">
+  <li>Open a ticket and click the <strong>Internal Note</strong> tab.</li>
+  <li>Type your note and click <strong>Add Note</strong>.</li>
+  <li>The note appears in the timeline with a yellow background. The tab switches back to Reply.</li>
+</ol>
+
+<p>Notes are team-only, permanent, and never sent to external parties. They persist even after a ticket is closed.</p>
+
+<!-- 7. TICKET CHAT -->
+<h2 id="ticket-chat">7. Starting a Chat on a Ticket</h2>
+
+<ol class="steps">
+  <li>Open a ticket. The chat tab shows <strong>"Start a Chat"</strong> (gray) or <strong>"Open Chat"</strong> (blue) if one exists.</li>
+  <li>Click <strong>Start a Chat</strong> and select team members to include (at least one).</li>
+  <li>Click <strong>Start Discussion</strong>. Type messages and press <kbd>Enter</kbd> to send.</li>
+</ol>
+
+<ul>
+  <li>Anyone who opens the ticket's chat tab is auto-joined</li>
+  <li>Click <strong>"+ Add Team Members"</strong> to invite more people after creation</li>
+  <li>Chats are <strong>archived as notes</strong> when the ticket is closed</li>
+</ul>
+
+<!-- 8. NEW MESSAGES -->
+<h2 id="new-messages">8. Creating New Messages</h2>
+
+<ol class="steps">
+  <li>Click <strong>New Message</strong> in the left sidebar.</li>
+  <li>Fill in <strong>To</strong> (with autocomplete), <strong>Subject</strong>, <strong>Region</strong>, optional <strong>Tags</strong>, and your <strong>message body</strong>.</li>
+  <li>Optionally use <strong>AI Draft</strong> or attach files (max 10 MB each).</li>
+  <li>Click <strong>Send</strong>. A new ticket is created and assigned to you.</li>
+</ol>
+
+<p>Use the <strong>minimize button</strong> (&mdash;) to shrink the compose modal to a draft bar. Click the bar to resume editing.</p>
+
+<!-- 9. PERSONAL EMAIL -->
+<h2 id="personal-email">9. Personal Email Inbox</h2>
+
+<p>Click <strong>Email</strong> in the sidebar for full Gmail access. Navigate folders and labels in the left panel, search across all mail, and read/reply/archive/delete/label from the message detail view.</p>
+
+<h3>Push to Queue <span class="supervisor-badge">Supervisor</span></h3>
+<p>As a supervisor, you can push emails from your personal inbox into the ticket queue:</p>
+<ol class="steps">
+  <li>Select one or more emails using checkboxes, or open a single email.</li>
+  <li>Click the <strong>Push to Queue</strong> button.</li>
+  <li>The email becomes a ticket in the unassigned region queue, ready for a coordinator to claim.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> This is useful when you receive emails that should be handled by a coordinator rather than yourself.</div>
+
+<!-- 10. SENIORITY AI -->
+<h2 id="seniority-ai">10. Using Seniority AI</h2>
+
+<p>Access via <strong>Seniority AI</strong> in the sidebar (general mode) or the <strong>AI tab</strong> on a ticket (ticket-specific mode). The AI uses 8 tools for real-time data access:</p>
+
+<table>
+  <tr><th>Tool</th><th>What It Does</th></tr>
+  <tr><td><code>search_tickets</code></td><td>Search/filter tickets by keyword, status, assignee, region, tag</td></tr>
+  <tr><td><code>get_ticket_detail</code></td><td>Read full ticket with message thread and notes</td></tr>
+  <tr><td><code>get_patient_encounters</code></td><td>Find all tickets for a patient by email or name</td></tr>
+  <tr><td><code>search_emails</code></td><td>Search your Gmail inbox</td></tr>
+  <tr><td><code>get_email_detail</code></td><td>Read full email content</td></tr>
+  <tr><td><code>get_team_info</code></td><td>Check team members, workload, online status</td></tr>
+  <tr><td><code>get_queue_stats</code></td><td>Queue metrics by status, region, coordinator</td></tr>
+  <tr><td><code>get_audit_log</code></td><td>Recent activity log with filtering</td></tr>
+</table>
+
+<p>Quick actions when a ticket is open: <strong>Summarize</strong>, <strong>Patient Info</strong>, <strong>Draft Reply</strong>, <strong>Suggest Tags</strong>.</p>
+
+<!-- 11. ARCHIVE -->
+<h2 id="archive">11. Archive</h2>
+
+<p>Click <strong>Archive</strong> in the sidebar to view all closed tickets, sorted by close date. Search by subject, sender, or ticket ID. Pagination is 25 per page. Click any ticket to view its full history including messages, notes, and archived chat transcripts.</p>
+
+<div class="tip"><strong>Tip:</strong> As a supervisor, you have the ability to <strong>reopen</strong> closed tickets from the Archive. See Section 19.</div>
+
+<!-- 12. ACTIVE/INACTIVE STATUS -->
+<h2 id="active-inactive">12. Setting Active/Inactive Status</h2>
+
+<p>The Active/Inactive toggle is a <strong>Coordinator-only</strong> feature. As a Supervisor, your status is always Active. You do not have the ability to set yourself Inactive because your oversight role requires continuous access to the system.</p>
+
+<div class="tip"><strong>Tip:</strong> You can monitor which coordinators are Active or Inactive using the Activity Dashboard (Section 15).</div>
+
+<!-- 13. TIPS -->
+<h2 id="tips">13. Tips &amp; Keyboard Shortcuts</h2>
+
+<h3>Efficiency Tips</h3>
+<ul>
+  <li>Use AI drafts to save time on routine replies</li>
+  <li>Open multiple tickets in tabs to compare or work on several at once</li>
+  <li>Tag tickets consistently for effective filtering</li>
+  <li>Use Minimize on compose to save drafts while navigating</li>
+  <li>Start ticket chats for quick internal discussions</li>
+</ul>
+
+<h3>Keyboard Shortcuts</h3>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Enter</kbd> (in chat)</td><td>Send chat message</td></tr>
+  <tr><td><kbd>Enter</kbd> (in AI input)</td><td>Send AI question</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Close dropdowns, modals, pickers</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Navigate between compose fields</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<!-- SUPERVISOR-SPECIFIC SECTIONS (14-19) -->
+<!-- ============================================================ -->
+
+<div class="section-divider">
+  Supervisor-Only Features
+  <span>The following sections cover tools and capabilities exclusive to the Supervisor and Admin roles.</span>
+</div>
+
+<!-- 14. SUPERVISOR DASHBOARD -->
+<h2 id="supervisor-dashboard">14. Supervisor Dashboard <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>The Dashboard provides a real-time operational overview of your team's performance and the current state of all queues. Click <strong>Dashboard</strong> in the left sidebar to access it.</p>
+
+<h3>KPI Cards</h3>
+<p>At the top of the Dashboard, you see Key Performance Indicator cards showing:</p>
+<ul>
+  <li><strong>Total Open</strong> &mdash; Number of currently open tickets across all your regions</li>
+  <li><strong>Unassigned</strong> &mdash; Tickets that have not been claimed by any coordinator</li>
+  <li><strong>Closed Today</strong> &mdash; Tickets closed during the current day</li>
+  <li><strong>Triage</strong> &mdash; Tickets requiring immediate attention (e.g., aging or unread)</li>
+</ul>
+
+<h3>Region Breakdown</h3>
+<p>Below the KPIs, a region breakdown shows each region as a card with:</p>
+<ul>
+  <li>Region name</li>
+  <li>A progress bar showing relative ticket load</li>
+  <li>Count of open and unassigned tickets</li>
+</ul>
+<p>Click any region card to filter the view to that region. Click again to remove the filter.</p>
+
+<h3>Bird's Eye View</h3>
+<p>The Bird's Eye View is a command center showing every open ticket with aging indicators and team status.</p>
+
+<h4>Aging Cards</h4>
+<p>Four cards across the top show ticket counts by age:</p>
+<table>
+  <tr><th>Category</th><th>Time Since Last Activity</th><th>Color</th></tr>
+  <tr><td><strong>Fresh</strong></td><td>Less than 1 hour</td><td><span class="dot dot-green"></span> Green</td></tr>
+  <tr><td><strong>1-4 hours</strong></td><td>1 to 4 hours</td><td><span class="dot dot-yellow"></span> Yellow</td></tr>
+  <tr><td><strong>4-24 hours</strong></td><td>4 to 24 hours</td><td>Orange</td></tr>
+  <tr><td><strong>24+ hours</strong></td><td>More than 24 hours</td><td><span class="dot dot-red"></span> Red</td></tr>
+</table>
+<p>Click any aging card to filter the ticket table below to just that age group.</p>
+
+<h4>Team Status Bar</h4>
+<p>A bar shows all coordinators with:</p>
+<ul>
+  <li>Their name</li>
+  <li>An online indicator (<span class="dot dot-green"></span>green = online, <span class="dot dot-gray"></span>gray = offline)</li>
+  <li>Their open ticket count</li>
+</ul>
+<p>Click a coordinator to filter the table to their tickets. Click <strong>Unassigned</strong> to see only unassigned tickets.</p>
+
+<h4>Filters</h4>
+<p>Additional filter dropdowns let you narrow by:</p>
+<ul>
+  <li><strong>Region</strong> (with open ticket count per region)</li>
+  <li><strong>Status</strong> (Open, Waiting)</li>
+</ul>
+<p>Click <strong>Reset Filters</strong> to clear all active filters. A counter shows how many tickets match the current filters.</p>
+
+<h4>Ticket Table</h4>
+<p>The scrollable table shows all matching tickets with columns: Ticket ID, Subject, From, Region, Assigned To, Age (color-coded badge), Status, and Actions. Click any subject to open the ticket directly. Click <strong>Reassign</strong> to move a ticket to another coordinator.</p>
+
+<div class="tip"><strong>Tip:</strong> The Dashboard auto-refreshes every 10 seconds, so you always see the latest data without manually reloading.</div>
+
+<!-- 15. ACTIVITY DASHBOARD -->
+<h2 id="activity-dashboard">15. Activity Dashboard &amp; User Audit <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>The Activity Dashboard provides detailed analytics about team performance, online presence, and individual user behavior. Click <strong>Activity</strong> in the left sidebar.</p>
+
+<h3>Five Tabs</h3>
+<p>The Activity Dashboard has five tabs:</p>
+
+<h4>1. Who's Online</h4>
+<p>A real-time display of all users and their current status. The page polls every 15 seconds to update. For each online user, you can:</p>
+<ol class="steps">
+  <li>See their name, role, and how long they have been online.</li>
+  <li>Click their name to <strong>drill down</strong> into their recent activity.</li>
+  <li>Use the time presets (15 min, 30 min, 1 hour) to see what they have been doing in that window.</li>
+</ol>
+<p>The drill-down shows which tickets they have worked on, actions taken, and response times within the selected window.</p>
+
+<h4>2. Overview</h4>
+<p>Trend charts showing ticket volume over time. Use the period selector (7 / 14 / 30 days) to adjust the timeframe. Includes daily created, closed, and net open trends.</p>
+
+<h4>3. Team</h4>
+<p>Per-coordinator performance cards showing:</p>
+<ul>
+  <li>Open ticket count</li>
+  <li>Closed ticket count for the period</li>
+  <li>Average response time</li>
+  <li>Activity bar chart comparing coordinators</li>
+</ul>
+
+<h4>4. Activity Feed</h4>
+<p>A filterable feed of all system actions (ticket created, email sent, reassignment, status change, note added, etc.). Filter by:</p>
+<ul>
+  <li>User (any team member)</li>
+  <li>Action type</li>
+  <li>Time window (last 1, 3, 7 days)</li>
+</ul>
+
+<h4>5. User Audit</h4>
+<p>The most detailed per-user analysis tool.</p>
+<ol class="steps">
+  <li>Select a <strong>user</strong> from the dropdown.</li>
+  <li>Select a <strong>date range</strong> (e.g., last 7, 14, or 30 days).</li>
+  <li>Click <strong>Run Audit</strong>.</li>
+</ol>
+
+<p>The audit results include:</p>
+<ul>
+  <li><strong>Summary cards:</strong> Open tickets, unread count, closed count, total actions, and average response time (color-coded: <span class="dot dot-green"></span>green if fast, <span class="dot dot-red"></span>red if slow).</li>
+  <li><strong>Response time details:</strong> Per-ticket assigned-to-read times, with fastest, slowest, and average calculations.</li>
+  <li><strong>Open tickets list:</strong> Which tickets are read vs. unread, with wait times since last activity. Click any ticket to open it directly.</li>
+  <li><strong>Action breakdown:</strong> Visual bar chart showing counts by action type (emails sent, notes added, reassignments, etc.).</li>
+  <li><strong>Recent actions timeline:</strong> Full audit trail with clickable ticket links.</li>
+</ul>
+
+<div class="tip"><strong>Tip:</strong> Use the User Audit regularly to identify coordinators who may be overwhelmed (high unread count, slow response times) and redistribute workload proactively.</div>
+
+<!-- 16. AUDIT LOG -->
+<h2 id="audit-log">16. Audit Log <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>The Audit Log is a comprehensive record of every action taken in the system. Click <strong>Audit Log</strong> in the left sidebar.</p>
+
+<h3>What You See</h3>
+<p>Each audit entry shows:</p>
+<ul>
+  <li><strong>Timestamp</strong> &mdash; Exact date and time of the action</li>
+  <li><strong>User</strong> &mdash; Who performed the action</li>
+  <li><strong>Action type</strong> &mdash; What happened (ticket_created, outbound_sent, assignee_changed, status_changed, note_added, auto_assigned, region_changed, bulk_reassign)</li>
+  <li><strong>Ticket ID</strong> &mdash; A <strong>clickable link</strong> that opens the associated ticket directly</li>
+  <li><strong>Details</strong> &mdash; Additional context (e.g., "Reassigned from Jane to Mike")</li>
+</ul>
+
+<h3>Filtering the Log</h3>
+<ol class="steps">
+  <li>Use the <strong>action type dropdown</strong> at the top to filter by a specific type of action (e.g., only show "outbound_sent" to see all emails that were sent).</li>
+  <li>The log displays the most recent entries first, with pagination for older entries.</li>
+</ol>
+
+<div class="tip"><strong>Tip:</strong> The clickable ticket links in the Audit Log are extremely useful for investigating issues. If a coordinator reports a problem with a ticket, you can find it in the log and jump straight to it.</div>
+
+<!-- 17. PULL FROM QUEUE -->
+<h2 id="pull-from-queue">17. Pull from Queue <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>Pull from Queue allows you to remove tickets from Seniority Connect entirely and return the underlying email to Gmail. This is useful for emails that were incorrectly routed or should not be tickets.</p>
+
+<h3>How to Pull a Single Ticket</h3>
+<ol class="steps">
+  <li>Open the ticket you want to pull.</li>
+  <li>Click the <strong>Pull from Queue</strong> button in the ticket's action area.</li>
+  <li>A modal appears with two destination options:
+    <ul>
+      <li><strong>Return to original recipient</strong> &mdash; Restores the email to the coordinator who originally received it in their Gmail inbox. The email appears as unread.</li>
+      <li><strong>Pull to my inbox</strong> &mdash; Forwards the email to your own Gmail inbox. It appears as unread in your personal email.</li>
+    </ul>
+  </li>
+  <li>Select your choice and confirm. The ticket is removed from Seniority Connect.</li>
+</ol>
+
+<h3>How to Pull Multiple Tickets</h3>
+<ol class="steps">
+  <li>In the Region Queue, use the checkboxes to select multiple tickets.</li>
+  <li>Click the <strong>Pull from Queue</strong> button in the bulk action bar.</li>
+  <li>Choose the destination (return to original or pull to your inbox).</li>
+  <li>A toast notification confirms how many tickets were pulled (e.g., "3 pulled -- returned to original").</li>
+</ol>
+
+<div class="warn"><strong>Warning:</strong> Pulling a ticket removes it from Seniority Connect entirely. The ticket and its notes/chat history are removed. Make sure this is what you intend. If the email needs to come back later, it will need to be re-imported through the normal email sync process.</div>
+
+<!-- 18. BULK REASSIGN -->
+<h2 id="bulk-reassign">18. Bulk Reassign from Queue <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>Bulk Reassign lets you move multiple tickets from one coordinator to another, or return them to the unassigned queue. As a supervisor, you can reassign tickets to <strong>any</strong> team member.</p>
+
+<h3>How to Bulk Reassign</h3>
+<ol class="steps">
+  <li>Navigate to the <strong>Region Queue</strong>.</li>
+  <li>Use the <strong>checkboxes</strong> next to tickets to select the ones you want to reassign. You can use the select-all checkbox in the header to select all visible tickets.</li>
+  <li>Click the <strong>Reassign To...</strong> button in the bulk action bar that appears.</li>
+  <li>A dropdown shows all available team members (coordinators, supervisors, and admins). Select the person you want to assign the tickets to.</li>
+  <li>To return tickets to the unassigned queue instead, select <strong>"Unassigned"</strong> from the dropdown.</li>
+  <li>A toast notification confirms the action (e.g., "5 tickets reassigned to Mike Johnson").</li>
+</ol>
+
+<p>When tickets are reassigned:</p>
+<ul>
+  <li>They appear as <strong>unread/new</strong> for the new assignee</li>
+  <li>An audit log entry records the reassignment</li>
+  <li>The original assignee loses the tickets from their My Queue</li>
+</ul>
+
+<div class="tip"><strong>Tip:</strong> Use Bulk Reassign when a coordinator is out sick, overwhelmed, or when you need to rebalance workload across the team. Check the Activity Dashboard first to see who has capacity.</div>
+
+<div class="warn"><strong>Note:</strong> Coordinators can only reassign tickets to themselves. Only supervisors and admins can reassign to other users.</div>
+
+<!-- 19. REOPEN TICKETS -->
+<h2 id="reopen-tickets">19. Reopening Closed Tickets from Archive <span class="supervisor-badge">Supervisor</span></h2>
+
+<p>If a closed ticket needs to be worked again (e.g., a patient responded after closure, or the ticket was closed prematurely), supervisors can reopen it directly from the Archive.</p>
+
+<h3>How to Reopen a Ticket</h3>
+<ol class="steps">
+  <li>Click <strong>Archive</strong> in the left sidebar.</li>
+  <li>Find the ticket you want to reopen by browsing or searching by subject, sender, or ticket ID.</li>
+  <li>Click the ticket to open its detail view.</li>
+  <li>Click the <strong>Reopen</strong> button. This button is only visible to supervisors and admins.</li>
+  <li>The ticket's status changes from Closed back to <strong>Open</strong>, and it returns to the active queue in its original region.</li>
+</ol>
+
+<p>After reopening:</p>
+<ul>
+  <li>The ticket appears in the Region Queue as an active ticket</li>
+  <li>If it had a previous assignee, it may return to their queue or go to unassigned (depending on the original assignment)</li>
+  <li>The full history (messages, notes, archived chat) is preserved</li>
+  <li>An audit log entry records who reopened it and when</li>
+</ul>
+
+<div class="tip"><strong>Tip:</strong> After reopening a ticket, you may want to reassign it to the appropriate coordinator if the original handler is no longer available.</div>
+
+<h3>Supervisor Tips &amp; Best Practices</h3>
+<ul>
+  <li>Use the <strong>User Audit</strong> tab regularly to monitor response times and catch issues early</li>
+  <li>Check "Pending To" folders in the Unassigned section to see who has unclaimed messages</li>
+  <li>The Audit Log's <strong>clickable ticket links</strong> let you jump directly to any ticket from the log</li>
+  <li>Use Bulk Reassign when a coordinator is overwhelmed or out of office</li>
+  <li>The Archive preserves full history including chat transcripts &mdash; use it as a knowledge base</li>
+  <li>The Bird's Eye View auto-refreshes every 10 seconds for real-time situational awareness</li>
+  <li>Push emails from your personal inbox to the queue when they should be handled as tickets</li>
+</ul>
+
+<!-- FOOTER -->
+<div class="guide-footer">
+  Seniority Connect &mdash; Seniority Healthcare &mdash; Confidential<br>
+  Supervisor Reference Guide &mdash; Version 2.0 &mdash; March 2026
+</div>
+
+</div>
+</body>
+</html>

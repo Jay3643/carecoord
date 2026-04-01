@@ -16,6 +16,7 @@ import AiPanel from './components/AiPanel';
 import SetupAccount from './components/SetupAccount';
 import ActivityDashboard from './components/ActivityDashboard';
 import ArchiveScreen from './components/ArchiveScreen';
+import OnboardingTour from './components/OnboardingTour';
 import io from 'socket.io-client';
 
 export default function App() {
@@ -249,7 +250,7 @@ export default function App() {
         </div>
 
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 12px' }}>
-          <button onClick={() => setShowCompose(showCompose === 'minimized' ? 'open' : 'open')}
+          <button data-tour="newMessage" onClick={() => setShowCompose(showCompose === 'minimized' ? 'open' : 'open')}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, width: '100%',
               padding: sidebarCollapsed ? '10px 14px' : '10px 14px',
@@ -305,7 +306,7 @@ export default function App() {
               </button>
             );
             if (item.key === '_ai_toggle') return (
-              <button key="_ai_toggle" onClick={() => setAiOpen(a => !a)}
+              <button key="_ai_toggle" data-tour="seniorityAi" onClick={() => setAiOpen(a => !a)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                   borderRadius: 8, border: 'none', background: aiOpen ? '#102f54' : 'transparent',
                   color: aiOpen ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
@@ -446,7 +447,7 @@ export default function App() {
               </a>
             );
             return (
-            <button key={item.key} onClick={() => {  setScreen(item.key); setSelectedTicketId(null); }}
+            <button key={item.key} data-tour={item.key} onClick={() => {  setScreen(item.key); setSelectedTicketId(null); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
@@ -719,6 +720,9 @@ export default function App() {
         </div>
       )}
       </div>
+
+      {/* Onboarding Tour */}
+      <OnboardingTour currentUser={currentUser} />
     </div>
   );
 }
