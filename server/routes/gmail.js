@@ -389,32 +389,58 @@ async function syncUser(db, row) {
       }
 
       if (existingTicketId) {
-        // Check if this user already has their own ticket for this email
-        const myTicket = db.prepare("SELECT id FROM tickets WHERE synced_for_user_id = ? AND id IN (SELECT ticket_id FROM messages WHERE provider_message_id = ?)").get(uid, rfcMessageId || m.id);
-        if (myTicket) {
-          // Already have our own ticket — check for new reply messages
-          const alreadyRecorded = rfcMessageId ? db.prepare("SELECT 1 FROM messages WHERE ticket_id = ? AND provider_message_id = ?").get(myTicket.id, rfcMessageId) : null;
+        // Find this user's ticket: check assignee, synced_for, or any ticket with matching thread
+        let myTicketId = null;
+        // 1. Check if user owns the existing ticket (assigned or synced_for)
+        const existTicket = db.prepare('SELECT id, assignee_user_id, synced_for_user_id FROM tickets WHERE id = ?').get(existingTicketId);
+        if (existTicket && (toStr(existTicket.assignee_user_id) === uid || toStr(existTicket.synced_for_user_id) === uid)) {
+          myTicketId = existingTicketId;
+        }
+        // 2. Check if user has a different ticket linked to this thread
+        if (!myTicketId) {
+          const myOther = db.prepare("SELECT id FROM tickets WHERE (assignee_user_id = ? OR synced_for_user_id = ?) AND id IN (SELECT ticket_id FROM messages WHERE gmail_thread_id = ?)").get(uid, uid, thId);
+          if (myOther) myTicketId = toStr(myOther.id);
+        }
+        // 3. Check linked tickets
+        if (!myTicketId && existTicket) {
+          const linked = JSON.parse(toStr(existTicket.linked_ticket_ids) || '[]');
+          for (const lid of linked) {
+            const lt = db.prepare('SELECT id, assignee_user_id, synced_for_user_id FROM tickets WHERE id = ?').get(lid);
+            if (lt && (toStr(lt.assignee_user_id) === uid || toStr(lt.synced_for_user_id) === uid)) {
+              myTicketId = toStr(lt.id);
+              break;
+            }
+          }
+        }
+
+        if (myTicketId) {
+          // Add reply to existing ticket thread
+          const alreadyRecorded = rfcMessageId ? db.prepare("SELECT 1 FROM messages WHERE ticket_id = ? AND provider_message_id = ?").get(myTicketId, rfcMessageId) : null;
           if (!alreadyRecorded) {
             const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
             db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-              .run(msgId, toStr(myTicket.id), 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
-            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', toStr(myTicket.id));
+              .run(msgId, myTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+            // Reopen if closed, keep existing tags
+            const currentTicket = db.prepare('SELECT status FROM tickets WHERE id = ?').get(myTicketId);
+            const newStatus = currentTicket && toStr(currentTicket.status) === 'CLOSED' ? 'OPEN' : toStr(currentTicket?.status) || 'OPEN';
+            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, newStatus === 'CLOSED' ? 'OPEN' : newStatus, myTicketId);
           }
         } else {
-          // Another coordinator has a ticket for this email — create our own and link them
+          // No ticket for this user yet — create a new one and link
           const tid = generateTicketId(db, rid);
+          const userStatus = userRow ? toStr(userRow.work_status) : 'active';
+          const assignTo = userStatus === 'active' ? uid : null;
           db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids,linked_ticket_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)')
-            .run(tid, subj, from, rid, 'OPEN', null, ts, ts, JSON.stringify([from]), null, uid, JSON.stringify([uid]), JSON.stringify([existingTicketId]));
+            .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null, uid, JSON.stringify([uid]), JSON.stringify([existingTicketId]));
           const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
           db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
-          // Update the existing ticket to link back to this one
+          // Link tickets bidirectionally
           const existingLinks = JSON.parse(toStr(db.prepare('SELECT linked_ticket_ids FROM tickets WHERE id = ?').get(existingTicketId)?.linked_ticket_ids) || '[]');
           if (!existingLinks.includes(tid)) {
             existingLinks.push(tid);
             db.prepare('UPDATE tickets SET linked_ticket_ids = ? WHERE id = ?').run(JSON.stringify(existingLinks), existingTicketId);
           }
-          // Also update our ticket with all known siblings
           const allLinked = [...existingLinks.filter(id => id !== tid), existingTicketId];
           db.prepare('UPDATE tickets SET linked_ticket_ids = ? WHERE id = ?').run(JSON.stringify(allLinked), tid);
           console.log('[Sync] Multi-recipient — created', tid, 'for', uid, 'linked to', existingTicketId);
