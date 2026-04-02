@@ -17,7 +17,7 @@ import SetupAccount from './components/SetupAccount';
 import ActivityDashboard from './components/ActivityDashboard';
 import ArchiveScreen from './components/ArchiveScreen';
 import OnboardingTour from './components/OnboardingTour';
-import io from 'socket.io-client';
+// Socket.IO removed — chat uses polling now
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -164,7 +164,6 @@ export default function App() {
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
-  const appSocketRef = React.useRef(null);
   const [personalCount, setPersonalCount] = useState(0);
 
   useEffect(() => {
@@ -186,18 +185,7 @@ export default function App() {
     return () => { clearInterval(interval); clearInterval(hbInterval); };
   }, [currentUser]);
 
-  // Socket.io for real-time chat notifications
-  useEffect(() => {
-    if (!currentUser) return;
-    const sock = io(window.location.origin, { transports: ['websocket', 'polling'] });
-    appSocketRef.current = sock;
-    sock.on('chat:message', (msg) => {
-      if (msg.userId !== currentUser.id) {
-        setChatUnread(prev => prev + 1);
-      }
-    });
-    return () => { sock.disconnect(); };
-  }, [currentUser?.id]);
+  // Chat unread polling (replaces Socket.IO which doesn't work reliably on Render)
 
   // Handle /setup route for new user account setup
   if (window.location.search.includes('token=') && window.location.pathname === '/setup') {

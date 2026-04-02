@@ -3,7 +3,6 @@ import { api } from '../api';
 import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
-import io from 'socket.io-client';
 
 function formatAiText(text) {
   if (!text) return '';
@@ -55,7 +54,6 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState(new Set());
   const discussionEndRef = useRef(null);
-  const socketRef = useRef(null);
   const [aiMessages, setAiMessages] = useState([]);
   const [pullMenuOpen, setPullMenuOpen] = useState(false);
   const [aiInput, setAiInput] = useState('');
@@ -151,27 +149,15 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     })();
   }, [activeTab, ticketId]);
 
-  // Socket + polling for real-time discussion (Socket.IO may not work on Render)
+  // Poll for discussion messages
   useEffect(() => {
     if (!discussionChannelId) return;
-    const sock = io(window.location.origin, { transports: ['websocket', 'polling'] });
-    socketRef.current = sock;
-    sock.emit('join', discussionChannelId);
-    sock.on('chat:message', (msg) => {
-      if (msg.channelId === discussionChannelId) {
-        setDiscussionMsgs(prev => {
-          if (prev.find(m => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-      }
-    });
-    // Poll for new messages every 3 seconds as fallback
     const poll = setInterval(() => {
       api.chatMessages(discussionChannelId).then(md => {
         setDiscussionMsgs(md.messages || []);
       }).catch(() => {});
     }, 3000);
-    return () => { clearInterval(poll); sock.emit('leave', discussionChannelId); sock.disconnect(); };
+    return () => clearInterval(poll);
   }, [discussionChannelId]);
 
   useEffect(() => {
