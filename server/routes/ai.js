@@ -103,6 +103,17 @@ const TOOLS = [
     },
   },
   {
+    name: 'search_help',
+    description: 'Search the Seniority Connect user manual and help documentation. Use when the user asks "how do I...", "where is...", "how to...", or any question about using the platform, features, buttons, settings, or workflows.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The help topic or question to search for (e.g. "how to reassign tickets", "what is the archive", "time tracking")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'get_email_detail',
     description: 'Get the full body/content of a specific email from the user\'s Gmail by message ID. Use after search_emails to read an email\'s full content.',
     input_schema: {
@@ -129,6 +140,7 @@ function execTool(toolName, input, db, userId) {
     case 'get_queue_stats': return toolGetQueueStats(db, input);
     case 'get_audit_log': return toolGetAuditLog(db, input);
     case 'get_email_detail': return toolGetEmailDetail(db, userId, input);
+    case 'search_help': return toolSearchHelp(input);
     default: return { error: 'Unknown tool: ' + toolName };
   }
 }
@@ -386,6 +398,60 @@ function toolGetAuditLog(db, { action_type, user_name, limit }) {
   }));
 }
 
+// ── Help / User Manual search ──
+let helpSections = null;
+
+function loadHelpContent() {
+  if (helpSections) return helpSections;
+  const fs = require('fs');
+  const path = require('path');
+  // Try multiple paths for the user manual
+  const paths = [
+    path.join(__dirname, '..', '..', 'docs', 'user-manual.html'),
+    path.join(__dirname, '..', '..', 'client', 'public', 'guides', 'admin-guide.html'),
+    path.join(__dirname, '..', '..', 'client', 'dist', 'user-manual.html'),
+  ];
+  let html = '';
+  for (const p of paths) {
+    try { html += '\n' + fs.readFileSync(p, 'utf8'); } catch(e) {}
+  }
+  if (!html) return [];
+  // Split by h2/h3 headers and strip HTML tags
+  const sections = [];
+  const headerRegex = /<h[23][^>]*>(.*?)<\/h[23]>/gi;
+  const parts = html.split(headerRegex);
+  for (let i = 1; i < parts.length; i += 2) {
+    const title = parts[i].replace(/<[^>]+>/g, '').trim();
+    const body = (parts[i + 1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (title && body.length > 20) {
+      sections.push({ title, content: body.substring(0, 1500) });
+    }
+  }
+  helpSections = sections;
+  return sections;
+}
+
+function toolSearchHelp({ query }) {
+  const sections = loadHelpContent();
+  if (sections.length === 0) return { error: 'Help content not available' };
+  const q = query.toLowerCase();
+  const words = q.split(/\s+/).filter(w => w.length > 2);
+  // Score each section by keyword matches
+  const scored = sections.map(s => {
+    const text = (s.title + ' ' + s.content).toLowerCase();
+    let score = 0;
+    for (const w of words) {
+      if (text.includes(w)) score += 1;
+      if (s.title.toLowerCase().includes(w)) score += 3; // Title match weighted higher
+    }
+    return { ...s, score };
+  }).filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
+  if (scored.length === 0) {
+    return { message: 'No help content found for "' + query + '". Try different keywords.', availableTopics: sections.slice(0, 20).map(s => s.title) };
+  }
+  return scored.map(s => ({ title: s.title, content: s.content }));
+}
+
 // Helper: get Gmail auth for a user
 function getGmailAuth(db, userId) {
   const { google } = require('googleapis');
@@ -423,6 +489,7 @@ IMPORTANT BEHAVIORS:
 - For workload questions: use get_queue_stats and get_team_info.
 - For email questions: use search_emails then get_email_detail to read full messages.
 - For audit/activity: use get_audit_log.
+- For "how do I..." or platform help questions: use search_help to find relevant documentation.
 
 CAPABILITIES:
 - Search and read any ticket, its full message thread, and internal notes
@@ -434,6 +501,7 @@ CAPABILITIES:
 - Extract patient information (name, DOB, insurance, medications, diagnoses)
 - Draft professional reply emails
 - Summarize conversations and suggest next actions
+- Search the user manual to answer "how to" questions about the platform
 
 GUIDELINES:
 - Be concise and actionable
