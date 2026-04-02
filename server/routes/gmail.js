@@ -380,11 +380,32 @@ async function syncUser(db, row) {
         const existingByMsgId = db.prepare("SELECT ticket_id FROM messages WHERE provider_message_id = ? LIMIT 1").get(rfcMessageId);
         if (existingByMsgId) existingTicketId = toStr(existingByMsgId.ticket_id);
       }
-      // Also check by gmail thread ID for replies within same account
+      // Check by gmail thread ID for replies within same account
       if (!existingTicketId) {
         const existingByThread = db.prepare('SELECT ticket_id FROM messages WHERE gmail_thread_id = ? LIMIT 1').get(thId);
         if (existingByThread && db.prepare('SELECT id FROM tickets WHERE id = ?').get(existingByThread.ticket_id)) {
           existingTicketId = toStr(existingByThread.ticket_id);
+        }
+      }
+      // Check by In-Reply-To header — matches against our stored gmail_message_id or provider_message_id
+      if (!existingTicketId) {
+        const inReplyTo = (hdr(h, 'In-Reply-To') || '').replace(/[<>]/g, '').trim();
+        if (inReplyTo) {
+          const byInReplyTo = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR provider_message_id = ? LIMIT 1").get(inReplyTo, inReplyTo);
+          if (byInReplyTo && db.prepare('SELECT id FROM tickets WHERE id = ?').get(byInReplyTo.ticket_id)) {
+            existingTicketId = toStr(byInReplyTo.ticket_id);
+          }
+        }
+      }
+      // Check References header for any known message ID
+      if (!existingTicketId) {
+        const refs = (hdr(h, 'References') || '').split(/\s+/).map(r => r.replace(/[<>]/g, '').trim()).filter(Boolean);
+        for (const ref of refs) {
+          const byRef = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR provider_message_id = ? LIMIT 1").get(ref, ref);
+          if (byRef && db.prepare('SELECT id FROM tickets WHERE id = ?').get(byRef.ticket_id)) {
+            existingTicketId = toStr(byRef.ticket_id);
+            break;
+          }
         }
       }
 

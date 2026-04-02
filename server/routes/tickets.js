@@ -500,8 +500,14 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
         emailLines.push(''); emailLines.push(fullBody);
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
       }
-      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
-      console.log('[Gmail] Reply sent to', toAddr);
+      const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      // Save Gmail thread ID and message ID on the outbound message so future replies thread correctly
+      if (sent.data) {
+        db.prepare('UPDATE messages SET gmail_message_id = ?, gmail_thread_id = ?, gmail_user_id = ? WHERE id = ?')
+          .run(sent.data.id, sent.data.threadId, req.user.id, msgId);
+        saveDb();
+      }
+      console.log('[Gmail] Reply sent to', toAddr, 'threadId:', sent.data?.threadId);
     } else {
       console.log('[Gmail] No auth for user', req.user.id, '— message saved but not sent via Gmail');
     }
