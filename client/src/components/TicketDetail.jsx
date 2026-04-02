@@ -5,6 +5,21 @@ import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
 import io from 'socket.io-client';
 
+function formatAiText(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>')
+    .replace(/`([^`]+?)`/g, '<code style="background:#f0f4f9;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px">$1</code>')
+    .replace(/^### (.+)$/gm, '<div style="font-weight:700;font-size:13px;margin:8px 0 4px;color:#1e3a4f">$1</div>')
+    .replace(/^## (.+)$/gm, '<div style="font-weight:700;font-size:14px;margin:10px 0 4px;color:#1e3a4f">$1</div>')
+    .replace(/^[\-\*] (.+)$/gm, '<div style="padding-left:12px;margin:2px 0">&#8226; $1</div>')
+    .replace(/^\d+\. (.+)$/gm, (m, p1) => '<div style="padding-left:12px;margin:2px 0">' + m.match(/^\d+/)[0] + '. ' + p1 + '</div>')
+    .replace(/\n/g, '<br/>');
+}
+
 function MessageBody({ text }) {
   if (!text) return null;
   if (text.includes('<div') || text.includes('<p') || text.includes('<br')) {
@@ -585,9 +600,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                         <div style={{ fontSize: 10, fontWeight: 700, color: m.role === 'user' ? '#1e3a4f' : '#3d8ba8', marginBottom: 2 }}>
                           {m.role === 'user' ? 'You' : 'AI Assistant'}
                         </div>
-                        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {m.content}
-                        </div>
+                        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, wordBreak: 'break-word' }}
+                          dangerouslySetInnerHTML={{ __html: formatAiText(m.content) }} />
                         {m.role === 'assistant' && (
                           <button onClick={() => { navigator.clipboard.writeText(m.content); showToast('Copied to clipboard'); }}
                             style={{ marginTop: 4, padding: '2px 8px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 4, fontSize: 10, color: '#6b8299', cursor: 'pointer' }}>

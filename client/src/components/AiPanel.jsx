@@ -2,6 +2,31 @@ import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../api';
 import Icon from './Icons';
 
+function formatAiContent(text) {
+  if (!text) return '';
+  let html = text
+    // Escape HTML
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_ (but not inside words)
+    .replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>')
+    .replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>')
+    // Inline code: `code`
+    .replace(/`([^`]+?)`/g, '<code style="background:#f0f4f9;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px">$1</code>')
+    // Headers: ### Header
+    .replace(/^### (.+)$/gm, '<div style="font-weight:700;font-size:13px;margin:8px 0 4px;color:#1e3a4f">$1</div>')
+    .replace(/^## (.+)$/gm, '<div style="font-weight:700;font-size:14px;margin:10px 0 4px;color:#1e3a4f">$1</div>')
+    // Unordered lists: - item or * item
+    .replace(/^[\-\*] (.+)$/gm, '<div style="padding-left:12px;margin:2px 0">&#8226; $1</div>')
+    // Ordered lists: 1. item
+    .replace(/^\d+\. (.+)$/gm, function(m, p1) { return '<div style="padding-left:12px;margin:2px 0">' + m.match(/^\d+/)[0] + '. ' + p1 + '</div>'; })
+    // Line breaks
+    .replace(/\n/g, '<br/>');
+  return html;
+}
+
 const TEAL = '#52a8c7';
 const TEAL_DARK = '#3d8ba8';
 const TEAL_LIGHT = '#e8f6fa';
@@ -190,9 +215,8 @@ export default function AiPanel({ currentUser, onClose, showToast, activeTicketI
               <div style={{ fontSize: 10, fontWeight: 700, color: m.role === 'user' ? '#1e3a4f' : TEAL_DARK, marginBottom: 2 }}>
                 {m.role === 'user' ? currentUser.name : 'Seniority AI'}
               </div>
-              <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {m.content}
-              </div>
+              <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5, wordBreak: 'break-word' }}
+                dangerouslySetInnerHTML={{ __html: formatAiContent(m.content) }} />
               {m.role === 'assistant' && m.tools_used && m.tools_used.length > 0 && (
                 <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                   {[...new Set(m.tools_used)].map((t, i) => (
