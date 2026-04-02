@@ -33,7 +33,12 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     api.chatChannels().then(d => { setChannels(d.channels || []); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadChannels(); }, []);
+  useEffect(() => {
+    loadChannels();
+    // Poll for new channels every 5 seconds (Socket.IO unreliable on Render)
+    const poll = setInterval(loadChannels, 5000);
+    return () => clearInterval(poll);
+  }, []);
 
   useEffect(() => {
     if (!activeChannel) return;
@@ -59,7 +64,19 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     socket.on('chat:typing', onTyping);
     socket.on('chat:stop-typing', onStopTyping);
 
+    // Poll for new messages every 3 seconds as fallback
+    const msgPoll = setInterval(() => {
+      api.chatMessages(activeChannel.id).then(d => {
+        setMessages(prev => {
+          const newMsgs = d.messages || [];
+          if (newMsgs.length !== prev.length) return newMsgs;
+          return prev;
+        });
+      }).catch(() => {});
+    }, 3000);
+
     return () => {
+      clearInterval(msgPoll);
       socket.emit('leave', activeChannel.id);
       socket.off('chat:message', onMsg);
       socket.off('chat:typing', onTyping);
@@ -78,6 +95,11 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
       await api.chatSend(activeChannel.id, { body: msgText, type: 'text' });
       setMsgText('');
       socket.emit('stop-typing', { channelId: activeChannel.id, userId: currentUser.id });
+      // Immediately refresh messages so sent message appears
+      const d = await api.chatMessages(activeChannel.id);
+      setMessages(d.messages || []);
+      api.chatMarkRead(activeChannel.id);
+      loadChannels();
     } catch(e) { showToast?.(e.message); }
     setSending(false);
   };
