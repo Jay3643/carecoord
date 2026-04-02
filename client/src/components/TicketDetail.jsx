@@ -115,7 +115,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   };
 
-  useEffect(() => { fetchData(); }, [ticketId]);
+  useEffect(() => {
+    fetchData();
+    // Stop clock when switching away from this ticket or unmounting
+    return () => {
+      api.stopClock(ticketId).catch(() => {});
+    };
+  }, [ticketId]);
 
   // Tick the clock every second when running
   useEffect(() => {

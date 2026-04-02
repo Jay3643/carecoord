@@ -743,18 +743,24 @@ router.get('/contacts', requireAuth, async (req, res) => {
         const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
         const seen = new Set();
 
-        // Parse "Name <email>" or plain "email" format
+        // Parse "Name <email>" or plain "email" format (handles group addresses like region1@seniorityhealthcare.com)
         function parseAddresses(header) {
           if (!header) return [];
           const results = [];
+          // Split on commas that are not inside quotes
           const parts = header.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
           for (const part of parts) {
             const trimmed = part.trim();
-            const match = trimmed.match(/^"?(.+?)"?\s*<(.+@.+)>$/);
+            // Handle "Name <email>" format
+            const match = trimmed.match(/^"?(.+?)"?\s*<(.+@.+?)>$/);
             if (match) {
               results.push({ name: match[1].trim().replace(/^"|"$/g, ''), email: match[2].toLowerCase().trim() });
             } else if (trimmed.includes('@')) {
-              results.push({ name: '', email: trimmed.toLowerCase().replace(/[<>]/g, '').trim() });
+              // Handle bare email or group address (e.g. region1@seniorityhealthcare.com)
+              const emailMatch = trimmed.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+              if (emailMatch) {
+                results.push({ name: '', email: emailMatch[1].toLowerCase().trim() });
+              }
             }
           }
           return results;
@@ -762,7 +768,7 @@ router.get('/contacts', requireAuth, async (req, res) => {
 
         // Scan recent sent messages for recipient addresses
         try {
-          const sentList = await gm.users.messages.list({ userId: 'me', q: 'in:sent', maxResults: 200 });
+          const sentList = await gm.users.messages.list({ userId: 'me', q: 'in:sent', maxResults: 500 });
           if (sentList.data.messages) {
             const batched = await Promise.allSettled(
               sentList.data.messages.map(m =>
@@ -786,7 +792,7 @@ router.get('/contacts', requireAuth, async (req, res) => {
 
         // Scan recent received messages for sender addresses
         try {
-          const inboxList = await gm.users.messages.list({ userId: 'me', q: 'in:inbox', maxResults: 200 });
+          const inboxList = await gm.users.messages.list({ userId: 'me', q: 'in:inbox', maxResults: 500 });
           if (inboxList.data.messages) {
             const batched = await Promise.allSettled(
               inboxList.data.messages.map(m =>
@@ -805,6 +811,34 @@ router.get('/contacts', requireAuth, async (req, res) => {
             }
           }
         } catch(e) { console.log('[Contacts] Inbox scan error:', e.message); }
+
+        // Scan starred, important, and primary category emails for broader coverage
+        const broaderQueries = ['is:starred', 'is:important', 'category:primary'];
+        for (const q of broaderQueries) {
+          try {
+            const list = await gm.users.messages.list({ userId: 'me', q, maxResults: 200 });
+            if (list.data.messages) {
+              const batched = await Promise.allSettled(
+                list.data.messages.map(m =>
+                  gm.users.messages.get({ userId: 'me', id: m.id, format: 'METADATA', metadataHeaders: ['From', 'To', 'Cc'] })
+                )
+              );
+              for (const r of batched) {
+                if (r.status !== 'fulfilled') continue;
+                const hdrs = r.value.data.payload?.headers || [];
+                const fromH = hdrs.find(h => h.name === 'From')?.value || '';
+                const toH = hdrs.find(h => h.name === 'To')?.value || '';
+                const ccH = hdrs.find(h => h.name === 'Cc')?.value || '';
+                for (const addr of [...parseAddresses(fromH), ...parseAddresses(toH), ...parseAddresses(ccH)]) {
+                  if (!seen.has(addr.email) && !addr.email.includes('noreply') && !addr.email.includes('no-reply')) {
+                    seen.add(addr.email);
+                    contacts.push({ name: addr.name, email: addr.email, photo: null, org: '' });
+                  }
+                }
+              }
+            }
+          } catch(e) { console.log('[Contacts] Broader scan (' + q + ') error:', e.message); }
+        }
 
         // Also include contacts from CareCoord tickets
         const db = getDb();

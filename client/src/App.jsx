@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from './api';
 import Icon from './components/Icons';
 import { Avatar } from './components/ui';
@@ -101,6 +101,49 @@ export default function App() {
     setCurrentUser(null);
     setScreen('login');
   };
+
+  // ── Inactivity auto-logout (30 min) ──
+  const inactivityTimer = useRef(null);
+  const warningTimer = useRef(null);
+  const warningShown = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const WARN_MS = 25 * 60 * 1000;  // 25 minutes
+    const LOGOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+    const resetTimers = () => {
+      warningShown.current = false;
+      if (warningTimer.current) clearTimeout(warningTimer.current);
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+
+      warningTimer.current = setTimeout(() => {
+        warningShown.current = true;
+        showToast('Session expires in 5 minutes due to inactivity');
+      }, WARN_MS);
+
+      inactivityTimer.current = setTimeout(() => {
+        handleLogout();
+        showToast('Logged out due to 30 minutes of inactivity');
+      }, LOGOUT_MS);
+    };
+
+    const onActivity = () => resetTimers();
+
+    resetTimers();
+    window.addEventListener('mousemove', onActivity);
+    window.addEventListener('keydown', onActivity);
+    window.addEventListener('click', onActivity);
+
+    return () => {
+      window.removeEventListener('mousemove', onActivity);
+      window.removeEventListener('keydown', onActivity);
+      window.removeEventListener('click', onActivity);
+      if (warningTimer.current) clearTimeout(warningTimer.current);
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+  }, [currentUser?.id]);
 
   const cycleWorkStatus = async () => {
     const next = workStatus === 'active' ? 'busy' : workStatus === 'busy' ? 'inactive' : 'active';
