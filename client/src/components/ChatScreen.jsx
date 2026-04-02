@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api';
 import { Avatar } from './ui';
-import io from 'socket.io-client';
-
-const socket = io(window.location.origin, { transports: ['websocket', 'polling'] });
 
 function fmtTime(ts) {
   if (!ts) return '';
@@ -14,375 +11,312 @@ function fmtTime(ts) {
 
 export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, onClose, onRead, onOpenTicket }) {
   const [channels, setChannels] = useState([]);
-  const [activeChannel, setActiveChannel] = useState(null);
+  const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [msgText, setMsgText] = useState('');
+  const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [newType, setNewType] = useState('direct');
-  const [newName, setNewName] = useState('');
-  const [selectedMembers, setSelectedMembers] = useState([]);
-  const [typingUsers, setTypingUsers] = useState([]);
   const [searchUser, setSearchUser] = useState('');
-  const messagesEndRef = useRef(null);
-  const typingTimer = useRef(null);
-  const fileRef = useRef(null);
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [newName, setNewName] = useState('');
+  const endRef = useRef(null);
+  const pollRef = useRef(null);
+  const channelPollRef = useRef(null);
 
+  // ── Load channels ──
   const loadChannels = useCallback(() => {
-    api.chatChannels().then(d => { setChannels(d.channels || []); setLoading(false); }).catch(() => setLoading(false));
+    api.chatChannels().then(d => {
+      setChannels(d.channels || []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
+  // ── Load messages for active channel ──
+  const loadMessages = useCallback((chId) => {
+    if (!chId) return;
+    api.chatMessages(chId).then(d => {
+      setMessages(prev => {
+        const incoming = d.messages || [];
+        // Only update if changed (avoid scroll jumps)
+        if (incoming.length !== prev.length || (incoming.length > 0 && incoming[incoming.length - 1]?.id !== prev[prev.length - 1]?.id)) {
+          return incoming;
+        }
+        return prev;
+      });
+    }).catch(() => {});
+  }, []);
+
+  // ── Initial load + channel polling ──
   useEffect(() => {
     loadChannels();
-    // Poll for new channels every 5 seconds (Socket.IO unreliable on Render)
-    const poll = setInterval(loadChannels, 5000);
-    return () => clearInterval(poll);
-  }, []);
+    channelPollRef.current = setInterval(loadChannels, 4000);
+    return () => clearInterval(channelPollRef.current);
+  }, [loadChannels]);
 
+  // ── Message polling for active channel ──
   useEffect(() => {
-    if (!activeChannel) return;
-    socket.emit('join', activeChannel.id);
-    api.chatMessages(activeChannel.id).then(d => setMessages(d.messages || []));
-    api.chatMarkRead(activeChannel.id).then(() => { if (onRead) onRead(); });
+    if (!activeId) { setMessages([]); return; }
+    // Load immediately
+    loadMessages(activeId);
+    api.chatMarkRead(activeId).then(() => { if (onRead) onRead(); }).catch(() => {});
+    // Poll every 2 seconds
+    pollRef.current = setInterval(() => loadMessages(activeId), 2000);
+    return () => clearInterval(pollRef.current);
+  }, [activeId, loadMessages, onRead]);
 
-    const onMsg = (msg) => {
-      if (msg.channelId === activeChannel.id) {
-        setMessages(prev => [...prev, msg]);
-        api.chatMarkRead(activeChannel.id);
-      }
-      loadChannels();
-    };
-    const onTyping = (data) => {
-      if (data.userId !== currentUser.id) setTypingUsers(prev => prev.includes(data.name) ? prev : [...prev, data.name]);
-    };
-    const onStopTyping = (data) => {
-      setTypingUsers(prev => prev.filter(n => n !== data.name));
-    };
-
-    socket.on('chat:message', onMsg);
-    socket.on('chat:typing', onTyping);
-    socket.on('chat:stop-typing', onStopTyping);
-
-    // Poll for new messages every 3 seconds as fallback
-    const msgPoll = setInterval(() => {
-      api.chatMessages(activeChannel.id).then(d => {
-        setMessages(prev => {
-          const newMsgs = d.messages || [];
-          if (newMsgs.length !== prev.length) return newMsgs;
-          return prev;
-        });
-      }).catch(() => {});
-    }, 3000);
-
-    return () => {
-      clearInterval(msgPoll);
-      socket.emit('leave', activeChannel.id);
-      socket.off('chat:message', onMsg);
-      socket.off('chat:typing', onTyping);
-      socket.off('chat:stop-typing', onStopTyping);
-    };
-  }, [activeChannel?.id]);
-
+  // ── Auto scroll ──
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ── Send ──
   const handleSend = async () => {
-    if (!msgText.trim() || !activeChannel) return;
+    if (!text.trim() || !activeId || sending) return;
+    const msg = text;
+    setText('');
     setSending(true);
     try {
-      await api.chatSend(activeChannel.id, { body: msgText, type: 'text' });
-      setMsgText('');
-      socket.emit('stop-typing', { channelId: activeChannel.id, userId: currentUser.id });
-      // Immediately refresh messages so sent message appears
-      const d = await api.chatMessages(activeChannel.id);
-      setMessages(d.messages || []);
-      api.chatMarkRead(activeChannel.id);
+      await api.chatSend(activeId, { body: msg, type: 'text' });
+      loadMessages(activeId);
+      api.chatMarkRead(activeId).catch(() => {});
       loadChannels();
-    } catch(e) { showToast?.(e.message); }
+    } catch (e) { showToast?.(e.message); setText(msg); }
     setSending(false);
   };
 
+  // ── File send ──
+  const fileRef = useRef(null);
   const handleFile = async (e) => {
     const file = e.target.files[0];
-    if (!file || !activeChannel) return;
+    if (!file || !activeId) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64 = reader.result.split(',')[1];
       try {
-        await api.chatSend(activeChannel.id, { body: file.name, type: 'file', fileName: file.name, fileData: base64, fileMime: file.type });
-      } catch(e) { showToast?.(e.message); }
+        await api.chatSend(activeId, { body: file.name, type: 'file', fileName: file.name, fileData: reader.result.split(',')[1], fileMime: file.type });
+        loadMessages(activeId);
+        loadChannels();
+      } catch (e) { showToast?.(e.message); }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
-  const handleTyping = () => {
-    socket.emit('typing', { channelId: activeChannel.id, userId: currentUser.id, name: currentUser.name });
-    clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => {
-      socket.emit('stop-typing', { channelId: activeChannel.id, userId: currentUser.id });
-    }, 2000);
-  };
-
+  // ── Create channel ──
   const createChannel = async () => {
     if (selectedMembers.length === 0) return;
     try {
       const d = await api.chatCreateChannel({
         type: selectedMembers.length === 1 ? 'direct' : 'group',
-        name: selectedMembers.length > 1 ? newName || selectedMembers.map(id => allUsers.find(u => u.id === id)?.name).join(', ') : null,
+        name: selectedMembers.length > 1 ? (newName || null) : null,
         memberIds: selectedMembers,
       });
-      loadChannels();
       setShowNew(false);
       setSelectedMembers([]);
       setNewName('');
+      setSearchUser('');
+      loadChannels();
       // Open the new channel
-      setTimeout(() => {
-        api.chatChannels().then(data => {
-          const ch = (data.channels || []).find(c => c.id === d.channelId);
-          if (ch) setActiveChannel(ch);
-        });
-      }, 200);
-    } catch(e) { showToast?.(e.message); }
+      setActiveId(d.channelId);
+    } catch (e) { showToast?.(e.message); }
   };
 
-  const deleteChannel = async (ch, e) => {
+  // ── Delete channel (leave) ──
+  const leaveChannel = async (chId, e) => {
     e.stopPropagation();
-    if (!confirm('Remove this conversation from your list? Other participants will still have access.')) return;
+    if (!confirm('Remove this conversation from your list?')) return;
     try {
-      await api.chatDeleteChannel(ch.id);
-      setChannels(prev => prev.filter(c => c.id !== ch.id));
-      if (activeChannel?.id === ch.id) { setActiveChannel(null); setMessages([]); }
-      showToast?.('Conversation removed');
-    } catch(e) { showToast?.(e.message); }
+      await api.chatDeleteChannel(chId);
+      if (activeId === chId) { setActiveId(null); setMessages([]); }
+      loadChannels();
+    } catch (e) { showToast?.(e.message); }
   };
 
+  // ── Delete message ──
   const deleteMessage = async (msg) => {
     if (!confirm('Delete this message?')) return;
     try {
-      await api.chatDeleteMessage(activeChannel.id, msg.id);
+      await api.chatDeleteMessage(activeId, msg.id);
       setMessages(prev => prev.filter(m => m.id !== msg.id));
-    } catch(e) { showToast?.(e.message); }
+    } catch (e) { showToast?.(e.message); }
   };
 
-  // Listen for real-time message delete events
-  useEffect(() => {
-    const onMsgDeleted = (data) => {
-      setMessages(prev => prev.filter(m => m.id !== data.messageId));
-    };
-    socket.on('chat:msg-deleted', onMsgDeleted);
-    return () => { socket.off('chat:msg-deleted', onMsgDeleted); };
-  }, [activeChannel?.id]);
-
+  const activeChannel = channels.find(c => c.id === activeId);
   const otherUsers = (allUsers || []).filter(u => u.id !== currentUser.id);
-  const filteredUsers = searchUser ? otherUsers.filter(u => u.name.toLowerCase().includes(searchUser.toLowerCase()) || u.email.toLowerCase().includes(searchUser.toLowerCase())) : otherUsers;
+  const filteredUsers = searchUser ? otherUsers.filter(u => u.name?.toLowerCase().includes(searchUser.toLowerCase()) || u.email?.toLowerCase().includes(searchUser.toLowerCase())) : otherUsers;
 
-  const canDeleteChannel = (ch) => currentUser.role === 'admin' || currentUser.role === 'supervisor' || ch.members.find(m => m.id === currentUser.id);
+  const css = `.cc-msg:hover{background:#f5f7fa} .cc-ch:hover{background:#e8edf3} .cc-del{opacity:0;transition:opacity .15s} .cc-ch:hover .cc-del,.cc-msg:hover .cc-del{opacity:1}`;
 
-  const css = `.chat-msg:hover{background:#f5f7fa}.chat-ch:hover{background:#e8edf3}.chat-del{opacity:0;transition:opacity .15s}.chat-ch:hover .chat-del,.chat-msg:hover .chat-del{opacity:1}`;
-
+  // ── RENDER ──
   return (
     <div style={{ display: 'flex', flexDirection: isPanel ? 'column' : 'row', height: '100%', background: '#fff', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
       <style>{css}</style>
 
-      {/* Channel List */}
-      <div style={{ width: isPanel ? '100%' : 300, borderRight: isPanel ? 'none' : '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* ── Channel List ── */}
+      <div style={{ width: isPanel ? '100%' : 300, borderRight: isPanel ? 'none' : '1px solid #e2e8f0', display: (isPanel && (activeId || showNew)) ? 'none' : 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+        <div style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {isPanel && onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4 }}>✕</button>}
           <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Messages</span>
-          <button onClick={() => { setShowNew(true); setSearchUser(''); setSelectedMembers([]); setNewName(''); }} style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
+          <button onClick={() => { setShowNew(true); setSearchUser(''); setSelectedMembers([]); setNewName(''); }}
+            style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading && <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Loading...</div>}
+          {!loading && channels.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No conversations yet</div>}
           {channels.map(ch => (
-            <div key={ch.id} className="chat-ch" onClick={() => { setActiveChannel(ch); setTypingUsers([]); }}
-              style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
-                background: activeChannel?.id === ch.id ? '#e0ecf7' : 'transparent' }}>
+            <div key={ch.id} className="cc-ch" onClick={() => { setActiveId(ch.id); setShowNew(false); }}
+              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: activeId === ch.id ? '#e0ecf7' : 'transparent' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {ch.type === 'direct' && ch.members.length > 0 && (
-                  <Avatar user={ch.members.find(m => m.id !== currentUser.id) || ch.members[0]} size={36} />
-                )}
-                {ch.type === 'ticket' && (
+                {ch.type === 'direct' ? (
+                  <Avatar user={ch.members.find(m => m.id !== currentUser.id) || ch.members[0]} size={34} />
+                ) : ch.type === 'ticket' ? (
                   <div onClick={(e) => { if (ch.ticketId && onOpenTicket) { e.stopPropagation(); onOpenTicket(ch.ticketId, ch.name, true); } }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a73e8', fontSize: 16, cursor: ch.ticketId && onOpenTicket ? 'pointer' : 'default' }}
+                    style={{ width: 34, height: 34, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: ch.ticketId ? 'pointer' : 'default' }}
                     title={ch.ticketId ? 'Open ticket' : ''}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
                   </div>
-                )}
-                {ch.type !== 'direct' && ch.type !== 'ticket' && (
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1a5e9a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+                ) : (
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#1a5e9a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>
                     {ch.members.length}
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 14, fontWeight: ch.unread > 0 ? 700 : 500, color: '#1e3a4f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: ch.unread > 0 ? 700 : 500, color: '#1e3a4f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                      {canDeleteChannel(ch) && (
-                        <button className="chat-del" onClick={(e) => deleteChannel(ch, e)} title="Remove conversation"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
-                          onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                        </button>
-                      )}
-                      {ch.unread > 0 && <span style={{ background: '#d94040', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>{ch.unread}</span>}
+                      <button className="cc-del" onClick={(e) => leaveChannel(ch.id, e)} title="Leave"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8', fontSize: 12 }}
+                        onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>✕</button>
+                      {ch.unread > 0 && <span style={{ background: '#d94040', color: '#fff', fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99 }}>{ch.unread}</span>}
                     </div>
                   </div>
                   {ch.type === 'ticket' && ch.ticketId && onOpenTicket && (
                     <a onClick={(e) => { e.stopPropagation(); onOpenTicket(ch.ticketId, ch.name, true); }}
-                      style={{ fontSize: 11, color: '#1a73e8', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 2, fontWeight: 600 }}
+                      style={{ fontSize: 10, color: '#1a73e8', cursor: 'pointer', fontWeight: 600 }}
                       onMouseEnter={e => e.currentTarget.style.textDecoration='underline'} onMouseLeave={e => e.currentTarget.style.textDecoration='none'}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="#1a73e8"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
                       View Ticket
                     </a>
                   )}
                   {ch.lastMessage && (
-                    <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-                      {ch.lastMessage.senderName}: {ch.lastMessage.type === 'file' ? '📎 ' + ch.lastMessage.body : ch.lastMessage.body}
+                    <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                      {ch.lastMessage.senderName}: {ch.lastMessage.type === 'file' ? '📎 ' : ''}{ch.lastMessage.body}
                     </div>
                   )}
                 </div>
               </div>
             </div>
           ))}
-          {!loading && channels.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No conversations yet</div>
-          )}
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div style={{ flex: 1, display: isPanel && !activeChannel && !showNew ? 'none' : 'flex', flexDirection: 'column' }}>
-        {!activeChannel && !showNew ? (
+      {/* ── Chat Area ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {!activeId && !showNew ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
             <div style={{ textAlign: 'center' }}>
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="#cbd5e1"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-              <p style={{ marginTop: 12, fontSize: 14 }}>Select a conversation or start a new one</p>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="#cbd5e1"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+              <p style={{ marginTop: 8, fontSize: 13 }}>Select a conversation or start a new one</p>
             </div>
           </div>
         ) : showNew ? (
-          <div style={{ flex: 1, padding: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1e3a4f', margin: 0 }}>New Conversation</h2>
-              <button onClick={() => { setShowNew(false); setSelectedMembers([]); setNewName(''); if (isPanel && !activeChannel) {} }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b' }}>✕</button>
+          /* ── New Conversation ── */
+          <div style={{ flex: 1, padding: 20, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: '#1e3a4f', margin: 0 }}>New Conversation</h2>
+              <button onClick={() => setShowNew(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b' }}>✕</button>
             </div>
-
             {selectedMembers.length > 1 && (
               <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Group name (optional)"
-                style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, marginBottom: 16, outline: 'none' }} />
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, marginBottom: 12, outline: 'none' }} />
             )}
-
             <input value={searchUser} onChange={e => setSearchUser(e.target.value)} placeholder="Search people..."
-              style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, marginBottom: 12, outline: 'none' }} />
-
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, marginBottom: 10, outline: 'none' }} />
             {selectedMembers.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
                 {selectedMembers.map(id => {
-                  const u = allUsers.find(u => u.id === id);
-                  return u ? (
-                    <span key={id} onClick={() => setSelectedMembers(prev => prev.filter(x => x !== id))}
-                      style={{ background: '#e0ecf7', color: '#1e3a4f', padding: '4px 10px', borderRadius: 16, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {u.name} ✕
-                    </span>
-                  ) : null;
+                  const u = (allUsers || []).find(u => u.id === id);
+                  return u ? <span key={id} onClick={() => setSelectedMembers(prev => prev.filter(x => x !== id))}
+                    style={{ background: '#e0ecf7', color: '#1e3a4f', padding: '3px 8px', borderRadius: 14, fontSize: 11, cursor: 'pointer' }}>{u.name} ✕</span> : null;
                 })}
               </div>
             )}
-
-            <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+            <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
               {filteredUsers.map(u => (
                 <div key={u.id} onClick={() => setSelectedMembers(prev => prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id])}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: selectedMembers.includes(u.id) ? '#e0ecf7' : '#fff', borderBottom: '1px solid #f1f5f9' }}>
-                  <Avatar user={u} size={32} />
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>{u.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>{u.email}</div>
-                  </div>
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: selectedMembers.includes(u.id) ? '#e0ecf7' : '#fff', borderBottom: '1px solid #f1f5f9' }}>
+                  <Avatar user={u} size={30} />
+                  <div><div style={{ fontSize: 13, fontWeight: 500 }}>{u.name}</div><div style={{ fontSize: 11, color: '#64748b' }}>{u.email}</div></div>
                   {selectedMembers.includes(u.id) && <span style={{ marginLeft: 'auto', color: '#1a5e9a', fontWeight: 700 }}>✓</span>}
                 </div>
               ))}
             </div>
-
             <button onClick={createChannel} disabled={selectedMembers.length === 0}
-              style={{ marginTop: 16, padding: '10px 24px', background: selectedMembers.length ? '#1a5e9a' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: selectedMembers.length ? 'pointer' : 'default' }}>
+              style={{ marginTop: 14, padding: '8px 20px', background: selectedMembers.length ? '#1a5e9a' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: selectedMembers.length ? 'pointer' : 'default' }}>
               Start Conversation
             </button>
           </div>
         ) : (
+          /* ── Active Chat ── */
           <>
-            {/* Header */}
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10, background: '#fafbfc' }}>
-              <button onClick={() => setActiveChannel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4, display: isPanel ? 'block' : 'none' }}>←</button>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>{activeChannel.name}</span>
-              {activeChannel.type === 'ticket' && activeChannel.ticketId && onOpenTicket && (
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#fafbfc' }}>
+              {isPanel && <button onClick={() => setActiveId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 16, padding: 2 }}>←</button>}
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#1e3a4f', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeChannel?.name || 'Chat'}</span>
+              {activeChannel?.type === 'ticket' && activeChannel?.ticketId && onOpenTicket && (
                 <button onClick={() => onOpenTicket(activeChannel.ticketId, activeChannel.name, true)}
-                  style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d7f2', borderRadius: 12, padding: '2px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#d2e3fc'} onMouseLeave={e => e.currentTarget.style.background='#e8f0fe'}>
+                  style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d7f2', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
                   View Ticket
                 </button>
               )}
-              <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 8 }}>{activeChannel.members.length} members</span>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>{activeChannel?.members.length || 0} members</span>
             </div>
 
-            {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
               {messages.map((m, i) => {
                 const isMe = m.userId === currentUser.id;
-                const showAvatar = i === 0 || messages[i-1]?.userId !== m.userId;
+                const showName = i === 0 || messages[i - 1]?.userId !== m.userId;
                 return (
-                  <div key={m.id} className="chat-msg" style={{ display: 'flex', gap: 10, marginBottom: showAvatar ? 12 : 2, padding: '2px 4px', borderRadius: 8 }}>
-                    <div style={{ width: 32, flexShrink: 0 }}>
-                      {showAvatar && <Avatar user={{ name: m.senderName, avatar: m.senderAvatar }} size={32} />}
+                  <div key={m.id} className="cc-msg" style={{ display: 'flex', gap: 8, marginBottom: showName ? 10 : 2, padding: '2px 4px', borderRadius: 6 }}>
+                    <div style={{ width: 28, flexShrink: 0 }}>
+                      {showName && <Avatar user={{ name: m.senderName, avatar: m.senderAvatar }} size={28} />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-                      {showAvatar && (
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: isMe ? '#1a5e9a' : '#1e3a4f' }}>{m.senderName}</span>
-                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{fmtTime(m.createdAt)}</span>
+                      {showName && (
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 1 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: isMe ? '#1a5e9a' : '#1e3a4f' }}>{m.senderName}</span>
+                          <span style={{ fontSize: 10, color: '#94a3b8' }}>{fmtTime(m.createdAt)}</span>
                         </div>
                       )}
                       {(isMe || currentUser.role === 'admin' || currentUser.role === 'supervisor') && (
-                        <button className="chat-del" onClick={() => deleteMessage(m)} title="Delete message"
-                          style={{ position: 'absolute', top: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', color: '#94a3b8' }}
-                          onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                        </button>
+                        <button className="cc-del" onClick={() => deleteMessage(m)} title="Delete"
+                          style={{ position: 'absolute', top: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', padding: '1px 3px', color: '#94a3b8', fontSize: 10 }}
+                          onMouseEnter={e => e.currentTarget.style.color='#d94040'} onMouseLeave={e => e.currentTarget.style.color='#94a3b8'}>✕</button>
                       )}
                       {m.type === 'file' ? (
                         <a href={'data:' + (m.fileMime || 'application/octet-stream') + ';base64,' + (m.fileData || '')} download={m.fileName || m.body}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#1a5e9a', textDecoration: 'none' }}>
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: '#f1f5f9', borderRadius: 6, fontSize: 12, color: '#1a5e9a', textDecoration: 'none' }}>
                           📎 {m.body || m.fileName}
                         </a>
                       ) : (
-                        <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.body}</div>
+                        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.body}</div>
                       )}
                     </div>
                   </div>
                 );
               })}
-              <div ref={messagesEndRef} />
+              <div ref={endRef} />
             </div>
 
-            {/* Typing indicator */}
-            {typingUsers.length > 0 && (
-              <div style={{ padding: '4px 20px', fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
-                {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
-              </div>
-            )}
-
-            {/* Input */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#fafbfc' }}>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 6, background: '#fafbfc' }}>
               <input type="file" ref={fileRef} onChange={handleFile} style={{ display: 'none' }} />
-              <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: 4, color: '#64748b' }} title="Attach file">📎</button>
-              <input value={msgText} onChange={e => { setMsgText(e.target.value); handleTyping(); }}
+              <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: 2, color: '#64748b' }} title="Attach file">📎</button>
+              <input value={text} onChange={e => setText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 placeholder="Type a message..."
-                style={{ flex: 1, padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 24, fontSize: 14, outline: 'none', background: '#fff' }} />
-              <button onClick={handleSend} disabled={sending || !msgText.trim()}
-                style={{ background: msgText.trim() ? '#1a5e9a' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: '50%', width: 36, height: 36, cursor: msgText.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 13, outline: 'none', background: '#fff' }} />
+              <button onClick={handleSend} disabled={sending || !text.trim()}
+                style={{ background: text.trim() ? '#1a5e9a' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: text.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
             </div>
           </>
