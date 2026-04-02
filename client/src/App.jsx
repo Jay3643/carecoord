@@ -718,7 +718,7 @@ export default function App() {
             onMouseEnter={e => e.currentTarget.style.background = '#c0d0e4'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #dde8f2', overflow: 'hidden' }}>
-            <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} onOpenTicket={(id) => { setChatOpen(false); openTicket(id); }} />
+            <ChatScreen currentUser={currentUser} allUsers={allUsers} showToast={showToast} isPanel={true} onClose={() => setChatOpen(false)} onRead={() => api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {})} onOpenTicket={(id, name, showChat) => { setChatOpen(false); openTicket(id, name, showChat); }} />
           </div>
         </div>
       )}

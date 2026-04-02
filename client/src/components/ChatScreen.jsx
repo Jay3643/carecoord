@@ -29,7 +29,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     api.chatChannels().then(d => {
       setChannels(d.channels || []);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(e => { console.error('[Chat] loadChannels error:', e); setLoading(false); });
   }, []);
 
   // ── Load messages for active channel ──
@@ -81,7 +81,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
       loadMessages(activeId);
       api.chatMarkRead(activeId).catch(() => {});
       loadChannels();
-    } catch (e) { showToast?.(e.message); setText(msg); }
+    } catch (e) { console.error('[Chat] send error:', e); showToast?.(e.message); setText(msg); }
     setSending(false);
   };
 
@@ -118,7 +118,7 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
       loadChannels();
       // Open the new channel
       setActiveId(d.channelId);
-    } catch (e) { showToast?.(e.message); }
+    } catch (e) { console.error('[Chat] createChannel error:', e); showToast?.(e.message || 'Failed to create chat'); }
   };
 
   // ── Delete channel (leave) ──
