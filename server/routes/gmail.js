@@ -441,10 +441,8 @@ async function syncUser(db, row) {
             const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
             db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
               .run(msgId, myTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
-            // Reopen if closed, keep existing tags
-            const currentTicket = db.prepare('SELECT status FROM tickets WHERE id = ?').get(myTicketId);
-            const newStatus = currentTicket && toStr(currentTicket.status) === 'CLOSED' ? 'OPEN' : toStr(currentTicket?.status) || 'OPEN';
-            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, newStatus === 'CLOSED' ? 'OPEN' : newStatus, myTicketId);
+            // Inbound reply always sets status to OPEN (whether it was WAITING or CLOSED)
+            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', myTicketId);
           }
         } else {
           // No ticket for this user yet — create a new one and link
