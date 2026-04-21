@@ -44,7 +44,10 @@ export default function EmailAutocomplete({ value, onChange, placeholder, style,
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const query = (value || '').trim().toLowerCase();
+  // For multi-email support, only autocomplete against the text after the last comma
+  const rawValue = value || '';
+  const lastCommaIdx = rawValue.lastIndexOf(',');
+  const query = (lastCommaIdx >= 0 ? rawValue.slice(lastCommaIdx + 1) : rawValue).trim().toLowerCase();
 
   const matches = useMemo(() => {
     if (!query || query.length < 1) return [];
@@ -58,7 +61,9 @@ export default function EmailAutocomplete({ value, onChange, placeholder, style,
   const showDropdown = open && matches.length > 0;
 
   const selectContact = (c) => {
-    onChange(c.email);
+    // Append selected email after existing comma-separated emails, add trailing comma for next entry
+    const prefix = lastCommaIdx >= 0 ? rawValue.slice(0, lastCommaIdx + 1) + ' ' : '';
+    onChange(prefix + c.email + ', ');
     setOpen(false);
   };
 
@@ -82,7 +87,7 @@ export default function EmailAutocomplete({ value, onChange, placeholder, style,
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <input
         ref={inputRef}
-        type="email"
+        type="text"
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true); setHighlighted(0); }}
         onFocus={() => { if (query) setOpen(true); }}

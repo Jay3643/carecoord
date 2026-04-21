@@ -3,7 +3,7 @@ import { api } from '../api';
 import Icon from './Icons';
 
 export default function LoginScreen({ onLogin }) {
-  const [step, setStep] = useState('login'); // login, 2fa, setup_2fa, confirm_2fa, change_password
+  const [step, setStep] = useState('login'); // login, 2fa, setup_2fa, confirm_2fa, change_password, forgot, forgot_sent, reset
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -16,6 +16,27 @@ export default function LoginScreen({ onLogin }) {
   const [showManualKey, setShowManualKey] = useState(false);
   const [serverCode, setServerCode] = useState('');
   const [serverTime, setServerTime] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Check for reset token in URL on mount
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('resetToken');
+    if (token) {
+      setResetToken(token);
+      api.validateResetToken(token).then(d => {
+        setResetEmail(d.email);
+        setStep('reset');
+      }).catch(e => {
+        setError(e.message || 'Invalid or expired reset link');
+        setStep('login');
+      });
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -109,6 +130,41 @@ export default function LoginScreen({ onLogin }) {
     }
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      await api.forgotPassword(email.trim().toLowerCase());
+      setStep('forgot_sent');
+    } catch (e) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await api.resetPassword(resetToken, newPassword);
+      setResetSuccess(true);
+      setStep('login');
+      setNewPassword('');
+      setConfirmPassword('');
+      setError('');
+    } catch (e) {
+      setError(e.message || 'Failed to reset password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const inputStyle = {
     width: '100%', padding: '12px 16px', background: '#f0f4f9', border: '1px solid #c0d0e4',
     borderRadius: 8, color: '#1e3a4f', fontSize: 14, outline: 'none', boxSizing: 'border-box',
@@ -150,9 +206,99 @@ export default function LoginScreen({ onLogin }) {
 
             {error && <div style={{ color: '#d94040', fontSize: 12, marginBottom: 16, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
 
+            {resetSuccess && <div style={{ color: '#16a34a', fontSize: 12, marginBottom: 16, textAlign: 'center', fontWeight: 500 }}>Password reset successfully. Sign in with your new password.</div>}
+
             <button type="submit" disabled={loading || !email.trim() || !password.trim()}
               style={btnStyle(!loading && email.trim() && password.trim())}>
               {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+
+            <button type="button" onClick={() => { setStep('forgot'); setError(''); setResetSuccess(false); }}
+              style={{ width: '100%', padding: '10px', background: 'none', border: 'none', color: '#1a5e9a', cursor: 'pointer', fontSize: 12, marginTop: 8, fontWeight: 500 }}>
+              Forgot Password?
+            </button>
+          </form>
+        )}
+
+        {/* ── FORGOT PASSWORD STEP ── */}
+        {step === 'forgot' && (
+          <form onSubmit={handleForgotPassword}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#1e3a4f', marginBottom: 4 }}>Forgot Password</h2>
+              <p style={{ fontSize: 13, color: '#6b8299' }}>Enter your email and we'll send you a reset link</p>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', display: 'block', marginBottom: 6 }}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@seniorityhealthcare.com" style={inputStyle} autoFocus />
+            </div>
+
+            {error && <div style={{ color: '#d94040', fontSize: 12, marginBottom: 16, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
+
+            <button type="submit" disabled={loading || !email.trim()}
+              style={btnStyle(!loading && email.trim())}>
+              {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+
+            <button type="button" onClick={() => { setStep('login'); setError(''); }}
+              style={{ width: '100%', padding: '10px', background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', fontSize: 12, marginTop: 12 }}>
+              ← Back to sign in
+            </button>
+          </form>
+        )}
+
+        {/* ── FORGOT PASSWORD SENT ── */}
+        {step === 'forgot_sent' && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 12, background: '#e8f8ee', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Icon name="check" size={24} />
+              </div>
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#1e3a4f', marginBottom: 4 }}>Check Your Email</h2>
+              <p style={{ fontSize: 13, color: '#6b8299', lineHeight: 1.5 }}>
+                If an account exists for <strong>{email}</strong>, we've sent a password reset link. Check your inbox and click the link to reset your password.
+              </p>
+              <p style={{ fontSize: 12, color: '#8a9fb0', marginTop: 12 }}>The link expires in 1 hour.</p>
+            </div>
+
+            <button type="button" onClick={() => { setStep('login'); setError(''); }}
+              style={{ ...btnStyle(true), background: '#dde8f2', color: '#1a5e9a' }}>
+              Back to Sign In
+            </button>
+          </div>
+        )}
+
+        {/* ── RESET PASSWORD STEP ── */}
+        {step === 'reset' && (
+          <form onSubmit={handleResetPassword}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: '#1e3a4f', marginBottom: 4 }}>Set New Password</h2>
+              <p style={{ fontSize: 13, color: '#6b8299' }}>Enter a new password for <strong>{resetEmail}</strong></p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', display: 'block', marginBottom: 6 }}>New Password</label>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                placeholder="At least 8 characters" style={inputStyle} autoFocus />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#6b8299', display: 'block', marginBottom: 6 }}>Confirm Password</label>
+              <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Repeat your password" style={inputStyle} />
+            </div>
+
+            {error && <div style={{ color: '#d94040', fontSize: 12, marginBottom: 16, textAlign: 'center', fontWeight: 500 }}>{error}</div>}
+
+            <button type="submit" disabled={loading || newPassword.length < 8 || newPassword !== confirmPassword}
+              style={btnStyle(!loading && newPassword.length >= 8 && newPassword === confirmPassword)}>
+              {loading ? 'Resetting...' : 'Reset Password'}
+            </button>
+
+            <button type="button" onClick={() => { setStep('login'); setError(''); setNewPassword(''); setConfirmPassword(''); }}
+              style={{ width: '100%', padding: '10px', background: 'none', border: 'none', color: '#6b8299', cursor: 'pointer', fontSize: 12, marginTop: 12 }}>
+              ← Back to sign in
             </button>
           </form>
         )}

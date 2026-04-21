@@ -13,7 +13,8 @@
     "seed": "cd server && node seed.js"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "puppeteer": "^24.39.1"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

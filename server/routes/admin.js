@@ -126,11 +126,23 @@ router.post('/users/:id/regions', requireAuth, requireAdmin, (req, res) => {
   const { regionIds } = req.body;
   if (!Array.isArray(regionIds)) return res.status(400).json({ error: 'regionIds must be an array' });
 
+  // Find which regions the user is being removed from
+  const oldRegions = db.prepare('SELECT region_id FROM user_regions WHERE user_id = ?').all(req.params.id).map(r => r.region_id);
+  const removedRegions = oldRegions.filter(r => !regionIds.includes(r));
+
   db.prepare('DELETE FROM user_regions WHERE user_id = ?').run(req.params.id);
   const ins = db.prepare('INSERT INTO user_regions (user_id, region_id) VALUES (?, ?)');
   regionIds.forEach(rId => ins.run(req.params.id, rId));
-  saveDb();
 
+  // Unassign tickets in removed regions so they return to the queue
+  if (removedRegions.length > 0) {
+    for (const rid of removedRegions) {
+      db.prepare("UPDATE tickets SET assignee_user_id = NULL, assigned_at = NULL WHERE assignee_user_id = ? AND region_id = ? AND status != 'CLOSED'")
+        .run(req.params.id, rid);
+    }
+  }
+
+  saveDb();
   addAudit(db, req.user.id, 'regions_updated', 'user', req.params.id, 'Regions set to: ' + regionIds.join(', '));
   res.json({ success: true, regionIds });
 });

@@ -401,8 +401,14 @@ router.post('/:id/status', requireAuth, (req, res) => {
   db.prepare('UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, close_reason_id = ?, locked_closed = ? WHERE id = ?')
     .run(status, Date.now(), status === 'CLOSED' ? Date.now() : null, closeReasonId || null, status === 'CLOSED' ? 1 : 0, req.params.id);
 
-  // When closing: archive the chat channel — save messages to notes, then remove the channel
+  // When closing: stop any running clocks and archive the chat channel
   if (status === 'CLOSED') {
+    // Stop any running clocks on this ticket
+    const runningClocks = db.prepare('SELECT id, user_id, started_at FROM time_entries WHERE ticket_id = ? AND stopped_at IS NULL').all(req.params.id);
+    for (const clock of runningClocks) {
+      const dur = Date.now() - clock.started_at;
+      db.prepare('UPDATE time_entries SET stopped_at = ?, duration_ms = ? WHERE id = ?').run(Date.now(), dur, toStr(clock.id));
+    }
     const chatChannel = db.prepare("SELECT id FROM chat_channels WHERE ticket_id = ? AND type = 'ticket'").get(req.params.id);
     if (chatChannel) {
       const chId = toStr(chatChannel.id);
@@ -567,20 +573,142 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
   saveDb();
   addAudit(db, req.user.id, 'reply_all_sent', 'ticket', req.params.id, 'Reply All to ' + (linkedIds.length + 1) + ' tickets');
 
-  // Send via Gmail (same as normal reply)
+  // Save reply attachments to DB
+  if (replyAttachments && replyAttachments.length > 0) {
+    const insAtt = db.prepare('INSERT INTO attachments (id, ticket_id, filename, data, message_id, mime_type, size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const att of replyAttachments) {
+      insAtt.run(uuid(), req.params.id, att.name, att.data, msgId, att.mimeType || 'application/octet-stream', att.size || 0);
+    }
+  }
+
+  // Send via Gmail to ALL external participants across main + linked tickets
   try {
     const gmailAuth = getGmailAuth(req.user.id);
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
-      const toAddr = extP[0] || '';
+      // Collect all external participants from main ticket + linked tickets
+      const allRecipients = new Set(extP);
+      for (const lid of linkedIds) {
+        const lt = db.prepare('SELECT external_participants FROM tickets WHERE id = ?').get(lid);
+        if (lt) {
+          const lep = JSON.parse(toStr(lt.external_participants) || '[]');
+          lep.forEach(e => allRecipients.add(e));
+        }
+      }
+      // Remove sender from recipients
+      allRecipients.delete(gmailAuth.email);
+      const toAddr = Array.from(allRecipients).join(', ') || '';
       const CRLF = '\r\n';
-      const emailLines = ['From: ' + (gmailAuth.email || fromAddr), 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
-      const raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      const senderEmail = gmailAuth.email || fromAddr;
+
+      let raw;
+      if (replyAttachments && replyAttachments.length > 0) {
+        const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const headers = [
+          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject,
+          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+        ];
+        let mimeBody = headers.join(CRLF) + CRLF + CRLF;
+        mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
+        for (const att of replyAttachments) {
+          mimeBody += '--' + boundary + CRLF;
+          mimeBody += 'Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Disposition: attachment; filename="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Transfer-Encoding: base64' + CRLF + CRLF;
+          mimeBody += att.data + CRLF + CRLF;
+        }
+        mimeBody += '--' + boundary + '--';
+        raw = Buffer.from(mimeBody).toString('base64url');
+      } else {
+        const emailLines = ['From: ' + senderEmail, 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
+        raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      }
       await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
     }
   } catch(e) { console.error('[Gmail] Reply-all send failed:', e.message); }
 
   res.json({ sent: linkedIds.length + 1 });
+});
+
+// Forward ticket to a new recipient
+router.post('/:id/forward', requireAuth, async (req, res) => {
+  const db = getDb();
+  const { toEmail, body: fwdBody, attachments: fwdAttachments } = req.body;
+  if (!toEmail?.trim()) return res.status(400).json({ error: 'Recipient email required' });
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Not found' });
+  const region = db.prepare('SELECT * FROM regions WHERE id = ?').get(ticket.region_id);
+  const aliases = JSON.parse(region?.routing_aliases || '[]');
+  const fromAddr = aliases[0] || 'intake@carecoord.org';
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+
+  // Build forwarded message body with original messages
+  const allMsgs = db.prepare('SELECT * FROM messages WHERE ticket_id = ? ORDER BY sent_at ASC').all(req.params.id);
+  let forwardedContent = (fwdBody || '').trim();
+  forwardedContent += '\n\n---------- Forwarded message ----------\n';
+  forwardedContent += 'Subject: ' + toStr(ticket.subject) + '\n\n';
+  for (const msg of allMsgs) {
+    const dir = toStr(msg.direction) === 'inbound' ? 'From' : 'Sent by';
+    forwardedContent += dir + ': ' + toStr(msg.from_address) + ' (' + new Date(msg.sent_at).toLocaleString() + ')\n';
+    forwardedContent += toStr(msg.body_text) + '\n\n---\n\n';
+  }
+  const fullBody = forwardedContent + '\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
+
+  const msgId = uuid();
+  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(msgId, req.params.id, fromAddr, JSON.stringify([toEmail.trim()]), 'Fwd: ' + toStr(ticket.subject), fullBody, Date.now(), 'msg-fwd-' + Date.now(), req.user.id, Date.now());
+
+  if (fwdAttachments && fwdAttachments.length > 0) {
+    const insAtt = db.prepare('INSERT INTO attachments (id, ticket_id, filename, data, message_id, mime_type, size) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const att of fwdAttachments) {
+      insAtt.run(uuid(), req.params.id, att.name, att.data, msgId, att.mimeType || 'application/octet-stream', att.size || 0);
+    }
+  }
+
+  // Add the forwarded-to address to external participants
+  const extP = JSON.parse(ticket.external_participants || '[]');
+  if (!extP.includes(toEmail.trim())) {
+    extP.push(toEmail.trim());
+    db.prepare('UPDATE tickets SET external_participants = ? WHERE id = ?').run(JSON.stringify(extP), req.params.id);
+  }
+  db.prepare('UPDATE tickets SET last_activity_at = ? WHERE id = ?').run(Date.now(), req.params.id);
+  saveDb();
+
+  // Send via Gmail
+  try {
+    const gmailAuth = getGmailAuth(req.user.id);
+    if (gmailAuth) {
+      const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
+      const senderEmail = gmailAuth.email || fromAddr;
+      const CRLF = '\r\n';
+      let raw;
+      if (fwdAttachments && fwdAttachments.length > 0) {
+        const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const headers = [
+          'From: ' + senderEmail, 'To: ' + toEmail.trim(), 'Subject: Fwd: ' + toStr(ticket.subject),
+          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+        ];
+        let mimeBody = headers.join(CRLF) + CRLF + CRLF;
+        mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
+        for (const att of fwdAttachments) {
+          mimeBody += '--' + boundary + CRLF;
+          mimeBody += 'Content-Type: ' + (att.mimeType || 'application/octet-stream') + '; name="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Disposition: attachment; filename="' + att.name + '"' + CRLF;
+          mimeBody += 'Content-Transfer-Encoding: base64' + CRLF + CRLF;
+          mimeBody += att.data + CRLF + CRLF;
+        }
+        mimeBody += '--' + boundary + '--';
+        raw = Buffer.from(mimeBody).toString('base64url');
+      } else {
+        const emailLines = ['From: ' + senderEmail, 'To: ' + toEmail.trim(), 'Subject: Fwd: ' + toStr(ticket.subject), 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
+        raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
+      }
+      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+    }
+  } catch(e) { console.error('[Gmail] Forward failed:', e.message); }
+
+  addAudit(db, req.user.id, 'forwarded', 'ticket', req.params.id, 'Forwarded to ' + toEmail.trim());
+  res.json({ success: true });
 });
 
 router.post('/:id/notes', requireAuth, (req, res) => {

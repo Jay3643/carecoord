@@ -4,7 +4,7 @@ import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar, getUserColor } from './ui';
 
-export default function QueueScreen({ title, mode, currentUser, regions, allUsers, onOpenTicket, showToast, refreshCounts }) {
+export default function QueueScreen({ title, mode, currentUser, regions, allUsers, allTagsList, onOpenTicket, showToast, refreshCounts }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -12,12 +12,21 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   const [expandedGroups, setExpandedGroups] = useState(new Set());
   const PAGE_SIZE = 50;
   const [selectedRegion, setSelectedRegion] = useState('all');
-  const [queueFilter, setQueueFilter] = useState('all');
+  const [queueFilter, setQueueFilter] = useState('open');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState(null);
   const [selectedTag, setSelectedTag] = useState('all');
   const [tagSortMode, setTagSortMode] = useState('filter'); // 'filter' or 'group'
   const [showPullModal, setShowPullModal] = useState(false);
+  const [inlineTagTicketId, setInlineTagTicketId] = useState(null);
+
+  const handleInlineAddTag = async (ticketId, tagId) => {
+    try {
+      await api.addTag(ticketId, tagId);
+      setInlineTagTicketId(null);
+      fetchTickets();
+    } catch (e) { showToast?.(e.message); }
+  };
 
   const userRegions = useMemo(() =>
     regions.filter(r => currentUser.regionIds.includes(r.id)),
@@ -191,24 +200,6 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
       }
     }
 
-    // For supervisors/admins in region mode, add empty groups for all users in the region
-    if (mode === 'region' && (currentUser.role === 'supervisor' || currentUser.role === 'admin') && allUsers) {
-      const regionUserIds = new Set();
-      // Get users for the selected region (or all user regions)
-      for (const u of allUsers) {
-        if (u.id === currentUser.id) continue;
-        regionUserIds.add(u.id);
-      }
-      for (const uid of regionUserIds) {
-        if (!groups[uid]) {
-          const u = allUsers.find(x => x.id === uid);
-          if (u) {
-            groups[uid] = { key: uid, assignee: u, label: u.name, tickets: [], pendingSubgroups: {} };
-          }
-        }
-      }
-    }
-
     // Sort: unassigned first, then by assignee name
     const sorted = Object.values(groups).sort((a, b) => {
       if (a.key === '_unassigned') return -1;
@@ -375,6 +366,24 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                 )}
               </div>
             )}
+            <button onClick={async () => {
+              if (selectedTicketIds.size === 0) return;
+              if (!window.confirm('Close ' + selectedTicketIds.size + ' selected ticket(s)?')) return;
+              const ids = Array.from(selectedTicketIds);
+              let closed = 0;
+              let errors = 0;
+              for (const tid of ids) {
+                try { await api.changeStatus(tid, 'CLOSED'); closed++; } catch(e) { errors++; console.error('Failed to close', tid, e); }
+              }
+              showToast?.(closed + ' ticket(s) closed' + (errors > 0 ? ', ' + errors + ' failed' : ''));
+              setSelectedTicketIds(new Set());
+              setShowReassignDropdown(false);
+              fetchTickets();
+              if (refreshCounts) refreshCounts();
+            }}
+              style={{ padding: '4px 14px', background: '#d94040', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+              Close Selected
+            </button>
             <button onClick={() => { setSelectedTicketIds(new Set()); setShowReassignDropdown(false); }}
               style={{ padding: '4px 14px', background: '#dde8f2', color: '#5a7a8a', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>
               Cancel
@@ -408,11 +417,25 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                         <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                         <StatusBadge status={ticket.status} />
                         {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                        <span onClick={e => { e.stopPropagation(); setInlineTagTicketId(inlineTagTicketId === ticket.id ? null : ticket.id); }}
+                          style={{ fontSize: 10, color: '#6b8299', cursor: 'pointer', padding: '1px 4px', borderRadius: 3, border: '1px dashed #c0d0e4' }}
+                          title="Add tag">+</span>
                         {!ticket.assignee_user_id && ticket.syncedFor && (() => {
                           const c = getUserColor(ticket.syncedFor);
                           return <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 4, background: c + '18', color: c, border: '1px solid ' + c + '40' }}>To: {ticket.syncedFor.name}</span>;
                         })()}
                       </div>
+                      {inlineTagTicketId === ticket.id && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 3 }}>
+                          {(allTagsList || []).filter(t => !(ticket.tags || []).some(tt => tt.id === t.id)).map(tag => (
+                            <span key={tag.id} onClick={e => { e.stopPropagation(); handleInlineAddTag(ticket.id, tag.id); }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', background: (tag.color || '#6b8299') + '18', border: '1px solid ' + (tag.color || '#6b8299') + '40', borderRadius: 4, fontSize: 10, color: tag.color || '#6b8299', cursor: 'pointer', fontWeight: 500 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color || '#6b8299' }} />
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                       <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {(ticket.external_participants || [])[0]}
@@ -508,6 +531,9 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                                     <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                                     <StatusBadge status={ticket.status} />
                                     {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                                    <span onClick={e => { e.stopPropagation(); setInlineTagTicketId(inlineTagTicketId === ticket.id ? null : ticket.id); }}
+                                      style={{ fontSize: 10, color: '#6b8299', cursor: 'pointer', padding: '1px 4px', borderRadius: 3, border: '1px dashed #c0d0e4' }}
+                                      title="Add tag">+</span>
                                     {ticket.syncedForUsers && ticket.syncedForUsers.length > 1 && (
                                       <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}
                                         title={ticket.syncedForUsers.map(u => u.name).join(', ')}>
@@ -515,6 +541,17 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                                       </span>
                                     )}
                                   </div>
+                                  {inlineTagTicketId === ticket.id && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 3 }}>
+                                      {(allTagsList || []).filter(t => !(ticket.tags || []).some(tt => tt.id === t.id)).map(tag => (
+                                        <span key={tag.id} onClick={e => { e.stopPropagation(); handleInlineAddTag(ticket.id, tag.id); }}
+                                          style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', background: (tag.color || '#6b8299') + '18', border: '1px solid ' + (tag.color || '#6b8299') + '40', borderRadius: 4, fontSize: 10, color: tag.color || '#6b8299', cursor: 'pointer', fontWeight: 500 }}>
+                                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color || '#6b8299' }} />
+                                          {tag.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                                   <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(ticket.external_participants || [])[0]}</div>
                                 </div>
@@ -553,7 +590,21 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                             <span style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: '#6b8299' }}>{ticket.id.toUpperCase()}</span>
                             <StatusBadge status={ticket.status} />
                             {tags.map(tag => <TagPill key={tag.id} tag={tag} />)}
+                            <span onClick={e => { e.stopPropagation(); setInlineTagTicketId(inlineTagTicketId === ticket.id ? null : ticket.id); }}
+                              style={{ fontSize: 10, color: '#6b8299', cursor: 'pointer', padding: '1px 4px', borderRadius: 3, border: '1px dashed #c0d0e4' }}
+                              title="Add tag">+</span>
                           </div>
+                          {inlineTagTicketId === ticket.id && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 3 }}>
+                              {(allTagsList || []).filter(t => !(ticket.tags || []).some(tt => tt.id === t.id)).map(tag => (
+                                <span key={tag.id} onClick={e => { e.stopPropagation(); handleInlineAddTag(ticket.id, tag.id); }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', background: (tag.color || '#6b8299') + '18', border: '1px solid ' + (tag.color || '#6b8299') + '40', borderRadius: 4, fontSize: 10, color: tag.color || '#6b8299', cursor: 'pointer', fontWeight: 500 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: tag.color || '#6b8299' }} />
+                                  {tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
                           <div style={{ fontSize: 11, color: '#6b8299', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {(ticket.external_participants || [])[0]}

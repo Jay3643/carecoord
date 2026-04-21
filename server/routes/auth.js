@@ -208,6 +208,103 @@ router.post('/confirm-2fa', (req, res) => {
   });
 });
 
+// ── Forgot Password ─────────────────────────────────────────────────────────
+router.post('/forgot-password', async (req, res) => {
+  const db = getDb();
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1').get(email.trim().toLowerCase());
+  // Always return success to avoid email enumeration
+  if (!user) return res.json({ ok: true });
+
+  // Generate reset token (1 hour expiry)
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = Date.now() + 60 * 60 * 1000;
+  db.prepare('INSERT OR REPLACE INTO sessions (sid, user_id, expires) VALUES (?, ?, ?)').run('reset-' + token, toStr(user.id), expires);
+  saveDb();
+
+  // Send reset email via Gmail
+  const appUrl = process.env.APP_URL || 'https://carecoord-o3en.onrender.com';
+  const resetLink = appUrl + '?resetToken=' + token;
+
+  try {
+    const { google } = require('googleapis');
+    const senderEmail = 'drhopkins@seniorityhealthcare.com';
+    const saAuth = getServiceAuth(senderEmail);
+    const gmailTokens = !saAuth ? db.prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(toStr(user.id)) : null;
+    if (saAuth || gmailTokens) {
+      let gm;
+      if (saAuth) {
+        gm = google.gmail({ version: 'v1', auth: saAuth });
+      } else {
+        const oauth2 = new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI);
+        oauth2.setCredentials({ access_token: toStr(gmailTokens.access_token), refresh_token: toStr(gmailTokens.refresh_token) });
+        gm = google.gmail({ version: 'v1', auth: oauth2 });
+      }
+
+      const emailBody = [
+        'From: ' + senderEmail,
+        'To: ' + toStr(user.email),
+        'Subject: Reset your Seniority Connect password',
+        'Content-Type: text/html; charset=utf-8',
+        'MIME-Version: 1.0',
+        '',
+        '<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">',
+        '  <h2 style="color: #1e3a4f;">Password Reset</h2>',
+        '  <p style="color: #5f6368; font-size: 15px; line-height: 1.6;">Hi ' + toStr(user.name) + ',</p>',
+        '  <p style="color: #5f6368; font-size: 15px; line-height: 1.6;">We received a request to reset your Seniority Connect password. Click the button below to set a new password.</p>',
+        '  <div style="text-align: center; margin: 32px 0;">',
+        '    <a href="' + resetLink + '" style="background: #1a5e9a; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">Reset Password</a>',
+        '  </div>',
+        '  <p style="color: #999; font-size: 13px;">This link expires in 1 hour. If you didn\'t request this, you can safely ignore this email.</p>',
+        '  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">',
+        '  <p style="color: #bbb; font-size: 11px;">Seniority Healthcare — Seniority Connect</p>',
+        '</div>',
+      ].join('\r\n');
+
+      const raw = Buffer.from(emailBody).toString('base64url');
+      await gm.users.messages.send({ userId: 'me', requestBody: { raw } });
+      console.log('[Auth] Password reset email sent to', toStr(user.email));
+    } else {
+      console.log('[Auth] No Gmail auth available for reset email — token still valid');
+    }
+  } catch (e) {
+    console.log('[Auth] Reset email send failed:', e.message);
+  }
+
+  res.json({ ok: true });
+});
+
+// ── Validate reset token ────────────────────────────────────────────────────
+router.get('/reset-password/:token', (req, res) => {
+  const db = getDb();
+  const session = db.prepare('SELECT * FROM sessions WHERE sid = ? AND expires > ?').get('reset-' + req.params.token, Date.now());
+  if (!session) return res.status(400).json({ error: 'Invalid or expired reset link' });
+  const user = db.prepare('SELECT email, name FROM users WHERE id = ?').get(session.user_id);
+  if (!user) return res.status(400).json({ error: 'User not found' });
+  res.json({ email: toStr(user.email), name: toStr(user.name) });
+});
+
+// ── Set new password via reset token ────────────────────────────────────────
+router.post('/reset-password/:token', async (req, res) => {
+  const db = getDb();
+  const { password } = req.body;
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+  const session = db.prepare('SELECT * FROM sessions WHERE sid = ? AND expires > ?').get('reset-' + req.params.token, Date.now());
+  if (!session) return res.status(400).json({ error: 'Invalid or expired reset link' });
+
+  const hash = await bcrypt.hash(password, 12);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, session.user_id);
+  // Delete the reset token so it can't be reused
+  db.prepare('DELETE FROM sessions WHERE sid = ?').run('reset-' + req.params.token);
+  saveDb();
+
+  console.log('[Auth] Password reset completed for user', session.user_id);
+  res.json({ ok: true });
+});
+
 // ── Change password (for temp passwords) ─────────────────────────────────────
 
 router.post('/change-password', async (req, res) => {

@@ -44,6 +44,8 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [regionCoordinators, setRegionCoordinators] = useState([]);
   const [sending, setSending] = useState(false);
   const [replyAttachments, setReplyAttachments] = useState([]);
+  const [forwardTo, setForwardTo] = useState('');
+  const [forwardBody, setForwardBody] = useState('');
   const fileInputRef = useRef(null);
   const timelineRef = useRef(null);
   const [discussionMsgs, setDiscussionMsgs] = useState([]);
@@ -269,10 +271,14 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   };
 
   useEffect(() => {
-    if (timelineRef.current) {
-      timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-    }
-  }, [messages, notes]);
+    // Use a short delay to ensure the DOM has rendered after loading completes
+    const timer = setTimeout(() => {
+      if (timelineRef.current) {
+        timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [messages, notes, loading]);
 
   const timeline = useMemo(() => {
     const items = [
@@ -313,6 +319,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setCloseReasonId('');
       setCloseComment('');
       showToast(`Status changed to ${status.replace(/_/g, ' ')}`);
+      if (status === 'CLOSED') {
+        onBack();
+      }
     } catch (e) {
       showToast(e.message);
     }
@@ -332,6 +341,25 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       }
       setReplyText('');
       setReplyAttachments([]);
+      await fetchData();
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleForward = async () => {
+    if (!forwardTo.trim() || sending) return;
+    setSending(true);
+    try {
+      const atts = replyAttachments.length > 0 ? replyAttachments : undefined;
+      await api.forwardTicket(ticketId, forwardTo.trim(), forwardBody, atts);
+      showToast('Forwarded to ' + forwardTo.trim());
+      setForwardTo('');
+      setForwardBody('');
+      setReplyAttachments([]);
+      setActiveTab('reply');
       await fetchData();
     } catch (e) {
       showToast(e.message);
@@ -465,6 +493,16 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                     </div>
                     <span style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: '#1a5e9a', background: '#1a5e9a18', padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>Inbound</span>
                   </div>
+                  {((m.to_addresses && m.to_addresses.length > 0) || (m.cc_addresses && m.cc_addresses.length > 0)) && (
+                    <div style={{ marginLeft: 36, marginBottom: 4, fontSize: 11, color: '#6b8299' }}>
+                      {m.to_addresses && m.to_addresses.length > 0 && (
+                        <div><span style={{ fontWeight: 600 }}>To:</span> {m.to_addresses.join(', ')}</div>
+                      )}
+                      {m.cc_addresses && m.cc_addresses.length > 0 && (
+                        <div><span style={{ fontWeight: 600 }}>CC:</span> {m.cc_addresses.join(', ')}</div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ marginLeft: 36, padding: '14px 18px', background: '#dde8f2', borderRadius: '4px 12px 12px 12px', border: '1px solid #c0d0e4', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
                     <MessageBody text={m.body_text} />
                     {m.attachments && m.attachments.length > 0 && (
@@ -540,6 +578,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               <button onClick={() => setActiveTab('reply')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'reply' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'reply' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="send" size={12} /> Compose Reply
+              </button>
+              <button onClick={() => setActiveTab('forward')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'forward' ? '#c96a1b' : '#dde8f2', color: activeTab === 'forward' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                <Icon name="send" size={12} /> Forward
               </button>
               <button onClick={() => setActiveTab('note')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'note' ? '#c9963b' : '#dde8f2', color: activeTab === 'note' ? '#000' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 <Icon name="note" size={12} /> Internal Note
@@ -699,6 +740,26 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   </button>
                 </div>
               </div>
+            ) : activeTab === 'forward' ? (
+              <div>
+                <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#6b8299', flexShrink: 0 }}>To:</span>
+                    <input value={forwardTo} onChange={e => setForwardTo(e.target.value)}
+                      placeholder="recipient@example.com"
+                      style={{ flex: 1, padding: '8px 12px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', fontSize: 12, outline: 'none' }} />
+                  </div>
+                  <textarea value={forwardBody} onChange={e => setForwardBody(e.target.value)}
+                    placeholder="Add a message (optional)..."
+                    rows={2} style={{ width: '100%', padding: '10px 14px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 10, color: '#1e3a4f', fontSize: 13, resize: 'vertical', outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' }} />
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={handleForward} disabled={!forwardTo.trim() || sending}
+                      style={{ padding: '10px 20px', background: forwardTo.trim() && !sending ? '#c96a1b' : '#dde8f2', color: forwardTo.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: forwardTo.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                      {sending ? '...' : 'Forward'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : activeTab === 'reply' ? (
               <div>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -731,12 +792,12 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                       style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#1a5e9a' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
                       {sending ? '...' : 'Reply'}
                     </button>
-                    {ticket.linkedTickets && ticket.linkedTickets.length > 0 && (
+                    {(ticket.linkedTickets && ticket.linkedTickets.length > 0) || (ticket.external_participants && ticket.external_participants.length > 1) ? (
                       <button onClick={() => handleSendReply(true)} disabled={!replyText.trim() || sending}
                         style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#7c3aed' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
-                        {sending ? '...' : 'Reply All (' + (ticket.linkedTickets.length + 1) + ')'}
+                        {sending ? '...' : 'Reply All (' + ((ticket.linkedTickets?.length || 0) + (ticket.external_participants?.length || 1)) + ')'}
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>

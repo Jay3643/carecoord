@@ -25,6 +25,8 @@ export default function App() {
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [openTicketTabs, setOpenTicketTabs] = useState([]); // [{ id, subject }]
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previousScreen, setPreviousScreen] = useState('regionQueue');
+  const [ticketSourceScreen, setTicketSourceScreen] = useState('regionQueue');
   const [toast, setToast] = useState(null);
   const [showCompose, setShowCompose] = useState(false); // false | 'open' | 'minimized'
   const [composeDraft, setComposeDraft] = useState(null);
@@ -159,6 +161,10 @@ export default function App() {
 
   const [openTicketWithChat, setOpenTicketWithChat] = useState(null);
   const openTicket = (id, subject, showChat) => {
+    if (screen !== 'ticketDetail') {
+      setPreviousScreen(screen);
+      setTicketSourceScreen(screen);
+    }
     setSelectedTicketId(id);
     setScreen('ticketDetail');
     setOpenTicketWithChat(showChat ? id : null);
@@ -177,7 +183,7 @@ export default function App() {
           setSelectedTicketId(remaining[remaining.length - 1].id);
         } else {
           setSelectedTicketId(null);
-          setScreen('regionQueue');
+          setScreen(ticketSourceScreen || previousScreen || 'regionQueue');
         }
       }
       return remaining;
@@ -189,7 +195,7 @@ export default function App() {
     if (selectedTicketId) {
       closeTicketTab(selectedTicketId);
     } else {
-      setScreen('regionQueue');
+      setScreen(previousScreen || 'regionQueue');
     }
   };
 
@@ -265,20 +271,25 @@ export default function App() {
       <style>{chatBadgeStyle}</style>
       {/* Sidebar */}
       <aside style={{ width: sidebarCollapsed ? 64 : 240, background: '#f0f4f9', borderRight: '1px solid #dde8f2', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', overflow: 'hidden', flexShrink: 0 }}>
-        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', gap: 10, minHeight: 64 }}>
-          <img src="/ai-logo.jpg" alt="Seniority" style={{ width: sidebarCollapsed ? 32 : 28, height: sidebarCollapsed ? 32 : 28, borderRadius: 6, objectFit: 'contain' }} />
-          {!sidebarCollapsed && (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, lineHeight: 1.2 }}>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
-              <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>Connect</span>
-            </div>
+        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 16px', borderBottom: '1px solid #102f54', background: '#143d6b', display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', gap: sidebarCollapsed ? 0 : 10, minHeight: 64 }}>
+          {sidebarCollapsed ? (
+            <button onClick={() => setSidebarCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '100%' }}
+              title="Expand sidebar">
+              <img src="/ai-logo.jpg" alt="Seniority" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'contain' }} />
+              <Icon name="chevronRight" size={16} style={{ color: '#a8c8e8' }} />
+            </button>
+          ) : (
+            <>
+              <img src="/ai-logo.jpg" alt="Seniority" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'contain' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, lineHeight: 1.2 }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#ffffff', whiteSpace: 'nowrap' }}>Seniority Healthcare</span>
+                <span style={{ fontSize: 10, color: '#a8c8e8', fontWeight: 400, letterSpacing: 1, textTransform: 'uppercase' }}>Connect</span>
+              </div>
+              <button onClick={() => setSidebarCollapsed(true)} style={{ background: 'none', border: 'none', color: '#a8c8e8', cursor: 'pointer', padding: 4, flexShrink: 0 }}>
+                <Icon name="arrowLeft" size={16} />
+              </button>
+            </>
           )}
-          {sidebarCollapsed && (
-            <span style={{ fontWeight: 700, fontSize: 16, color: '#ffffff', margin: '0 auto' }}>SH</span>
-          )}
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{ background: 'none', border: 'none', color: '#a8c8e8', cursor: 'pointer', padding: 4, flexShrink: 0 }}>
-            <Icon name={sidebarCollapsed ? 'chevronRight' : 'arrowLeft'} size={16} />
-          </button>
         </div>
 
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 12px' }}>
@@ -396,7 +407,7 @@ export default function App() {
               );
             }
             if (item.key === '_user_manual') return (
-              <a key="_user_manual" href="/CareCoord-User-Manual.pdf" target="_blank" rel="noopener noreferrer" title="Seniority Connect User Manual"
+              <a key="_user_manual" href="/CareCoord-User-Manual.pdf" target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                   borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
                   cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
@@ -484,8 +495,8 @@ export default function App() {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                 borderRadius: 8, border: 'none',
-                background: (screen === item.key || (screen === 'ticketDetail' && item.key === 'regionQueue')) ? '#102f54' : 'transparent',
-                color: screen === item.key ? '#ffffff' : '#143d6b',
+                background: (screen === item.key || (screen === 'ticketDetail' && item.key === ticketSourceScreen)) ? '#102f54' : 'transparent',
+                color: (screen === item.key || (screen === 'ticketDetail' && item.key === ticketSourceScreen)) ? '#ffffff' : '#143d6b',
                 cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               }} title={item.label}>
@@ -573,10 +584,10 @@ export default function App() {
           </div>
         )}
         {screen === 'regionQueue' && (
-          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} allUsers={allUsers} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
+          <QueueScreen title="Region Queue" mode="region" currentUser={currentUser} regions={regions} allUsers={allUsers} allTagsList={allTags} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'personalQueue' && (
-          <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
+          <QueueScreen title="My Queue" mode="personal" currentUser={currentUser} regions={regions} allTagsList={allTags} onOpenTicket={openTicket} showToast={showToast} refreshCounts={refreshCounts} />
         )}
         {screen === 'ticketDetail' && selectedTicketId && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

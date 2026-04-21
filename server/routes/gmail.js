@@ -71,6 +71,19 @@ function getAuthForUser(userId) {
 function hdr(h, n) { const x = (h||[]).find(x => x.name.toLowerCase() === n.toLowerCase()); return x ? x.value : ''; }
 function body(payload) { let t='',h=''; (function w(p){ if(p.body&&p.body.data){ const d=Buffer.from(p.body.data,'base64').toString(); if(p.mimeType==='text/plain'&&!t)t=d; if(p.mimeType==='text/html')h=d; } if(p.parts)p.parts.forEach(w); })(payload); return h||t; }
 
+// Recursively find attachments in nested multipart structures (e.g. voicemail audio)
+function findAttachments(parts) {
+  const atts = [];
+  if (!parts) return atts;
+  for (const part of parts) {
+    if (part.filename && part.body && part.body.attachmentId) {
+      atts.push(part);
+    }
+    if (part.parts) atts.push(...findAttachments(part.parts));
+  }
+  return atts;
+}
+
 // ── Hidden label for archived coordinator emails ──
 const labelCache = {};
 async function getOrCreateLabel(gm, name) {
@@ -305,13 +318,15 @@ async function syncUser(db, row) {
 
   const syncState = db.prepare('SELECT last_sync_at, sync_start_date FROM email_sync_state WHERE user_id=?').get(uid);
   if (!syncState) {
-    db.prepare('INSERT OR REPLACE INTO email_sync_state (user_id, last_sync_at, sync_start_date) VALUES (?, ?, ?)').run(uid, Date.now(), '2026/03/07');
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+    db.prepare('INSERT OR REPLACE INTO email_sync_state (user_id, last_sync_at, sync_start_date) VALUES (?, ?, ?)').run(uid, Date.now(), today);
     saveDb();
-    console.log('[Sync]', toStr(row.email), 'initialized');
+    console.log('[Sync]', toStr(row.email), 'initialized with start date', today);
     return 0;
   }
 
-  const startDate = toStr(syncState.sync_start_date) || '2026/03/07';
+  const defaultToday = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+  const startDate = toStr(syncState.sync_start_date) || defaultToday;
   const defaultRid = toStr(regions[0].region_id);
   const archiveEmail = db.prepare("SELECT value FROM settings WHERE key='archive_email'").get();
   const archiveAddr = archiveEmail ? toStr(archiveEmail.value) : 'thinkprompted@gmail.com';
@@ -340,8 +355,16 @@ async function syncUser(db, row) {
     for (const m of list.data.messages) {
       scanned++;
 
-      // Already synced? Skip.
-      if (db.prepare('SELECT 1 FROM messages WHERE gmail_message_id=?').get(m.id)) continue;
+      // Already synced? Still try to hide from inbox (in case hide failed last time), then skip.
+      if (db.prepare('SELECT 1 FROM messages WHERE gmail_message_id=?').get(m.id)) {
+        try {
+          const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
+          const modifyReq = { removeLabelIds: ['INBOX', 'UNREAD'] };
+          if (hiddenLabelId) modifyReq.addLabelIds = [hiddenLabelId];
+          await gm.users.messages.modify({ userId: 'me', id: m.id, requestBody: modifyReq });
+        } catch(e) { /* already hidden or error — ignore */ }
+        continue;
+      }
 
       let msg;
       try { msg = await gm.users.messages.get({ userId: 'me', id: m.id, format: 'full' }); } catch(e) { continue; }
@@ -448,9 +471,13 @@ async function syncUser(db, row) {
           // No ticket for this user yet — create a new one and link
           const tid = generateTicketId(db, rid);
           const userStatus = userRow ? toStr(userRow.work_status) : 'active';
-          const assignTo = userStatus === 'active' ? uid : null;
+          const isActiveMR = userStatus === 'active';
+          const isBusyMR = userStatus === 'busy';
+          const assignTo = isActiveMR ? uid : null;
+          const syncForUidMR = isBusyMR ? null : uid;
+          const syncForIdsMR = isBusyMR ? '[]' : JSON.stringify([uid]);
           db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids,linked_ticket_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)')
-            .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null, uid, JSON.stringify([uid]), JSON.stringify([existingTicketId]));
+            .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null, syncForUidMR, syncForIdsMR, JSON.stringify([existingTicketId]));
           const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
           db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
             .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
@@ -483,16 +510,14 @@ async function syncUser(db, row) {
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
 
-        // Attachments
+        // Attachments (recursive to find nested audio/voicemail parts)
         try {
-          const parts = msg.data.payload.parts || [];
-          for (const part of parts) {
-            if (part.filename && part.body && part.body.attachmentId) {
-              const att = await gm.users.messages.attachments.get({ userId: 'me', messageId: m.id, id: part.body.attachmentId });
-              if (att.data && att.data.data) {
-                db.prepare('INSERT OR IGNORE INTO attachments (id,ticket_id,filename,data,message_id,mime_type,size) VALUES (?,?,?,?,?,?,?)')
-                  .run('att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), tid, part.filename, att.data.data, msgId, part.mimeType || 'application/octet-stream', att.data.size || 0);
-              }
+          const attachmentParts = findAttachments(msg.data.payload.parts || []);
+          for (const part of attachmentParts) {
+            const att = await gm.users.messages.attachments.get({ userId: 'me', messageId: m.id, id: part.body.attachmentId });
+            if (att.data && att.data.data) {
+              db.prepare('INSERT OR IGNORE INTO attachments (id,ticket_id,filename,data,message_id,mime_type,size) VALUES (?,?,?,?,?,?,?)')
+                .run('att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), tid, part.filename, att.data.data, msgId, part.mimeType || 'application/octet-stream', att.data.size || 0);
             }
           }
         } catch(e) {}
@@ -967,14 +992,12 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
       db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       try {
-        const parts = msg.data.payload.parts || [];
-        for (const part of parts) {
-          if (part.filename && part.body && part.body.attachmentId) {
-            const att = await gm.users.messages.attachments.get({ userId: 'me', messageId: gmailMessageId, id: part.body.attachmentId });
-            if (att.data && att.data.data) {
-              db.prepare('INSERT OR IGNORE INTO attachments (id,ticket_id,filename,data,message_id,mime_type,size) VALUES (?,?,?,?,?,?,?)')
-                .run('att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), ticketId, part.filename, att.data.data, msgId, part.mimeType || 'application/octet-stream', att.data.size || 0);
-            }
+        const attachmentParts = findAttachments(msg.data.payload.parts || []);
+        for (const part of attachmentParts) {
+          const att = await gm.users.messages.attachments.get({ userId: 'me', messageId: gmailMessageId, id: part.body.attachmentId });
+          if (att.data && att.data.data) {
+            db.prepare('INSERT OR IGNORE INTO attachments (id,ticket_id,filename,data,message_id,mime_type,size) VALUES (?,?,?,?,?,?,?)')
+              .run('att-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), ticketId, part.filename, att.data.data, msgId, part.mimeType || 'application/octet-stream', att.data.size || 0);
           }
         }
       } catch(e) {}
