@@ -243,7 +243,14 @@ export default function App() {
     // Heartbeat for presence tracking (every 60s)
     api.heartbeat().catch(() => {});
     const hbInterval = setInterval(() => api.heartbeat().catch(() => {}), 60000);
-    return () => { clearInterval(interval); clearInterval(hbInterval); };
+    // Background email sync — trigger every 90 seconds so inbound emails appear without manual refresh
+    const triggerSync = () => fetch('/api/gmail/sync', { method: 'POST', credentials: 'include' }).catch(() => {});
+    triggerSync();
+    const syncInterval = setInterval(triggerSync, 90000);
+    // Refresh user data every 60s to pick up admin changes (region assignments, role changes)
+    const refreshUser = () => api.me().then(d => { if (d.user) setCurrentUser(d.user); }).catch(() => {});
+    const userRefreshInterval = setInterval(refreshUser, 60000);
+    return () => { clearInterval(interval); clearInterval(hbInterval); clearInterval(syncInterval); clearInterval(userRefreshInterval); };
   }, [currentUser]);
 
   // Chat unread polling (replaces Socket.IO which doesn't work reliably on Render)
@@ -304,6 +311,7 @@ export default function App() {
           )}
         </div>
 
+        {isSupervisor && (
         <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 12px' }}>
           <button data-tour="newMessage" onClick={() => setShowCompose(showCompose === 'minimized' ? 'open' : 'open')}
             style={{
@@ -319,6 +327,7 @@ export default function App() {
             {!sidebarCollapsed && <span>New Message</span>}
           </button>
         </div>
+        )}
 
         <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {[
@@ -336,6 +345,7 @@ export default function App() {
             { key: '_workspace_toggle' },
             { key: '_workspace_apps' },
             { key: '_practice_fusion' },
+            { key: '_adp' },
             { key: '_updox' },
             { key: '_carelink' },
             { key: '_prompted' },
@@ -455,6 +465,19 @@ export default function App() {
                 title="CareLink">
                 <svg width="18" height="18" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" fill="#1a73e8"/></svg>
                 {!sidebarCollapsed && <span>CareLink</span>}
+              </a>
+            );
+            if (item.key === '_adp') return (
+              <a key="_adp" href="https://workforcenow.adp.com" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="ADP Workforce">
+                <svg width="18" height="18" viewBox="0 0 24 24"><rect width="24" height="24" rx="4" fill="#d0271d"/><text x="12" y="16" textAnchor="middle" fontSize="10" fontWeight="700" fill="#fff" fontFamily="sans-serif">ADP</text></svg>
+                {!sidebarCollapsed && <span>ADP</span>}
               </a>
             );
             if (item.key === '_updox') return (
@@ -759,7 +782,7 @@ export default function App() {
 
         {/* Toast */}
         {toast && (
-          <div style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: '#1e3a4f', padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', border: '1px solid #c0d0e4', zIndex: 999, animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: '#ffffff', padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', border: '1px solid #475569', zIndex: 999, animation: 'fadeIn 0.2s ease' }}>
             <Icon name="check" size={14} /> {toast}
           </div>
         )}

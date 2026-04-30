@@ -9,8 +9,19 @@ function loadContacts() {
   if (contactsCache) return Promise.resolve(contactsCache);
   if (contactsLoading) return new Promise(r => contactsCallbacks.push(r));
   contactsLoading = true;
-  return api.getGmailContacts().then(d => {
-    contactsCache = d.contacts || [];
+  // Load Gmail contacts AND internal users, merge and deduplicate
+  return Promise.all([
+    api.getGmailContacts().then(d => d.contacts || []).catch(() => []),
+    fetch('/api/admin/users', { credentials: 'include' }).then(r => r.json()).then(d => (d.users || []).map(u => ({ email: u.email, name: u.name, org: 'Seniority Healthcare' }))).catch(() => []),
+  ]).then(([gmail, internal]) => {
+    const seen = new Set();
+    const merged = [];
+    for (const c of [...internal, ...gmail]) {
+      if (!c.email || seen.has(c.email.toLowerCase())) continue;
+      seen.add(c.email.toLowerCase());
+      merged.push(c);
+    }
+    contactsCache = merged;
     contactsLoading = false;
     contactsCallbacks.forEach(cb => cb(contactsCache));
     contactsCallbacks = [];
@@ -65,6 +76,9 @@ export default function EmailAutocomplete({ value, onChange, placeholder, style,
     const prefix = lastCommaIdx >= 0 ? rawValue.slice(0, lastCommaIdx + 1) + ' ' : '';
     onChange(prefix + c.email + ', ');
     setOpen(false);
+    setHighlighted(0);
+    // Re-focus input so user can immediately type the next recipient
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const handleKeyDown = (e) => {

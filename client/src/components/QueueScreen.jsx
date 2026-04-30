@@ -369,13 +369,10 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
             <button onClick={async () => {
               if (selectedTicketIds.size === 0) return;
               if (!window.confirm('Close ' + selectedTicketIds.size + ' selected ticket(s)?')) return;
-              const ids = Array.from(selectedTicketIds);
-              let closed = 0;
-              let errors = 0;
-              for (const tid of ids) {
-                try { await api.changeStatus(tid, 'CLOSED'); closed++; } catch(e) { errors++; console.error('Failed to close', tid, e); }
-              }
-              showToast?.(closed + ' ticket(s) closed' + (errors > 0 ? ', ' + errors + ' failed' : ''));
+              try {
+                const d = await api.bulkClose(Array.from(selectedTicketIds));
+                showToast?.(d.closed + ' ticket(s) closed');
+              } catch(e) { showToast?.('Error: ' + e.message); }
               setSelectedTicketIds(new Set());
               setShowReassignDropdown(false);
               fetchTickets();

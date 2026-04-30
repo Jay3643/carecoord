@@ -100,6 +100,7 @@ export const api = {
   bulkPushToQueue: (gmailMessageIds, regionId) => request('/gmail/bulk-push', { method: 'POST', body: { gmailMessageIds, regionId } }),
   bulkPullFromQueue: (ticketIds, destination) => request('/gmail/bulk-pull', { method: 'POST', body: { ticketIds, destination } }),
   bulkReassignSelected: (ticketIds, toUserId) => request('/tickets/bulk/reassign-selected', { method: 'POST', body: { ticketIds, toUserId } }),
+  bulkClose: (ticketIds, closeReasonId) => request('/tickets/bulk/close', { method: 'POST', body: { ticketIds, closeReasonId } }),
   pushToQueue: (gmailMessageId, regionId) => request('/gmail/push-to-queue', { method: 'POST', body: { gmailMessageId, regionId } }),
   pullFromQueue: (ticketId, destination) => request('/gmail/pull-from-queue', { method: 'POST', body: { ticketId, destination } }),
   sendInvite: (data) => request('/auth/invite', { method: 'POST', body: data }),

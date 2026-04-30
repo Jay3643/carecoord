@@ -117,7 +117,7 @@ function BirdsEyeView({ currentUser, allUsers, onOpenTicket, showToast }) {
         })}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #dde8f2', overflow: 'auto', maxHeight: 'calc(100vh - 400px)' }}>
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #dde8f2', overflow: 'auto', maxHeight: 'calc(100vh - 240px)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
             <tr style={{ background: '#f0f4f9' }}>

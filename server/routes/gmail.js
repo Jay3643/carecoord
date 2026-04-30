@@ -465,7 +465,8 @@ async function syncUser(db, row) {
             db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
               .run(msgId, myTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
             // Inbound reply always sets status to OPEN (whether it was WAITING or CLOSED)
-            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', myTicketId);
+            // Also reset locked_closed and clear closed_at so the ticket is fully reopened with tags intact
+            db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=?, locked_closed=0, closed_at=NULL WHERE id=?').run(ts, 'OPEN', myTicketId);
           }
         } else {
           // No ticket for this user yet — create a new one and link
@@ -496,12 +497,14 @@ async function syncUser(db, row) {
         const userStatus = userRow ? toStr(userRow.work_status) : 'active';
         const isActive = userStatus === 'active';
         const isBusy = userStatus === 'busy';
+        const isInactive = userStatus === 'inactive' || (userRow && !userRow.is_active);
         // Active: auto-assign directly to user's queue
         // Busy: goes to unassigned with no intended recipient tag
+        // Inactive: goes to unassigned with no intended recipient (don't route to inactive users)
         // Otherwise: goes to unassigned tagged for the user
         const assignTo = isActive ? uid : null;
-        const syncForUid = isBusy ? null : uid;
-        const syncForIds = isBusy ? '[]' : JSON.stringify([uid]);
+        const syncForUid = (isBusy || isInactive) ? null : uid;
+        const syncForIds = (isBusy || isInactive) ? '[]' : JSON.stringify([uid]);
         const assignedAt = isActive ? ts : null;
         const tid = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)')

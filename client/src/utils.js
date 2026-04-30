@@ -5,9 +5,11 @@ export const fmt = {
     if (isNaN(d)) return String(ts);
     const now = new Date();
     const diff = now - d;
+    // Show relative time with actual time for context
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     if (diff < 60000) return 'just now';
-    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
-    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago (' + time + ')';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago (' + time + ')';
     if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
     return d.toLocaleDateString();
   },

@@ -664,32 +664,6 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
               <div onClick={() => toggleRead(selected.id, !selected.isUnread)} title={selected.isUnread ? 'Mark as read' : 'Mark as unread'} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                 <SvgIcon d={ICON_PATHS.markRead} size={18} />
               </div>
-              <div style={{ position:'relative' }}>
-                <div onClick={() => setShowMoveMenu(!showMoveMenu)} title="Apply label" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
-                  <SvgIcon d={ICON_PATHS.moveTo} size={18} />
-                </div>
-                {showMoveMenu && (
-                  <div style={{ position:'absolute',top:'100%',left:0,background:'#fff',border:'1px solid #dadce0',borderRadius:8,boxShadow:'0 4px 12px rgba(0,0,0,.15)',zIndex:20,minWidth:220,maxHeight:300,overflowY:'auto' }}>
-                    <div style={{ padding:'8px 12px',borderBottom:'1px solid #f1f3f4',fontSize:12,fontWeight:600,color:'#5f6368' }}>Label as:</div>
-                    {labelTree.map(l => {
-                      const hasLabel = (selected?.labels || []).includes(l.id);
-                      const lColor = l.color?.backgroundColor || null;
-                      return (
-                        <div key={l.id} onClick={() => toggleLabelOnMessage(selected.id, l.id, hasLabel)}
-                          style={{ padding:'6px 16px',paddingLeft: 16 + l.depth * 12,cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',gap:8 }}
-                          onMouseEnter={e => e.currentTarget.style.background='#f2f2f2'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                          <span style={{ width:16,height:16,border: hasLabel ? 'none' : '2px solid #c4c7c5',borderRadius:2,background: hasLabel ? '#1a73e8' : 'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-                            {hasLabel && <span style={{ color:'#fff',fontSize:10,fontWeight:700 }}>&#10003;</span>}
-                          </span>
-                          {lColor ? <span style={{ width:10,height:10,borderRadius:'50%',background:lColor,flexShrink:0 }} /> : <SvgIcon d={ICON_PATHS.label} size={14} color="#444746" />}
-                          {l.displayName}
-                        </div>
-                      );
-                    })}
-                    {labelTree.length === 0 && <div style={{ padding:'12px 16px',color:'#5f6368',fontSize:13 }}>No labels yet</div>}
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Applied label chips on current message */}

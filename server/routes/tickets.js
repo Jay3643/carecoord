@@ -236,7 +236,51 @@ router.get('/', requireAuth, (req, res) => {
   if (search) { where.push('(t.subject LIKE ? OR t.external_participants LIKE ? OR t.id LIKE ?)'); const q = '%' + search + '%'; params.push(q, q, q); }
   const wc = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const tickets = db.prepare('SELECT t.* FROM tickets t ' + wc + ' ORDER BY t.last_activity_at DESC').all(...params);
-  res.json({ tickets: tickets.map(t => enrichTicket(db, t)) });
+  // Batch enrich: pre-load all users, regions, tags in bulk to avoid N+1 queries
+  if (tickets.length > 0) {
+    const allUsers = {};
+    db.prepare('SELECT id, name, email, role, avatar, profile_photo_url as photoUrl FROM users').all().forEach(u => { allUsers[toStr(u.id)] = u; });
+    const allRegions = {};
+    db.prepare('SELECT id, name FROM regions').all().forEach(r => { allRegions[toStr(r.id)] = r; });
+    const allTagRows = db.prepare('SELECT tt.ticket_id, t.* FROM ticket_tags tt JOIN tags t ON t.id = tt.tag_id').all();
+    const tagsByTicket = {};
+    for (const row of allTagRows) {
+      const tid = toStr(row.ticket_id);
+      if (!tagsByTicket[tid]) tagsByTicket[tid] = [];
+      const tag = { id: toStr(row.id), name: toStr(row.name), color: toStr(row.color), parentId: toStr(row.parent_id) || null, regionId: toStr(row.region_id) || null };
+      if (tag.parentId && allTagRows.find(r => toStr(r.id) === tag.parentId)) {
+        const p = allTagRows.find(r => toStr(r.id) === tag.parentId);
+        tag.parentName = toStr(p.name);
+      }
+      tagsByTicket[tid].push(tag);
+    }
+    const enriched = tickets.map(t => {
+      sanitize(t);
+      const tid = toStr(t.id);
+      t.external_participants = JSON.parse(toStr(t.external_participants) || '[]');
+      t.tags = tagsByTicket[tid] || [];
+      t.tagIds = t.tags.map(tg => tg.id);
+      if (t.assignee_user_id) t.assignee = allUsers[toStr(t.assignee_user_id)] || null;
+      t.region = allRegions[toStr(t.region_id)] || null;
+      if (t.assigned_at && t.read_at) t.response_time_ms = t.read_at - t.assigned_at;
+      if (t.read_by_user_id) t.read_by = allUsers[toStr(t.read_by_user_id)] || null;
+      if (t.synced_for_user_id) t.syncedFor = allUsers[toStr(t.synced_for_user_id)] || null;
+      const syncedIds = JSON.parse(toStr(t.synced_for_user_ids) || '[]');
+      if (syncedIds.length > 0) t.syncedForUsers = syncedIds.map(uid => allUsers[uid]).filter(Boolean);
+      const linkedIds = JSON.parse(toStr(t.linked_ticket_ids) || '[]');
+      if (linkedIds.length > 0) {
+        t.linkedTickets = linkedIds.map(lid => {
+          const lt = db.prepare('SELECT id, subject, status, assignee_user_id, synced_for_user_id FROM tickets WHERE id = ?').get(lid);
+          if (!lt) return null;
+          return { id: toStr(lt.id), subject: toStr(lt.subject), status: toStr(lt.status), assignee: lt.assignee_user_id ? allUsers[toStr(lt.assignee_user_id)] : null, syncedFor: lt.synced_for_user_id ? allUsers[toStr(lt.synced_for_user_id)] : null };
+        }).filter(Boolean);
+      }
+      return t;
+    });
+    res.json({ tickets: enriched });
+  } else {
+    res.json({ tickets: [] });
+  }
 });
 
 // ── Pending import: unassigned tickets synced for this user (exclude ones they sent) ──
@@ -782,6 +826,30 @@ router.post('/bulk/reassign-selected', requireAuth, (req, res) => {
   const toUser = toUserId ? db.prepare('SELECT name FROM users WHERE id = ?').get(toUserId) : null;
   addAudit(db, req.user.id, 'bulk_reassign', 'tickets', ticketIds.join(','), count + ' tickets -> ' + (toUser ? toStr(toUser.name) : 'unassigned'));
   res.json({ reassigned: count });
+});
+
+// Bulk close tickets
+router.post('/bulk/close', requireAuth, (req, res) => {
+  const db = getDb();
+  const { ticketIds, closeReasonId } = req.body;
+  if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
+  const now = Date.now();
+  let closed = 0;
+  for (const tid of ticketIds) {
+    const ticket = db.prepare("SELECT id, status FROM tickets WHERE id = ? AND status != 'CLOSED'").get(tid);
+    if (!ticket) continue;
+    db.prepare('UPDATE tickets SET status = ?, last_activity_at = ?, closed_at = ?, close_reason_id = ?, locked_closed = 1 WHERE id = ?')
+      .run('CLOSED', now, now, closeReasonId || null, tid);
+    // Stop any running clocks
+    const runningClocks = db.prepare('SELECT id, started_at FROM time_entries WHERE ticket_id = ? AND stopped_at IS NULL').all(tid);
+    for (const clock of runningClocks) {
+      db.prepare('UPDATE time_entries SET stopped_at = ?, duration_ms = ? WHERE id = ?').run(now, now - clock.started_at, toStr(clock.id));
+    }
+    closed++;
+  }
+  saveDb();
+  addAudit(db, req.user.id, 'bulk_close', 'tickets', ticketIds.join(','), closed + ' tickets closed');
+  res.json({ closed });
 });
 
 router.get('/:id/attachments', requireAuth, (req, res) => {
