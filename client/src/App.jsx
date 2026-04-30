@@ -17,7 +17,7 @@ import SetupAccount from './components/SetupAccount';
 import ActivityDashboard from './components/ActivityDashboard';
 import ArchiveScreen from './components/ArchiveScreen';
 import OnboardingTour from './components/OnboardingTour';
-// Socket.IO removed — chat uses polling now
+// Socket.IO restored for real-time chat; polling kept as fallback
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);

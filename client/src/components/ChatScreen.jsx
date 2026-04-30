@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { io } from 'socket.io-client';
 import { api } from '../api';
 import { Avatar } from './ui';
 
@@ -23,6 +24,9 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
   const endRef = useRef(null);
   const pollRef = useRef(null);
   const channelPollRef = useRef(null);
+  const socketRef = useRef(null);
+  const prevChannelRef = useRef(null);
+  const [typingUsers, setTypingUsers] = useState([]);
 
   // ── Load channels ──
   const loadChannels = useCallback(() => {
@@ -47,37 +51,104 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
     }).catch(() => {});
   }, []);
 
-  // ── Initial load + channel polling ──
+  // ── Socket.IO connection ──
+  useEffect(() => {
+    const socket = io({ withCredentials: true, transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+    socket.on('connect', () => console.log('[Chat] Socket connected'));
+    socket.on('disconnect', () => console.log('[Chat] Socket disconnected'));
+    return () => { socket.disconnect(); socketRef.current = null; };
+  }, []);
+
+  // ── Initial load + channel polling (fallback, reduced frequency) ──
   useEffect(() => {
     loadChannels();
-    channelPollRef.current = setInterval(loadChannels, 4000);
+    channelPollRef.current = setInterval(loadChannels, 15000);
     return () => clearInterval(channelPollRef.current);
   }, [loadChannels]);
 
-  // ── Message polling for active channel ──
+  // ── Real-time message handling for active channel ──
   useEffect(() => {
-    if (!activeId) { setMessages([]); return; }
-    // Load immediately
+    const socket = socketRef.current;
+    if (!activeId) { setMessages([]); setTypingUsers([]); return; }
+
+    // Leave previous room, join new one
+    if (prevChannelRef.current && socket) socket.emit('leave', prevChannelRef.current);
+    if (socket) socket.emit('join', activeId);
+    prevChannelRef.current = activeId;
+
+    // Load existing messages immediately
     loadMessages(activeId);
     api.chatMarkRead(activeId).then(() => { if (onRead) onRead(); }).catch(() => {});
-    // Poll every 2 seconds
-    pollRef.current = setInterval(() => loadMessages(activeId), 2000);
-    return () => clearInterval(pollRef.current);
-  }, [activeId, loadMessages, onRead]);
+
+    // Listen for real-time events
+    const onMessage = (msg) => {
+      if (msg.channelId === activeId) {
+        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        api.chatMarkRead(activeId).catch(() => {});
+      }
+      loadChannels();
+    };
+    const onDeleted = ({ messageId }) => {
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+    };
+    const onTyping = ({ userId, name }) => {
+      if (userId !== currentUser.id) setTypingUsers(prev => prev.some(t => t.userId === userId) ? prev : [...prev, { userId, name }]);
+    };
+    const onStopTyping = ({ userId }) => {
+      setTypingUsers(prev => prev.filter(t => t.userId !== userId));
+    };
+
+    if (socket) {
+      socket.on('chat:message', onMessage);
+      socket.on('chat:msg-deleted', onDeleted);
+      socket.on('chat:typing', onTyping);
+      socket.on('chat:stop-typing', onStopTyping);
+    }
+
+    // Fallback polling at reduced frequency
+    pollRef.current = setInterval(() => loadMessages(activeId), 15000);
+
+    return () => {
+      clearInterval(pollRef.current);
+      if (socket) {
+        socket.off('chat:message', onMessage);
+        socket.off('chat:msg-deleted', onDeleted);
+        socket.off('chat:typing', onTyping);
+        socket.off('chat:stop-typing', onStopTyping);
+      }
+      setTypingUsers([]);
+    };
+  }, [activeId, loadMessages, loadChannels, onRead, currentUser.id]);
 
   // ── Auto scroll ──
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ── Typing indicator ──
+  const typingTimeout = useRef(null);
+  const emitTyping = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket || !activeId) return;
+    socket.emit('typing', { channelId: activeId, userId: currentUser.id, name: currentUser.name });
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      socket.emit('stop-typing', { channelId: activeId, userId: currentUser.id });
+    }, 2000);
+  }, [activeId, currentUser.id, currentUser.name]);
+
   // ── Send ──
   const handleSend = async () => {
     if (!text.trim() || !activeId || sending) return;
+    const socket = socketRef.current;
+    if (socket) socket.emit('stop-typing', { channelId: activeId, userId: currentUser.id });
     const msg = text;
     setText('');
     setSending(true);
     try {
       await api.chatSend(activeId, { body: msg, type: 'text' });
+      // Socket.IO will deliver the message in real-time; fallback load just in case
       loadMessages(activeId);
       api.chatMarkRead(activeId).catch(() => {});
       loadChannels();
@@ -307,10 +378,15 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
               <div ref={endRef} />
             </div>
 
+            {typingUsers.length > 0 && (
+              <div style={{ padding: '2px 16px', fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>
+                {typingUsers.map(t => t.name).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+              </div>
+            )}
             <div style={{ padding: '10px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 6, background: '#fafbfc' }}>
               <input type="file" ref={fileRef} onChange={handleFile} style={{ display: 'none' }} />
               <button onClick={() => fileRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: 2, color: '#64748b' }} title="Attach file">📎</button>
-              <input value={text} onChange={e => setText(e.target.value)}
+              <input value={text} onChange={e => { setText(e.target.value); emitTyping(); }}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 placeholder="Type a message..."
                 style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 20, fontSize: 13, outline: 'none', background: '#fff' }} />
