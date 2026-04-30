@@ -199,6 +199,18 @@ export default function App() {
     }
   };
 
+  const goBackToQueue = () => {
+    // Close current tab and always return to queue (used when closing a ticket)
+    if (selectedTicketId) {
+      api.stopClock(selectedTicketId).catch(() => {});
+      setOpenTicketTabs(prev => prev.filter(t => t.id !== selectedTicketId));
+      setSelectedTicketId(null);
+      setScreen(ticketSourceScreen || previousScreen || 'regionQueue');
+    } else {
+      setScreen(previousScreen || 'regionQueue');
+    }
+  };
+
   const isSupervisor = currentUser?.role === 'supervisor' || currentUser?.role === 'admin';
 
   const refreshCounts = () => {
@@ -624,6 +636,7 @@ export default function App() {
                 closeReasons={closeReasons}
                 allUsers={allUsers}
                 onBack={goBack}
+                onClose={goBackToQueue}
                 showToast={showToast}
                 initialTab={openTicketWithChat === selectedTicketId ? 'discussion' : undefined}
               />

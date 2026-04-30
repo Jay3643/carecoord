@@ -10,7 +10,14 @@
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "start": "cd server && node index.js",
-    "seed": "cd server && node seed.js"
+    "seed": "cd server && node seed.js",
+    "test": "node tests/run.js",
+    "test:auth": "node tests/run.js auth",
+    "test:tickets": "node tests/run.js tickets",
+    "test:dashboard": "node tests/run.js dashboard",
+    "test:admin": "node tests/run.js admin",
+    "test:chat": "node tests/run.js chat",
+    "test:health": "node tests/run.js health"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

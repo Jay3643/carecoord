@@ -352,9 +352,10 @@ router.get('/:id/messages', requireAuth, (req, res) => {
   const db = getDb();
   const messages = db.prepare('SELECT * FROM messages WHERE ticket_id = ? ORDER BY sent_at ASC').all(req.params.id);
   messages.forEach(m => {
-    m.to_addresses = JSON.parse(m.to_addresses || '[]');
-    m.cc_addresses = JSON.parse(m.cc_addresses || '[]');
-    m.reference_ids = JSON.parse(m.reference_ids || '[]');
+    sanitize(m);
+    m.to_addresses = JSON.parse(toStr(m.to_addresses) || '[]');
+    m.cc_addresses = JSON.parse(toStr(m.cc_addresses) || '[]');
+    m.reference_ids = JSON.parse(toStr(m.reference_ids) || '[]');
     if (m.created_by_user_id) m.sender = db.prepare('SELECT id, name, email, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(m.created_by_user_id);
   });
   // Add attachments to each message
@@ -644,13 +645,17 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
 
   // Build forwarded message body with original messages
   const allMsgs = db.prepare('SELECT * FROM messages WHERE ticket_id = ? ORDER BY sent_at ASC').all(req.params.id);
+  allMsgs.forEach(m => sanitize(m));
   let forwardedContent = (fwdBody || '').trim();
   forwardedContent += '\n\n---------- Forwarded message ----------\n';
   forwardedContent += 'Subject: ' + toStr(ticket.subject) + '\n\n';
   for (const msg of allMsgs) {
     const dir = toStr(msg.direction) === 'inbound' ? 'From' : 'Sent by';
+    const bodyText = toStr(msg.body_text) || '';
+    // Strip HTML tags for plain-text forwarding
+    const plainBody = bodyText.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
     forwardedContent += dir + ': ' + toStr(msg.from_address) + ' (' + new Date(msg.sent_at).toLocaleString() + ')\n';
-    forwardedContent += toStr(msg.body_text) + '\n\n---\n\n';
+    forwardedContent += (plainBody || bodyText) + '\n\n---\n\n';
   }
   const fullBody = forwardedContent + '\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
 
@@ -666,7 +671,7 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
   }
 
   // Add the forwarded-to address to external participants
-  const extP = JSON.parse(ticket.external_participants || '[]');
+  const extP = JSON.parse(toStr(ticket.external_participants) || '[]');
   if (!extP.includes(toEmail.trim())) {
     extP.push(toEmail.trim());
     db.prepare('UPDATE tickets SET external_participants = ? WHERE id = ?').run(JSON.stringify(extP), req.params.id);

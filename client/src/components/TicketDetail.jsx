@@ -27,7 +27,7 @@ function MessageBody({ text }) {
   return <div style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', whiteSpace: 'pre-wrap' }}>{text}</div>;
 }
 
-export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, showToast, initialTab }) {
+export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, onClose, showToast, initialTab }) {
   const [ticket, setTicket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -320,7 +320,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setCloseComment('');
       showToast(`Status changed to ${status.replace(/_/g, ' ')}`);
       if (status === 'CLOSED') {
-        onBack();
+        (onClose || onBack)();
       }
     } catch (e) {
       showToast(e.message);
@@ -752,6 +752,18 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   <textarea value={forwardBody} onChange={e => setForwardBody(e.target.value)}
                     placeholder="Add a message (optional)..."
                     rows={2} style={{ width: '100%', padding: '10px 14px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 10, color: '#1e3a4f', fontSize: 13, resize: 'vertical', outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' }} />
+                  {/* Preview of messages that will be forwarded */}
+                  <div style={{ padding: '8px 12px', background: '#f8f9fb', border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 120, overflowY: 'auto' }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: '#6b8299', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                      {messages.length} message{messages.length !== 1 ? 's' : ''} will be forwarded
+                    </div>
+                    {messages.map((m, i) => (
+                      <div key={m.id || i} style={{ fontSize: 11, color: '#6b8299', padding: '2px 0', borderTop: i > 0 ? '1px solid #e2e8f0' : 'none' }}>
+                        <span style={{ fontWeight: 600 }}>{m.direction === 'inbound' ? 'From' : 'Sent by'}:</span>{' '}
+                        {m.from_address} — {fmt.full(m.sent_at)}
+                      </div>
+                    ))}
+                  </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button onClick={handleForward} disabled={!forwardTo.trim() || sending}
                       style={{ padding: '10px 20px', background: forwardTo.trim() && !sending ? '#c96a1b' : '#dde8f2', color: forwardTo.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: forwardTo.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
@@ -762,6 +774,24 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               </div>
             ) : activeTab === 'reply' ? (
               <div>
+                {/* Show recipients info */}
+                <div style={{ marginBottom: 8, fontSize: 11, color: '#6b8299' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontWeight: 600 }}>To:</span>
+                    <span>{(ticket.external_participants || [])[0] || 'unknown'}</span>
+                  </div>
+                  {((ticket.linkedTickets && ticket.linkedTickets.length > 0) || (ticket.external_participants && ticket.external_participants.length > 1)) && (
+                    <div style={{ marginTop: 4, padding: '6px 10px', background: '#ede9fe', border: '1px solid #ddd6fe', borderRadius: 6 }}>
+                      <div style={{ fontWeight: 600, color: '#7c3aed', marginBottom: 2 }}>Reply All recipients:</div>
+                      {(ticket.external_participants || []).map((ep, i) => (
+                        <div key={i} style={{ color: '#5b21b6' }}>{ep}</div>
+                      ))}
+                      {(ticket.linkedTickets || []).map(lt => (
+                        lt.syncedFor ? <div key={lt.id} style={{ color: '#5b21b6' }}>{lt.syncedFor.name} ({lt.id})</div> : null
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
