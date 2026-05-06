@@ -115,14 +115,11 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
-    let url = '/api/gmail/personal?folder=' + encodeURIComponent(f || folder) + '&q=' + encodeURIComponent(q || '') + '&max=50';
-    if (labelId) url += '&labelId=' + encodeURIComponent(labelId);
-    if (pt) url += '&pageToken=' + pt;
-    fetch(url, { credentials: 'include' }).then(r => r.json()).then(d => {
+    api.gmailPersonalFull(f || folder, q || '', 50, pt, labelId).then(d => {
       setMessages(d.messages || []);
       setNextPage(d.nextPageToken || null);
       setTotal(d.resultSizeEstimate || 0);
-    }).catch(e => showToast?.(String(e))).finally(() => { setLoading(false); loadingRef.current = false; });
+    }).catch(e => showToast?.(String(e.message || e))).finally(() => { setLoading(false); loadingRef.current = false; });
   };
 
   const resetPage = () => { setPrevPageTokens([]); setCurrentPageToken(null); setNextPage(null); };

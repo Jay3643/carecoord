@@ -43,10 +43,10 @@ router.post('/users', requireAuth, requireAdmin, async (req, res) => {
   const id = 'u-' + uuid().split('-')[0];
   const initials = name.trim().split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
   const tempPassword = crypto.randomBytes(6).toString('hex');
-  const tempHash = tempPassword; // Store unhashed so first login triggers password change
+  const tempHash = bcrypt.hashSync(tempPassword, 10);
 
   db.prepare('INSERT INTO users (id, name, email, role, avatar, is_active, password_hash) VALUES (?, ?, ?, ?, ?, 1, ?)')
-    .run(id, name.trim(), email.trim(), role, initials, tempPassword);
+    .run(id, name.trim(), email.trim(), role, initials, tempHash);
 
   if (regionIds && regionIds.length > 0) {
     const ins = db.prepare('INSERT INTO user_regions (user_id, region_id) VALUES (?, ?)');
@@ -91,6 +91,8 @@ router.delete('/users/:id', requireAuth, requireAdmin, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id);
+  // Invalidate all sessions for the deactivated user
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id);
   // Unassign their tickets back to queue
   db.prepare("UPDATE tickets SET assignee_user_id = NULL, last_activity_at = ? WHERE assignee_user_id = ? AND status != 'CLOSED'")
     .run(Date.now(), req.params.id);
@@ -114,7 +116,8 @@ router.post('/users/:id/reset-password', requireAuth, requireAdmin, async (req, 
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const tempPassword = crypto.randomBytes(6).toString('hex');
-  db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(tempPassword, req.params.id);
+  const resetHash = bcrypt.hashSync(tempPassword, 10);
+  db.prepare('UPDATE users SET password_hash = ?, totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(resetHash, req.params.id);
   saveDb();
 
   addAudit(db, req.user.id, 'password_reset', 'user', req.params.id, 'Password reset for: ' + user.name);
@@ -251,11 +254,16 @@ router.put('/tags/:id', requireAuth, (req, res) => {
 router.delete('/tags/:id', requireAuth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'supervisor') return res.status(403).json({ error: 'Not authorized' });
   const db = getDb();
-  // Also delete subtags
-  db.prepare('DELETE FROM ticket_tags WHERE tag_id IN (SELECT id FROM tags WHERE parent_id = ?)').run(req.params.id);
-  db.prepare('DELETE FROM tags WHERE parent_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM ticket_tags WHERE tag_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM tags WHERE id = ?').run(req.params.id);
+  // Recursively delete subtags (handles nested hierarchies)
+  const deleteTagRecursive = (tagId) => {
+    const children = db.prepare('SELECT id FROM tags WHERE parent_id = ?').all(tagId);
+    for (const child of children) {
+      deleteTagRecursive(toStr(child.id));
+    }
+    db.prepare('DELETE FROM ticket_tags WHERE tag_id = ?').run(tagId);
+    db.prepare('DELETE FROM tags WHERE id = ?').run(tagId);
+  };
+  deleteTagRecursive(req.params.id);
   saveDb();
   res.json({ ok: true });
 });

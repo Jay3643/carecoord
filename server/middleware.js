@@ -10,8 +10,8 @@ function requireAuth(req, res, next) {
   const session = db.prepare('SELECT * FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
   if (!session) return res.status(401).json({ error: 'Session expired' });
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id);
-  if (!user) return res.status(401).json({ error: 'User not found' });
+  const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(session.user_id);
+  if (!user) return res.status(401).json({ error: 'User not found or deactivated' });
 
   // Touch last_active on every authenticated request
   try { db.prepare('UPDATE sessions SET last_active = ? WHERE sid = ?').run(Date.now(), sid); } catch(e) {}
@@ -33,7 +33,7 @@ function addAudit(db, userId, action, entityType, entityId, detail) {
   try {
     const { v4: uuid } = require('uuid');
     db.prepare('INSERT INTO audit_log (id, actor_user_id, action_type, entity_type, entity_id, ts, detail) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(uuid(), userId, action, entityType, entityId, Date.now(), detail);
+      .run(uuid(), userId, action, entityType, entityId, String(Date.now()), detail);
     saveDb();
   } catch(e) { console.error('[Audit]', e.message); }
 }

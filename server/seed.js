@@ -35,7 +35,8 @@ async function seed() {
   iR.run('r3', 'Delaware Valley', '["delawarevalley@seniorityhealthcare.com"]', 1);
 
   // Users — only real accounts
-  const pwHash = bcrypt.hashSync('Seniority2024!', 12);
+  const seedPassword = process.env.SEED_PASSWORD || 'ChangeMeOnFirstLogin!';
+  const pwHash = bcrypt.hashSync(seedPassword, 12);
   const now = Date.now();
   const iU = db.prepare('INSERT INTO users (id, name, email, role, avatar, password_hash, totp_enabled, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?)');
   const iUR = db.prepare('INSERT INTO user_regions (user_id, region_id) VALUES (?, ?)');
@@ -70,7 +71,7 @@ async function seed() {
   console.log('\\n✅ Clean database seeded');
   console.log('   3 regions: Central PA, South NJ, Delaware Valley');
   console.log('   1 user: Dr. Hopkins (admin)');
-  console.log('   Password: Seniority2024!');
+  console.log('   Password: [set via SEED_PASSWORD env var or check seed.js]');
   console.log('   No sync state needed\\n');
   closeDb();
 }

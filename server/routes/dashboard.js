@@ -65,7 +65,7 @@ router.get('/by-coordinator', requireAuth, (req, res) => {
 
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
 
-    const rows = db.prepare("SELECT t.assignee_user_id, u.name, u.avatar, COUNT(*) as total, SUM(CASE WHEN t.status != 'CLOSED' THEN 1 ELSE 0 END) as open_count, SUM(CASE WHEN t.status = 'CLOSED' AND t.closed_at >= " + todayStart.getTime() + " THEN 1 ELSE 0 END) as closed_today FROM tickets t LEFT JOIN users u ON u.id = t.assignee_user_id WHERE t.assignee_user_id IS NOT NULL AND t.region_id IN (" + ph + ") GROUP BY t.assignee_user_id").all(...rids);
+    const rows = db.prepare("SELECT t.assignee_user_id, u.name, u.avatar, COUNT(*) as total, SUM(CASE WHEN t.status != 'CLOSED' THEN 1 ELSE 0 END) as open_count, SUM(CASE WHEN t.status = 'CLOSED' AND t.closed_at >= ? THEN 1 ELSE 0 END) as closed_today FROM tickets t LEFT JOIN users u ON u.id = t.assignee_user_id WHERE t.assignee_user_id IS NOT NULL AND t.region_id IN (" + ph + ") GROUP BY t.assignee_user_id").all(todayStart.getTime(), ...rids);
     res.json({
       coordinators: rows.map(r => ({
         user: { id: r.assignee_user_id, name: r.name || 'Unknown', avatar: r.avatar },
@@ -198,7 +198,11 @@ router.get('/activity/feed', requireAuth, (req, res) => {
     params.push(limit, offset);
 
     const rows = db.prepare(sql).all(...params);
-    const total = db.prepare("SELECT COUNT(*) as c FROM audit_log WHERE ts >= ?" + (userId ? " AND actor_user_id = '" + userId + "'" : "") + (actionType ? " AND action_type = '" + actionType + "'" : "")).get(startTs);
+    let countSql = "SELECT COUNT(*) as c FROM audit_log WHERE ts >= ?";
+    const countParams = [startTs];
+    if (userId) { countSql += " AND actor_user_id = ?"; countParams.push(userId); }
+    if (actionType) { countSql += " AND action_type = ?"; countParams.push(actionType); }
+    const total = db.prepare(countSql).get(...countParams);
 
     res.json({
       feed: rows.map(r => ({

@@ -19,10 +19,23 @@ function formatAiText(text) {
     .replace(/\n/g, '<br/>');
 }
 
+function sanitizeHtml(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[\s\S]*?>/gi, '')
+    .replace(/<link[\s\S]*?>/gi, '')
+    .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/\bon\w+\s*=\s*\S+/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:')
+    .replace(/vbscript\s*:/gi, 'blocked:');
+}
+
 function MessageBody({ text }) {
   if (!text) return null;
   if (text.includes('<div') || text.includes('<p') || text.includes('<br')) {
-    return <div dangerouslySetInnerHTML={{ __html: text }} style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', wordBreak: 'break-word', overflow: 'hidden' }} />;
+    return <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }} style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', wordBreak: 'break-word', overflow: 'hidden' }} />;
   }
   return <div style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', whiteSpace: 'pre-wrap' }}>{text}</div>;
 }
@@ -157,14 +170,20 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     })();
   }, [activeTab, ticketId]);
 
-  // Poll for discussion messages
+  // Poll for discussion messages (with deduplication)
   useEffect(() => {
     if (!discussionChannelId) return;
     const poll = setInterval(() => {
       api.chatMessages(discussionChannelId).then(md => {
-        setDiscussionMsgs(md.messages || []);
+        const incoming = md.messages || [];
+        setDiscussionMsgs(prev => {
+          // Deduplicate by message id
+          const ids = new Set(incoming.map(m => m.id));
+          if (ids.size === prev.length && prev.every(m => ids.has(m.id))) return prev;
+          return incoming;
+        });
       }).catch(() => {});
-    }, 3000);
+    }, 5000);
     return () => clearInterval(poll);
   }, [discussionChannelId]);
 

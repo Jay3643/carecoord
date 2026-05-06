@@ -381,6 +381,11 @@ router.get('/:id', requireAuth, (req, res) => {
   const db = getDb();
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
+  // Verify the user has access to this ticket's region
+  const rids = req.user.regionIds || [];
+  if (rids.length > 0 && !rids.includes(toStr(ticket.region_id)) && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Not authorized to access this ticket' });
+  }
   // Mark as read when opened — record who read it and when
   if (ticket.has_unread) {
     db.prepare('UPDATE tickets SET has_unread = 0, read_at = ?, read_by_user_id = ? WHERE id = ?').run(Date.now(), req.user.id, req.params.id);
@@ -907,6 +912,12 @@ router.get('/:id/time', requireAuth, (req, res) => {
 // Start clock
 router.post('/:id/time/start', requireAuth, (req, res) => {
   const db = getDb();
+  // Auto-stop any clocks older than 8 hours (stale clocks from browser close)
+  const MAX_CLOCK_MS = 8 * 60 * 60 * 1000;
+  const staleClocks = db.prepare('SELECT id, started_at FROM time_entries WHERE stopped_at IS NULL AND started_at < ?').all(Date.now() - MAX_CLOCK_MS);
+  for (const sc of staleClocks) {
+    db.prepare('UPDATE time_entries SET stopped_at = ?, duration_ms = ? WHERE id = ?').run(sc.started_at + MAX_CLOCK_MS, MAX_CLOCK_MS, toStr(sc.id));
+  }
   // Stop any existing running clock for this user on any ticket
   const existing = db.prepare('SELECT id, ticket_id, started_at FROM time_entries WHERE user_id = ? AND stopped_at IS NULL').get(req.user.id);
   if (existing) {

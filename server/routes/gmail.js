@@ -32,7 +32,7 @@ function putTokens(uid, t, email) {
 // ── Service Account with Domain-Wide Delegation ──
 let serviceAccountKey = null;
 if (process.env.SA_CLIENT_EMAIL && process.env.SA_PRIVATE_KEY) {
-  serviceAccountKey = { client_email: process.env.SA_CLIENT_EMAIL, private_key: process.env.SA_PRIVATE_KEY };
+  serviceAccountKey = { client_email: process.env.SA_CLIENT_EMAIL, private_key: process.env.SA_PRIVATE_KEY.replace(/\\n/g, '\n') };
   console.log('[SA] Service account from env vars:', serviceAccountKey.client_email);
 } else {
   try { serviceAccountKey = JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'service-account.json'), 'utf8')); console.log('[SA] Service account from file:', serviceAccountKey.client_email); }

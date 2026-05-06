@@ -136,6 +136,12 @@ export const api = {
   gmailDeleteFilter: (id) => request('/gmail/filters/' + id, { method: 'DELETE' }),
   gmailAccounts: () => request('/gmail/accounts'),
   gmailPersonal: (f, q, m) => cached('gmail:'+f+':'+q, 30000, () => request('/gmail/personal?folder='+(f||'INBOX')+'&q='+encodeURIComponent(q||'')+'&max='+(m||20))),
+  gmailPersonalFull: (f, q, max, pageToken, labelId) => {
+    let path = '/gmail/personal?folder=' + encodeURIComponent(f || 'INBOX') + '&q=' + encodeURIComponent(q || '') + '&max=' + (max || 50);
+    if (labelId) path += '&labelId=' + encodeURIComponent(labelId);
+    if (pageToken) path += '&pageToken=' + pageToken;
+    return request(path);
+  },
   gmailPersonalMsg: (id) => request('/gmail/personal/' + id),
   gmailPersonalSend: (d) => request('/gmail/personal/send', { method: 'POST', body: d }),
   gmailModify: (messageId, addLabelIds, removeLabelIds) => request('/gmail/personal/modify', { method: 'POST', body: { messageId, addLabelIds, removeLabelIds } }),

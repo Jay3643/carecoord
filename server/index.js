@@ -16,7 +16,21 @@ const io = new Server(server, { cors: { origin: ['http://localhost:5173', 'http:
 app.io = io;
 const PORT = process.env.PORT || 3001;
 
-app.use(helmet({ contentSecurityPolicy: false, frameguard: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://carecoord-o3en.onrender.com", "wss://carecoord-o3en.onrender.com"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  frameguard: { action: 'deny' },
+}));
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests from known origins and Chrome extensions
@@ -24,7 +38,7 @@ app.use(cors({
     if (!origin || allowed.includes(origin) || origin.startsWith('chrome-extension://')) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all for now — tighten in production
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -35,7 +49,7 @@ app.use(morgan('dev'));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'carecoord-dev-secret-change-in-production',
   resave: false, saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: 'lax' },
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: 'lax' },
 }));
 
 // Routes

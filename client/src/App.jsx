@@ -17,6 +17,7 @@ import SetupAccount from './components/SetupAccount';
 import ActivityDashboard from './components/ActivityDashboard';
 import ArchiveScreen from './components/ArchiveScreen';
 import OnboardingTour from './components/OnboardingTour';
+import ErrorBoundary from './components/ErrorBoundary';
 // Socket.IO restored for real-time chat; polling kept as fallback
 
 export default function App() {
@@ -239,19 +240,19 @@ export default function App() {
       api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {});
     };
     fetchCounts();
-    const interval = setInterval(fetchCounts, 5000);
+    const interval = setInterval(fetchCounts, 15000);
     // Heartbeat for presence tracking (every 60s)
     api.heartbeat().catch(() => {});
     const hbInterval = setInterval(() => api.heartbeat().catch(() => {}), 60000);
-    // Background email sync — trigger every 90 seconds so inbound emails appear without manual refresh
-    const triggerSync = () => fetch('/api/gmail/sync', { method: 'POST', credentials: 'include' }).catch(() => {});
+    // Background email sync — trigger every 2 minutes
+    const triggerSync = () => api.gmailAutoSync().catch(() => {});
     triggerSync();
-    const syncInterval = setInterval(triggerSync, 90000);
+    const syncInterval = setInterval(triggerSync, 120000);
     // Refresh user data every 60s to pick up admin changes (region assignments, role changes)
     const refreshUser = () => api.me().then(d => { if (d.user) setCurrentUser(d.user); }).catch(() => {});
     const userRefreshInterval = setInterval(refreshUser, 60000);
     return () => { clearInterval(interval); clearInterval(hbInterval); clearInterval(syncInterval); clearInterval(userRefreshInterval); };
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Chat unread polling (replaces Socket.IO which doesn't work reliably on Render)
 
@@ -286,6 +287,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ display: 'flex', height: '100vh', background: '#f4f7f8', color: '#1e3a4f', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif", overflow: 'hidden' }}>
       <style>{chatBadgeStyle}</style>
       {/* Sidebar */}
@@ -818,5 +820,6 @@ export default function App() {
       {/* Onboarding Tour */}
       <OnboardingTour currentUser={currentUser} />
     </div>
+    </ErrorBoundary>
   );
 }

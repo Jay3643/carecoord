@@ -27,7 +27,7 @@ function setSession(res, userId) {
   const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   db.prepare('INSERT OR REPLACE INTO sessions (sid, user_id, expires) VALUES (?, ?, ?)').run(sid, userId, expires);
   saveDb();
-  res.cookie('sid', sid, { httpOnly: true, maxAge: 24*60*60*1000, sameSite: 'lax', secure: false });
+  res.cookie('sid', sid, { httpOnly: true, maxAge: 24*60*60*1000, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
   return sid;
 }
 
@@ -69,7 +69,7 @@ router.post('/login', async (req, res) => {
     const sid = crypto.randomBytes(32).toString('hex');
     db.prepare('INSERT OR REPLACE INTO sessions (sid, user_id, expires) VALUES (?, ?, ?)').run('2fa-' + sid, toStr(user.id), Date.now() + 300000);
     saveDb();
-    res.cookie('pending2fa', sid, { httpOnly: true, maxAge: 300000, sameSite: 'lax', secure: false });
+    res.cookie('pending2fa', sid, { httpOnly: true, maxAge: 300000, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
     return res.json({ step: '2fa' });
   }
 
@@ -82,7 +82,11 @@ router.post('/login', async (req, res) => {
     db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(newSecret.base32, toStr(user.id));
     saveDb();
     console.log('[2FA] Secret generated for', toStr(user.email), newSecret.base32.substring(0,8) + '...');
-    setSession(res, toStr(user.id));
+    // Do NOT create a session yet — user must confirm 2FA first
+    const pendingSid = crypto.randomBytes(32).toString('hex');
+    db.prepare('INSERT OR REPLACE INTO sessions (sid, user_id, expires) VALUES (?, ?, ?)').run('2fa-' + pendingSid, toStr(user.id), Date.now() + 300000);
+    saveDb();
+    res.cookie('pending2fa', pendingSid, { httpOnly: true, maxAge: 300000, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
     return QRCode.toDataURL(newSecret.otpauth_url, (err, qrUrl) => {
       res.json({ step: 'setup_2fa', qrCode: qrUrl, secret: newSecret.base32 });
     });
@@ -126,7 +130,7 @@ router.post('/verify-2fa', (req, res) => {
   if (!secret) return res.status(400).json({ error: 'No 2FA secret set' });
 
   const verified = speakeasy.totp.verify({
-    secret: secret, encoding: 'base32', token: String(code).trim(), window: 4,
+    secret: secret, encoding: 'base32', token: String(code).trim(), window: 1,
   });
   console.log('[2FA] verify result:', verified);
   if (!verified) return res.status(401).json({ error: 'Invalid code' });
@@ -186,7 +190,7 @@ router.post('/confirm-2fa', (req, res) => {
   if (!secret) return res.status(400).json({ error: 'No 2FA secret set' });
 
   const verified = speakeasy.totp.verify({
-    secret: secret, encoding: 'base32', token: String(code).trim(), window: 4,
+    secret: secret, encoding: 'base32', token: String(code).trim(), window: 1,
   });
   console.log('[2FA] confirm result:', verified);
   if (!verified) return res.status(401).json({ error: 'Invalid code' });
