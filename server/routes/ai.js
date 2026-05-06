@@ -510,13 +510,19 @@ GUIDELINES:
 - Flag urgent or time-sensitive items
 - If information genuinely doesn't exist in the system, say so
 - When asked to "go to" or "check" something, use the appropriate tool to fetch that data
-- Structure responses clearly with relevant details`;
+- Structure responses clearly with relevant details
+
+FORMATTING RULES:
+- NEVER use markdown formatting (no **, ##, *, -, ```, or bullet markers)
+- Use plain text only. Use line breaks to separate sections.
+- For lists, use numbered items (1. 2. 3.) or write in paragraph form
+- For emphasis, use CAPS sparingly or just write clearly`;
 
 // ══════════════════════════════════════════════════════════════════════
 //  AGENTIC CHAT — tool use loop
 // ══════════════════════════════════════════════════════════════════════
 
-const MAX_TOOL_ROUNDS = 8;
+const MAX_TOOL_ROUNDS = 5;
 
 router.post('/chat', requireAuth, async (req, res) => {
   const client = getClient();
@@ -552,46 +558,37 @@ router.post('/chat', requireAuth, async (req, res) => {
 
       const response = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
+        max_tokens: 1500,
+        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         tools: TOOLS,
         messages: msgs,
       });
 
-      // Check if the response contains tool calls
       const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
       const textBlocks = response.content.filter(b => b.type === 'text');
 
       if (toolUseBlocks.length === 0) {
-        // No tool calls — we have a final response
         const reply = textBlocks.map(b => b.text).join('\n') || 'No response generated.';
         return res.json({ reply, tools_used: toolsUsed });
       }
 
-      // Add the assistant's response (with tool_use blocks) to the conversation
       msgs.push({ role: 'assistant', content: response.content });
 
-      // Execute each tool call and add results
-      const toolResults = [];
-      for (const toolBlock of toolUseBlocks) {
-        const toolName = toolBlock.name;
-        const toolInput = toolBlock.input;
-        toolsUsed.push(toolName);
-
+      // Execute all tool calls in parallel
+      const toolResults = await Promise.all(toolUseBlocks.map(async (toolBlock) => {
+        toolsUsed.push(toolBlock.name);
         let result;
         try {
-          // Some tools are async (email)
-          result = await Promise.resolve(execTool(toolName, toolInput, db, req.user.id));
+          result = await Promise.resolve(execTool(toolBlock.name, toolBlock.input, db, req.user.id));
         } catch (e) {
           result = { error: 'Tool execution failed: ' + e.message };
         }
-
-        toolResults.push({
+        return {
           type: 'tool_result',
           tool_use_id: toolBlock.id,
-          content: JSON.stringify(result).substring(0, 20000), // Cap tool output size
-        });
-      }
+          content: JSON.stringify(result).substring(0, 15000),
+        };
+      }));
 
       msgs.push({ role: 'user', content: toolResults });
     }
@@ -643,8 +640,8 @@ router.post('/ticket/:ticketId/chat', requireAuth, async (req, res) => {
 
       const response = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
+        max_tokens: 1500,
+        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         tools: TOOLS,
         messages: msgs,
       });
@@ -659,8 +656,7 @@ router.post('/ticket/:ticketId/chat', requireAuth, async (req, res) => {
 
       msgs.push({ role: 'assistant', content: response.content });
 
-      const toolResults = [];
-      for (const toolBlock of toolUseBlocks) {
+      const toolResults = await Promise.all(toolUseBlocks.map(async (toolBlock) => {
         toolsUsed.push(toolBlock.name);
         let result;
         try {
@@ -668,12 +664,12 @@ router.post('/ticket/:ticketId/chat', requireAuth, async (req, res) => {
         } catch (e) {
           result = { error: 'Tool execution failed: ' + e.message };
         }
-        toolResults.push({
+        return {
           type: 'tool_result',
           tool_use_id: toolBlock.id,
-          content: JSON.stringify(result).substring(0, 20000),
-        });
-      }
+          content: JSON.stringify(result).substring(0, 15000),
+        };
+      }));
       msgs.push({ role: 'user', content: toolResults });
     }
 
@@ -714,7 +710,7 @@ router.post('/clinical-snapshot', requireAuth, async (req, res) => {
   if (!chartData) return res.status(400).json({ error: 'chartData required' });
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 3000,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
       system: `You are a care coordinator at Seniority Healthcare writing a brief clinical overview of a patient. Write it as a short, readable narrative — the kind of summary you'd give a colleague in 60 seconds.
 Format: 2-4 short paragraphs, no headers, no bullet points, no markdown formatting. Include: who the patient is, primary conditions, current medications, care team, recent activity, concerns, advance directives if relevant. Keep it under 300 words.`,
       messages: [{ role: 'user', content: `Generate a Clinical Snapshot:\n\n${JSON.stringify(chartData, null, 2).substring(0, 8000)}` }],
@@ -733,7 +729,7 @@ router.post('/suggestions', requireAuth, async (req, res) => {
   const stats = toolGetQueueStats(db, {});
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 512,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 512,
       system: `Generate 3-5 brief, actionable suggestions for a care coordination user. Each should be one short sentence (under 15 words). Return ONLY a JSON array of strings.`,
       messages: [{ role: 'user', content: `User: ${toStr(user?.name)} (${toStr(user?.role)})\nQueue stats: ${JSON.stringify(stats)}` }],
     });
@@ -752,7 +748,7 @@ router.post('/ticket/:ticketId/summarize', requireAuth, async (req, res) => {
   if (!ticketData) return res.status(404).json({ error: 'Ticket not found' });
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Summarize this ticket concisely. Include: key issue, current status, who's involved, pending actions.\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -781,7 +777,7 @@ router.post('/ticket/:ticketId/extract-patient', requireAuth, async (req, res) =
   }
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Extract ALL patient information. Structure as: **Patient Name:**, **DOB:**, **Insurance:**, **Member ID:**, **Phone:**, **Address:**, **Diagnoses:**, **Medications:**, **Providers:**, **Referrals:**, **Other:**\n\nIf not mentioned, write "Not found".\n\n${ticketData.context}${crossRef}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -798,7 +794,7 @@ router.post('/ticket/:ticketId/draft-reply', requireAuth, async (req, res) => {
   const { instructions } = req.body;
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft a professional reply for ${toStr(user?.name)} at Seniority Healthcare.\n${instructions ? 'Instructions: ' + instructions + '\n' : ''}Write ONLY the email body (no signature). Be professional and concise.\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -814,7 +810,7 @@ router.post('/ticket/:ticketId/suggest-tags', requireAuth, async (req, res) => {
   const tagNames = db.prepare('SELECT name FROM tags').all().map(t => toStr(t.name));
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 256, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 256, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Which of these tags apply? Available: ${tagNames.join(', ')}\n\nReturn ONLY a comma-separated list. If none, say "None".\n\n${ticketData.context}` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -830,7 +826,7 @@ router.post('/draft-email', requireAuth, async (req, res) => {
   const { instructions, to, subject } = req.body;
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft email for ${toStr(user?.name)} at Seniority Healthcare.\nTo: ${to || '?'}\nSubject: ${subject || '?'}\nInstructions: ${instructions || 'Write an appropriate email'}\n\nWrite ONLY the body. Be professional and concise.` }],
     });
     res.json({ result: response.content[0]?.text || '' });
@@ -846,7 +842,7 @@ router.post('/draft-email-reply', requireAuth, async (req, res) => {
   const { from, subject, body, instructions } = req.body;
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1024, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Draft a professional reply for ${toStr(user?.name)} at Seniority Healthcare.\n\nOriginal email:\nFrom: ${from || '?'}\nSubject: ${subject || '?'}\nBody:\n${body || '(empty)'}\n\n${instructions ? 'Instructions: ' + instructions + '\n\n' : ''}Write ONLY the reply body. No signature.` }],
     });
     res.json({ result: response.content[0]?.text || '' });
