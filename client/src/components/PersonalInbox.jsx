@@ -68,8 +68,11 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
   const [detailLoading, setDetailLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [searchActive, setSearchActive] = useState(false);
-  const [showReply, setShowReply] = useState(false);
+  const [showReply, setShowReply] = useState(false); // false | 'reply' | 'replyAll' | 'forward'
   const [replyBody, setReplyBody] = useState('');
+  const [replyTo, setReplyTo] = useState('');
+  const [replyCc, setReplyCc] = useState('');
+  const [replySubject, setReplySubject] = useState('');
   const [sending, setSending] = useState(false);
   const [nextPage, setNextPage] = useState(null);
   const [prevPageTokens, setPrevPageTokens] = useState([]);  // stack of previous page tokens
@@ -170,12 +173,45 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     e.target.value = '';
   };
 
+  const startReply = (mode) => {
+    if (!detail) return;
+    setShowReply(mode);
+    setReplyAttachments([]);
+    if (mode === 'reply') {
+      setReplyTo(senderEmail(detail.from));
+      setReplyCc('');
+      setReplySubject('Re: ' + (detail.subject || '').replace(/^Re:\s*/i, ''));
+      setReplyBody('');
+    } else if (mode === 'replyAll') {
+      setReplyTo(senderEmail(detail.from));
+      const allRecipients = [detail.to, detail.cc].filter(Boolean).join(', ');
+      const myEmail = currentUser?.email || '';
+      const ccList = allRecipients.split(',').map(e => senderEmail(e.trim())).filter(e => e && e.toLowerCase() !== myEmail.toLowerCase() && e.toLowerCase() !== senderEmail(detail.from).toLowerCase()).join(', ');
+      setReplyCc(ccList);
+      setReplySubject('Re: ' + (detail.subject || '').replace(/^Re:\s*/i, ''));
+      setReplyBody('');
+    } else if (mode === 'forward') {
+      setReplyTo('');
+      setReplyCc('');
+      setReplySubject('Fwd: ' + (detail.subject || '').replace(/^Fwd:\s*/i, ''));
+      const fwdHeader = '\n\n---------- Forwarded message ----------\nFrom: ' + (detail.from || '') + '\nDate: ' + (detail.date ? new Date(detail.date).toLocaleString() : '') + '\nSubject: ' + (detail.subject || '') + '\nTo: ' + (detail.to || '') + '\n\n';
+      const plainBody = detail.body ? detail.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      setReplyBody(fwdHeader + plainBody);
+    }
+  };
+
   const sendReply = async () => {
-    if (!replyBody.trim() || !detail) return;
+    if (!replyTo.trim() && showReply !== 'forward') return;
+    if (showReply === 'forward' && !replyTo.trim()) { showToast?.('Enter a recipient'); return; }
+    if (!replyBody.trim()) return;
     setSending(true);
     try {
-      await api.gmailPersonalSend({ to: detail.from, subject: 'Re: ' + (detail.subject || ''), body: replyBody, threadId: detail.threadId, attachments: replyAttachments.length > 0 ? replyAttachments : undefined });
-      showToast?.('Sent'); setShowReply(false); setReplyBody(''); setReplyAttachments([]);
+      const payload = { to: replyTo, subject: replySubject, body: replyBody.replace(/\n/g, '<br/>'), attachments: replyAttachments.length > 0 ? replyAttachments : undefined };
+      if (replyCc.trim()) payload.cc = replyCc;
+      if (showReply !== 'forward' && detail?.threadId) payload.threadId = detail.threadId;
+      await api.gmailPersonalSend(payload);
+      showToast?.('Sent');
+      setShowReply(false); setReplyBody(''); setReplyTo(''); setReplyCc(''); setReplySubject(''); setReplyAttachments([]);
     } catch (e) { showToast?.(e.message); }
     setSending(false);
   };
@@ -710,9 +746,15 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   </div>
                 )}
                 {!showReply ? (
-                  <div style={{ padding:'8px 0 32px 52px',display:'flex',gap:8 }}>
-                    <div onClick={() => setShowReply(true)} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
+                  <div style={{ padding:'8px 0 32px 52px',display:'flex',gap:8,flexWrap:'wrap' }}>
+                    <div onClick={() => startReply('reply')} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
                       <SvgIcon d={ICON_PATHS.reply} size={18} /> Reply
+                    </div>
+                    <div onClick={() => startReply('replyAll')} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#444746"><path d="M7 8V5l-7 7 7 7v-3l-4-4 4-4zm6 1V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg> Reply All
+                    </div>
+                    <div onClick={() => startReply('forward')} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#444746"><path d="M12 8V4l8 8-8 8v-4H4V8z"/></svg> Forward
                     </div>
                     {isSupervisorOrAdmin && (
                       <div onClick={async () => {
@@ -730,9 +772,28 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   </div>
                 ) : (
                   <div style={{ margin:'0 0 32px 52px',border:'1px solid #dadce0',borderRadius:8,overflow:'hidden' }}>
-                    <div style={{ padding:'8px 16px',borderBottom:'1px solid #f1f3f4',fontSize:12,color:'#5f6368' }}>To: {detail.from}</div>
-                    <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={6} autoFocus
-                      style={{ width:'100%',border:'none',outline:'none',padding:'12px 16px',fontSize:14,lineHeight:1.5,resize:'vertical',boxSizing:'border-box',fontFamily:'inherit' }} placeholder="Type your reply..." />
+                    <div style={{ padding:'8px 16px',borderBottom:'1px solid #f1f3f4',fontSize:13,color:'#202124',fontWeight:500 }}>
+                      {showReply === 'forward' ? 'Forward' : showReply === 'replyAll' ? 'Reply All' : 'Reply'}
+                    </div>
+                    <div style={{ display:'flex',alignItems:'center',padding:'4px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
+                      <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>To:</span>
+                      {showReply === 'forward' ? (
+                        <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="Enter recipient email"
+                          style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} autoFocus />
+                      ) : (
+                        <span style={{ fontSize:13,color:'#202124',padding:'6px 4px' }}>{replyTo}</span>
+                      )}
+                    </div>
+                    {(showReply === 'replyAll' || showReply === 'forward') && (
+                      <div style={{ display:'flex',alignItems:'center',padding:'4px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
+                        <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>Cc:</span>
+                        <input value={replyCc} onChange={e => setReplyCc(e.target.value)} placeholder="Add Cc recipients"
+                          style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} />
+                      </div>
+                    )}
+                    <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={8} autoFocus={showReply !== 'forward'}
+                      style={{ width:'100%',border:'none',outline:'none',padding:'12px 16px',fontSize:14,lineHeight:1.5,resize:'vertical',boxSizing:'border-box',fontFamily:'inherit' }}
+                      placeholder={showReply === 'forward' ? 'Add a message (optional)...' : 'Type your reply...'} />
                     {replyAttachments.length > 0 && (
                       <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px' }}>
                         {replyAttachments.map((a, i) => (
@@ -754,7 +815,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                       <div onClick={() => replyFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                         <SvgIcon d={ICON_PATHS.attach} size={18} />
                       </div>
-                      <div onClick={() => { setShowReply(false); setReplyBody(''); setReplyAttachments([]); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+                      <div onClick={() => { setShowReply(false); setReplyBody(''); setReplyTo(''); setReplyCc(''); setReplySubject(''); setReplyAttachments([]); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                         <SvgIcon d={ICON_PATHS.trash} size={18} />
                       </div>
                     </div>
