@@ -1052,53 +1052,46 @@ router.post('/pull-from-queue', requireAuth, async (req, res) => {
 
   const msgs = db.prepare('SELECT gmail_message_id, gmail_user_id, from_address, subject, body_text FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
 
+  // Run all Gmail operations in parallel
+  const ops = [];
   if (destination === 'me') {
-    // Forward the email content to the current user's inbox
     const myAuth = getAuthForUser(req.user.id);
     if (myAuth) {
-      const gm = google.gmail({ version: 'v1', auth: myAuth.auth });
+      const myGm = google.gmail({ version: 'v1', auth: myAuth.auth });
       for (const m of msgs) {
-        try {
-          // Get full message from the original user's Gmail, then forward to current user
-          const origUserId = toStr(m.gmail_user_id);
-          const origAuth = origUserId ? getAuthForUser(origUserId) : null;
-          if (origAuth) {
-            const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
-            const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
-            // Insert the raw message into current user's inbox
-            await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
-          }
-        } catch(e) { console.log('[Pull] Forward to me failed:', e.message); }
-      }
-    }
-    // Also remove the archived label from original user's Gmail so it's not orphaned
-    for (const m of msgs) {
-      const gmailUserId = toStr(m.gmail_user_id);
-      const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
-      if (userAuth) {
-        try {
-          const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
-          const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-          if (hiddenLabelId) await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: { removeLabelIds: [hiddenLabelId] } });
-        } catch(e) {}
+        ops.push((async () => {
+          try {
+            const origUserId = toStr(m.gmail_user_id);
+            const origAuth = origUserId ? getAuthForUser(origUserId) : null;
+            if (origAuth) {
+              const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
+              const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
+              await myGm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
+              const hiddenLabelId = await getOrCreateLabel(origGm, 'CareCoord/Archived');
+              if (hiddenLabelId) await origGm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: { removeLabelIds: [hiddenLabelId] } });
+            }
+          } catch(e) { console.log('[Pull] Forward to me failed:', e.message); }
+        })());
       }
     }
   } else {
-    // Default: restore to original coordinator's inbox as unread
     for (const m of msgs) {
-      const gmailUserId = toStr(m.gmail_user_id);
-      const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
-      if (userAuth) {
+      ops.push((async () => {
         try {
-          const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
-          const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-          const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
-          if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
-          await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
+          const gmailUserId = toStr(m.gmail_user_id);
+          const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
+          if (userAuth) {
+            const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+            const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
+            const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
+            if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
+            await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
+          }
         } catch(e) { console.log('[Pull] Gmail restore failed:', e.message); }
-      }
+      })());
     }
   }
+  await Promise.allSettled(ops);
 
   // Remove ticket and related data from CareCoord
   db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
@@ -1120,71 +1113,86 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
   const { ticketIds, destination } = req.body;
   if (!ticketIds || !ticketIds.length) return res.status(400).json({ error: 'ticketIds required' });
 
-  let pulled = 0;
+  // Pre-cache auth objects so we don't re-create them per ticket
+  const authCache = {};
+  const getAuth = (userId) => {
+    if (!userId) return null;
+    if (!authCache[userId]) authCache[userId] = getAuthForUser(userId);
+    return authCache[userId];
+  };
+  const myAuth = getAuth(req.user.id);
+
+  // Pre-cache hidden label IDs per user so we only look up once
+  const labelCache = {};
+  const getHiddenLabel = async (userId, gmClient) => {
+    if (!labelCache[userId]) labelCache[userId] = await getOrCreateLabel(gmClient, 'CareCoord/Archived');
+    return labelCache[userId];
+  };
+
+  // Collect all Gmail operations across all tickets, then run them in parallel
+  const gmailOps = [];
+  const validTicketIds = [];
+
   for (const ticketId of ticketIds) {
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
     if (!ticket) continue;
+    validTicketIds.push(ticketId);
 
     const msgs = db.prepare('SELECT gmail_message_id, gmail_user_id FROM messages WHERE ticket_id = ? AND gmail_message_id IS NOT NULL').all(ticketId);
 
-    if (destination === 'me') {
-      // Forward to current user's inbox
-      const myAuth = getAuthForUser(req.user.id);
-      if (myAuth) {
-        const gm = google.gmail({ version: 'v1', auth: myAuth.auth });
-        for (const m of msgs) {
+    for (const m of msgs) {
+      const gmailMsgId = toStr(m.gmail_message_id);
+      const origUserId = toStr(m.gmail_user_id);
+
+      if (destination === 'me') {
+        // Forward to current user's inbox + clean up archived label
+        gmailOps.push((async () => {
           try {
-            const origUserId = toStr(m.gmail_user_id);
-            const origAuth = origUserId ? getAuthForUser(origUserId) : null;
-            if (origAuth) {
+            const origAuth = getAuth(origUserId);
+            if (origAuth && myAuth) {
               const origGm = google.gmail({ version: 'v1', auth: origAuth.auth });
-              const fullMsg = await origGm.users.messages.get({ userId: 'me', id: toStr(m.gmail_message_id), format: 'raw' });
-              await gm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
+              const myGm = google.gmail({ version: 'v1', auth: myAuth.auth });
+              const fullMsg = await origGm.users.messages.get({ userId: 'me', id: gmailMsgId, format: 'raw' });
+              await myGm.users.messages.insert({ userId: 'me', requestBody: { raw: fullMsg.data.raw, labelIds: ['INBOX', 'UNREAD'] } });
+              // Remove archived label from original
+              const hiddenLabelId = await getHiddenLabel(origUserId, origGm);
+              if (hiddenLabelId) await origGm.users.messages.modify({ userId: 'me', id: gmailMsgId, requestBody: { removeLabelIds: [hiddenLabelId] } });
             }
           } catch(e) {}
-        }
-      }
-      // Clean up archived label from original
-      for (const m of msgs) {
-        const gmailUserId = toStr(m.gmail_user_id);
-        const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
-        if (userAuth) {
+        })());
+      } else {
+        // Restore to original coordinator's inbox
+        gmailOps.push((async () => {
           try {
-            const gm2 = google.gmail({ version: 'v1', auth: userAuth.auth });
-            const hiddenLabelId = await getOrCreateLabel(gm2, 'CareCoord/Archived');
-            if (hiddenLabelId) await gm2.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: { removeLabelIds: [hiddenLabelId] } });
+            const userAuth = getAuth(origUserId);
+            if (userAuth) {
+              const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+              const hiddenLabelId = await getHiddenLabel(origUserId, gm);
+              const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
+              if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
+              await gm.users.messages.modify({ userId: 'me', id: gmailMsgId, requestBody: modReq });
+            }
           } catch(e) {}
-        }
-      }
-    } else {
-      // Default: restore to original coordinator's inbox as unread
-      for (const m of msgs) {
-        const gmailUserId = toStr(m.gmail_user_id);
-        const userAuth = gmailUserId ? getAuthForUser(gmailUserId) : null;
-        if (userAuth) {
-          try {
-            const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
-            const hiddenLabelId = await getOrCreateLabel(gm, 'CareCoord/Archived');
-            const modReq = { addLabelIds: ['INBOX', 'UNREAD'] };
-            if (hiddenLabelId) modReq.removeLabelIds = [hiddenLabelId];
-            await gm.users.messages.modify({ userId: 'me', id: toStr(m.gmail_message_id), requestBody: modReq });
-          } catch(e) {}
-        }
+        })());
       }
     }
+  }
 
-    // Remove ticket and related data from CareCoord
+  // Run ALL Gmail operations in parallel
+  await Promise.allSettled(gmailOps);
+
+  // Now delete all ticket data from DB in one batch
+  for (const ticketId of validTicketIds) {
     db.prepare('DELETE FROM attachments WHERE ticket_id = ?').run(ticketId);
     db.prepare('DELETE FROM notes WHERE ticket_id = ?').run(ticketId);
     db.prepare('DELETE FROM messages WHERE ticket_id = ?').run(ticketId);
     db.prepare('DELETE FROM ticket_tags WHERE ticket_id = ?').run(ticketId);
     db.prepare('DELETE FROM tickets WHERE id = ?').run(ticketId);
-    pulled++;
   }
 
   saveDb();
-  console.log('[Queue] Bulk pulled', pulled, 'tickets');
-  res.json({ pulled });
+  console.log('[Queue] Bulk pulled', validTicketIds.length, 'tickets');
+  res.json({ pulled: validTicketIds.length });
 });
 
 // ── Bulk push to queue (supervisor + admin) ──
