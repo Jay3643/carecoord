@@ -19,7 +19,19 @@ function generateTicketId(db, regionId) {
 }
 
 function oauth2() { return new google.auth.OAuth2(process.env.GMAIL_CLIENT_ID, process.env.GMAIL_CLIENT_SECRET, process.env.GMAIL_REDIRECT_URI); }
-function authClient(t) { const c = oauth2(); c.setCredentials({ access_token: toStr(t.access_token), refresh_token: toStr(t.refresh_token), expiry_date: t.expiry_date }); return c; }
+function authClient(t) {
+  const c = oauth2();
+  c.setCredentials({ access_token: toStr(t.access_token), refresh_token: toStr(t.refresh_token), expiry_date: t.expiry_date });
+  // Auto-save refreshed tokens when Google refreshes them
+  c.on('tokens', (tokens) => {
+    const uid = toStr(t.user_id);
+    if (uid && tokens.access_token) {
+      putTokens(uid, tokens, toStr(t.email));
+      console.log('[OAuth] Token refreshed for user', uid);
+    }
+  });
+  return c;
+}
 function getTokens(uid) { return getDb().prepare('SELECT * FROM gmail_tokens WHERE user_id = ?').get(uid) || null; }
 function putTokens(uid, t, email) {
   const db = getDb();

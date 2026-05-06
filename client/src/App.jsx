@@ -331,7 +331,7 @@ export default function App() {
         </div>
         )}
 
-        <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <nav style={{ flex: 1, padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', minHeight: 0 }}>
           {[
             { key: 'regionQueue', icon: 'inbox', label: 'Region Queue', badge: unassignedCount, badgeColor: '#d94040' },
             { key: 'personalQueue', icon: 'user', label: 'My Queue', badge: personalCount, badgeColor: '#d94040' },
