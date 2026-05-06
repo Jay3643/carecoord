@@ -36,7 +36,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      if (mode === 'region') await api.gmailAutoSync().catch(() => {});
+      if (mode === 'region') api.gmailAutoSync().catch(() => {});
       const params = { queue: mode === 'personal' ? 'personal' : 'region', status: 'all' };
       if (selectedRegion && selectedRegion !== 'all') params.region = selectedRegion;
       if (searchQuery) params.search = searchQuery;
