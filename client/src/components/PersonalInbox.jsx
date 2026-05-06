@@ -682,9 +682,10 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
             ))}
           </div>
         ) : (
-          <div style={{ flex:1,overflowY:'auto' }}>
-            <div style={{ display:'flex',alignItems:'center',gap:4,padding:'8px 16px',borderBottom:'1px solid #f1f3f4' }}>
-              <div onClick={() => { setSelected(null); setDetail(null); setShowMoveMenu(false); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
+          <div style={{ flex:1,display:'flex',flexDirection:'column',minHeight:0 }}>
+            {/* Fixed toolbar */}
+            <div style={{ display:'flex',alignItems:'center',gap:4,padding:'8px 16px',borderBottom:'1px solid #f1f3f4',flexShrink:0 }}>
+              <div onClick={() => { setSelected(null); setDetail(null); setShowReply(false); setShowMoveMenu(false); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                 <SvgIcon d={ICON_PATHS.back} />
               </div>
               <span style={{ fontSize:14,color:'#5f6368',marginRight:8 }}>Back</span>
@@ -699,12 +700,12 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
               </div>
             </div>
 
-            {/* Applied label chips on current message */}
+            {/* Applied label chips */}
             {selected && (() => {
               const appliedLabels = userLabels.filter(l => (selected.labels || []).includes(l.id));
               if (appliedLabels.length === 0) return null;
               return (
-                <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px 0',alignItems:'center' }}>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px',alignItems:'center',flexShrink:0 }}>
                   {appliedLabels.map(l => {
                     const lColor = l.color?.backgroundColor || '#e8eaed';
                     return (
@@ -719,10 +720,12 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
               );
             })()}
 
+            {/* Scrollable message body */}
+            <div style={{ flex:1,overflowY:'auto',minHeight:0 }}>
             {detailLoading ? (
               <div style={{ padding:40,textAlign:'center',color:'#5f6368' }}>Loading...</div>
             ) : detail && (
-              <div style={{ maxWidth:880,margin:'0 auto',padding:'0 24px' }}>
+              <div style={{ maxWidth:880,margin:'0 auto',padding:'0 24px 24px' }}>
                 <h1 style={{ fontSize:22,fontWeight:400,color:'#202124',margin:'20px 0 16px',lineHeight:1.35 }}>{detail.subject || '(no subject)'}</h1>
                 <div style={{ display:'flex',gap:12,marginBottom:20 }}>
                   <div style={{ width:40,height:40,borderRadius:'50%',background:'#1a73e8',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:18,fontWeight:500,flexShrink:0 }}>
@@ -730,7 +733,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   </div>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div><span style={{ fontWeight:500 }}>{senderName(detail.from)}</span> <span style={{ color:'#5f6368',fontSize:12 }}>&lt;{senderEmail(detail.from)}&gt;</span></div>
-                    <div style={{ fontSize:12,color:'#5f6368' }}>to {detail.to ? senderName(detail.to) : 'me'}</div>
+                    <div style={{ fontSize:12,color:'#5f6368' }}>to {detail.to ? senderName(detail.to) : 'me'}{detail.cc ? ', cc: ' + detail.cc : ''}</div>
                   </div>
                   <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>{detail.date ? new Date(detail.date).toLocaleString() : ''}</span>
                 </div>
@@ -745,8 +748,15 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+            </div>
+
+            {/* Fixed bottom: action buttons or reply composer */}
+            {detail && (
+              <div style={{ flexShrink:0,borderTop:'1px solid #e8eaed' }}>
                 {!showReply ? (
-                  <div style={{ padding:'8px 0 32px 52px',display:'flex',gap:8,flexWrap:'wrap' }}>
+                  <div style={{ padding:'10px 24px',display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',background:'#fff' }}>
                     <div onClick={() => startReply('reply')} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
                       <SvgIcon d={ICON_PATHS.reply} size={18} /> Reply
                     </div>
@@ -771,11 +781,18 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     )}
                   </div>
                 ) : (
-                  <div style={{ margin:'0 0 32px 52px',border:'1px solid #dadce0',borderRadius:8,overflow:'hidden' }}>
-                    <div style={{ padding:'8px 16px',borderBottom:'1px solid #f1f3f4',fontSize:13,color:'#202124',fontWeight:500 }}>
-                      {showReply === 'forward' ? 'Forward' : showReply === 'replyAll' ? 'Reply All' : 'Reply'}
+                  <div style={{ border:'1px solid #dadce0',borderRadius:'8px 8px 0 0',margin:'0 16px',background:'#fff' }}>
+                    <div style={{ display:'flex',alignItems:'center',padding:'6px 16px',borderBottom:'1px solid #f1f3f4',gap:8 }}>
+                      <span style={{ fontSize:13,color:'#202124',fontWeight:500 }}>
+                        {showReply === 'forward' ? 'Forward' : showReply === 'replyAll' ? 'Reply All' : 'Reply'}
+                      </span>
+                      <div style={{ flex:1 }} />
+                      <div onClick={() => { setShowReply(false); setReplyBody(''); setReplyTo(''); setReplyCc(''); setReplySubject(''); setReplyAttachments([]); }}
+                        style={{ padding:4,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row" title="Discard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#5f6368"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                      </div>
                     </div>
-                    <div style={{ display:'flex',alignItems:'center',padding:'4px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
+                    <div style={{ display:'flex',alignItems:'center',padding:'2px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
                       <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>To:</span>
                       {showReply === 'forward' ? (
                         <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="Enter recipient email"
@@ -785,14 +802,14 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                       )}
                     </div>
                     {(showReply === 'replyAll' || showReply === 'forward') && (
-                      <div style={{ display:'flex',alignItems:'center',padding:'4px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
+                      <div style={{ display:'flex',alignItems:'center',padding:'2px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
                         <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>Cc:</span>
                         <input value={replyCc} onChange={e => setReplyCc(e.target.value)} placeholder="Add Cc recipients"
                           style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} />
                       </div>
                     )}
-                    <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={8} autoFocus={showReply !== 'forward'}
-                      style={{ width:'100%',border:'none',outline:'none',padding:'12px 16px',fontSize:14,lineHeight:1.5,resize:'vertical',boxSizing:'border-box',fontFamily:'inherit' }}
+                    <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={4} autoFocus={showReply !== 'forward'}
+                      style={{ width:'100%',border:'none',outline:'none',padding:'8px 16px',fontSize:14,lineHeight:1.5,resize:'none',boxSizing:'border-box',fontFamily:'inherit',maxHeight:200,overflowY:'auto' }}
                       placeholder={showReply === 'forward' ? 'Add a message (optional)...' : 'Type your reply...'} />
                     {replyAttachments.length > 0 && (
                       <div style={{ display:'flex',flexWrap:'wrap',gap:4,padding:'4px 16px' }}>
@@ -805,7 +822,7 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                         ))}
                       </div>
                     )}
-                    <div style={{ padding:'8px 16px',background:'#f6f8fc',display:'flex',gap:8,alignItems:'center' }}>
+                    <div style={{ padding:'6px 16px',background:'#f6f8fc',display:'flex',gap:8,alignItems:'center',borderTop:'1px solid #f1f3f4' }}>
                       <button onClick={sendReply} disabled={sending} style={{ padding:'8px 24px',background:'#0b57d0',color:'#fff',border:'none',borderRadius:18,cursor:sending?'default':'pointer',fontSize:14,fontWeight:500,opacity:sending?.7:1 }}>{sending ? 'Sending...' : 'Send'}</button>
                       <button onClick={aiDraftReply} disabled={aiDraftingReply}
                         style={{ padding:'6px 16px',background:'#52a8c7',border:'none',borderRadius:18,cursor:aiDraftingReply?'default':'pointer',fontSize:13,fontWeight:500,color:'#fff',opacity:aiDraftingReply?.7:1,display:'flex',alignItems:'center',gap:4 }}>
@@ -814,9 +831,6 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                       <input type="file" ref={replyFileRef} onChange={e => handleFileAttach(e, setReplyAttachments)} multiple style={{ display:'none' }} />
                       <div onClick={() => replyFileRef.current?.click()} title="Attach files" style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
                         <SvgIcon d={ICON_PATHS.attach} size={18} />
-                      </div>
-                      <div onClick={() => { setShowReply(false); setReplyBody(''); setReplyTo(''); setReplyCc(''); setReplySubject(''); setReplyAttachments([]); }} style={{ padding:8,borderRadius:'50%',cursor:'pointer',display:'flex' }} className="gi-row">
-                        <SvgIcon d={ICON_PATHS.trash} size={18} />
                       </div>
                     </div>
                   </div>
