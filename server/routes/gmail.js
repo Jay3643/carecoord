@@ -318,15 +318,17 @@ async function syncUser(db, row) {
   const auth = userAuth ? userAuth.auth : authClient(row);
   const gm = google.gmail({version:'v1',auth});
 
-  // Role-based routing: admin and supervisor skip sync entirely
-  // Also skip inactive users
+  // Skip inactive users
   const userRow = db.prepare('SELECT role, is_active, work_status FROM users WHERE id = ?').get(uid);
   const role = userRow ? toStr(userRow.role) : 'coordinator';
-  if (role === 'admin' || role === 'supervisor') return 0;
   if (userRow && (!userRow.is_active || toStr(userRow.work_status) === 'inactive')) return 0;
 
+  // Admins/supervisors only route emails that explicitly match a region alias
+  // (so their personal inbox emails don't all dump into a default region)
+  const aliasMatchOnly = (role === 'admin' || role === 'supervisor');
+
   const regions = db.prepare('SELECT region_id FROM user_regions WHERE user_id=?').all(uid);
-  if (!regions.length) return 0;
+  if (!regions.length && !aliasMatchOnly) return 0;
 
   const syncState = db.prepare('SELECT last_sync_at, sync_start_date FROM email_sync_state WHERE user_id=?').get(uid);
   if (!syncState) {
@@ -392,9 +394,12 @@ async function syncUser(db, row) {
 
       // Route to region by matching To/Cc against region aliases
       let rid = defaultRid;
+      let matchedAlias = false;
       for (const [alias, regionId] of Object.entries(aliasMap)) {
-        if (allRecipients.includes(alias)) { rid = regionId; break; }
+        if (allRecipients.includes(alias)) { rid = regionId; matchedAlias = true; break; }
       }
+      // Admins/supervisors only route emails that explicitly hit a region alias
+      if (aliasMatchOnly && !matchedAlias) continue;
 
       // Check exception list — if sender matches, skip queue (stays in personal inbox)
       let isException = false;

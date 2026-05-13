@@ -173,21 +173,46 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
     e.target.value = '';
   };
 
+  // Parse an address list like 'Smith, Bob <bob@x.com>, alice@x.com' into array of email addresses.
+  // Handles commas inside quoted names and angle brackets.
+  const parseAddressList = (raw) => {
+    if (!raw) return [];
+    const out = [];
+    let depth = 0, quoted = false, current = '';
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i];
+      if (c === '"') { quoted = !quoted; current += c; continue; }
+      if (!quoted && c === '<') depth++;
+      if (!quoted && c === '>') depth--;
+      if (!quoted && depth === 0 && c === ',') { out.push(current.trim()); current = ''; continue; }
+      current += c;
+    }
+    if (current.trim()) out.push(current.trim());
+    return out.map(senderEmail).filter(Boolean);
+  };
+
   const startReply = (mode) => {
     if (!detail) return;
     setShowReply(mode);
     setReplyAttachments([]);
+    const senderAddr = senderEmail(detail.from);
+    const myEmail = (currentUser?.email || '').toLowerCase();
     if (mode === 'reply') {
-      setReplyTo(senderEmail(detail.from));
+      setReplyTo(senderAddr);
       setReplyCc('');
       setReplySubject('Re: ' + (detail.subject || '').replace(/^Re:\s*/i, ''));
       setReplyBody('');
     } else if (mode === 'replyAll') {
-      setReplyTo(senderEmail(detail.from));
-      const allRecipients = [detail.to, detail.cc].filter(Boolean).join(', ');
-      const myEmail = currentUser?.email || '';
-      const ccList = allRecipients.split(',').map(e => senderEmail(e.trim())).filter(e => e && e.toLowerCase() !== myEmail.toLowerCase() && e.toLowerCase() !== senderEmail(detail.from).toLowerCase()).join(', ');
-      setReplyCc(ccList);
+      setReplyTo(senderAddr);
+      const allTo = parseAddressList(detail.to || '');
+      const allCc = parseAddressList(detail.cc || '');
+      const seen = new Set([senderAddr.toLowerCase(), myEmail]);
+      const filtered = [];
+      for (const addr of [...allTo, ...allCc]) {
+        const lower = addr.toLowerCase();
+        if (!seen.has(lower)) { seen.add(lower); filtered.push(addr); }
+      }
+      setReplyCc(filtered.join(', '));
       setReplySubject('Re: ' + (detail.subject || '').replace(/^Re:\s*/i, ''));
       setReplyBody('');
     } else if (mode === 'forward') {
@@ -794,20 +819,15 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     </div>
                     <div style={{ display:'flex',alignItems:'center',padding:'2px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
                       <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>To:</span>
-                      {showReply === 'forward' ? (
-                        <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="Enter recipient email"
-                          style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} autoFocus />
-                      ) : (
-                        <span style={{ fontSize:13,color:'#202124',padding:'6px 4px' }}>{replyTo}</span>
-                      )}
+                      <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="Recipient email(s) comma-separated"
+                        style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }}
+                        autoFocus={showReply === 'forward'} />
                     </div>
-                    {(showReply === 'replyAll' || showReply === 'forward') && (
-                      <div style={{ display:'flex',alignItems:'center',padding:'2px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
-                        <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>Cc:</span>
-                        <input value={replyCc} onChange={e => setReplyCc(e.target.value)} placeholder="Add Cc recipients"
-                          style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} />
-                      </div>
-                    )}
+                    <div style={{ display:'flex',alignItems:'center',padding:'2px 16px',borderBottom:'1px solid #f1f3f4',gap:4 }}>
+                      <span style={{ fontSize:12,color:'#5f6368',flexShrink:0 }}>Cc:</span>
+                      <input value={replyCc} onChange={e => setReplyCc(e.target.value)} placeholder="Add Cc recipients"
+                        style={{ flex:1,border:'none',outline:'none',fontSize:13,padding:'6px 4px',fontFamily:'inherit',color:'#202124' }} />
+                    </div>
                     <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} rows={4} autoFocus={showReply !== 'forward'}
                       style={{ width:'100%',border:'none',outline:'none',padding:'8px 16px',fontSize:14,lineHeight:1.5,resize:'none',boxSizing:'border-box',fontFamily:'inherit',maxHeight:200,overflowY:'auto' }}
                       placeholder={showReply === 'forward' ? 'Add a message (optional)...' : 'Type your reply...'} />
