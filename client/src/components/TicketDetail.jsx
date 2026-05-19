@@ -384,6 +384,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   };
 
+  // Extract just the email from "Name <email@x.com>" formats
+  const extractEmail = (s) => {
+    if (!s) return '';
+    const m = String(s).match(/<([^>]+)>/);
+    return (m ? m[1] : String(s)).trim();
+  };
+
   // Set up the reply form when switching modes or when ticket loads
   const initReplyMode = (mode) => {
     setReplyMode(mode);
@@ -395,25 +402,41 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       setReplyCc('');
     } else if (mode === 'replyAll') {
       setReplyTo(sender);
-      // Build Cc from all external participants + linked ticket participants, excluding sender and current user
+      // Build Cc from external participants, linked-ticket synced users, and original To/Cc.
+      // Exclude self and the To recipient (sender).
       const all = new Set();
-      (ticket.external_participants || []).forEach(e => all.add(e));
+      const addAddr = (e) => { if (e) all.add(String(e).trim()); };
+
+      (ticket.external_participants || []).forEach(addAddr);
+
+      // Other users in the system this email was also sent to (linked tickets)
       (ticket.linkedTickets || []).forEach(lt => {
-        if (lt.syncedFor?.email) all.add(lt.syncedFor.email);
+        if (lt.syncedFor?.email) addAddr(lt.syncedFor.email);
       });
-      // Also pull from last inbound's To/Cc if available
+      // Multi-recipient sync metadata on this ticket
+      (ticket.syncedForUsers || []).forEach(u => {
+        if (u?.email) addAddr(u.email);
+      });
+      if (ticket.syncedFor?.email) addAddr(ticket.syncedFor.email);
+
+      // Original To/Cc from the inbound email
       if (lastInbound) {
         const tos = Array.isArray(lastInbound.to_addresses) ? lastInbound.to_addresses : [];
-        tos.forEach(e => all.add(e));
+        tos.forEach(addAddr);
         const ccs = Array.isArray(lastInbound.cc_addresses) ? lastInbound.cc_addresses : [];
-        ccs.forEach(e => all.add(e));
+        ccs.forEach(addAddr);
       }
-      const myEmail = (currentUser?.email || '').toLowerCase();
-      const senderLower = (sender || '').toLowerCase();
-      const cc = Array.from(all).filter(e => {
-        const l = (e || '').toLowerCase();
-        return l && !l.includes(myEmail) && !l.includes(senderLower);
-      });
+
+      const myEmail = extractEmail(currentUser?.email).toLowerCase();
+      const senderEmail = extractEmail(sender).toLowerCase();
+      const seen = new Set();
+      const cc = [];
+      for (const addr of all) {
+        const email = extractEmail(addr).toLowerCase();
+        if (!email || email === myEmail || email === senderEmail || seen.has(email)) continue;
+        seen.add(email);
+        cc.push(addr);
+      }
       setReplyCc(cc.join(', '));
     }
   };

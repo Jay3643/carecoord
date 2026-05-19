@@ -95,12 +95,12 @@ function enrichTicket(db, ticket) {
     ticket.read_by = db.prepare('SELECT id, name FROM users WHERE id = ?').get(ticket.read_by_user_id);
   }
   if (ticket.synced_for_user_id) {
-    ticket.syncedFor = db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.synced_for_user_id);
+    ticket.syncedFor = db.prepare('SELECT id, name, email, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(ticket.synced_for_user_id);
   }
   // Multiple intended recipients
   const syncedIds = JSON.parse(toStr(ticket.synced_for_user_ids) || '[]');
   if (syncedIds.length > 0) {
-    ticket.syncedForUsers = syncedIds.map(uid => db.prepare('SELECT id, name, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(uid)).filter(Boolean);
+    ticket.syncedForUsers = syncedIds.map(uid => db.prepare('SELECT id, name, email, avatar, profile_photo_url as photoUrl FROM users WHERE id = ?').get(uid)).filter(Boolean);
   }
   // Linked tickets (multi-recipient siblings)
   const linkedIds = JSON.parse(toStr(ticket.linked_ticket_ids) || '[]');
@@ -108,8 +108,8 @@ function enrichTicket(db, ticket) {
     ticket.linkedTickets = linkedIds.map(lid => {
       const lt = db.prepare('SELECT id, subject, status, assignee_user_id, synced_for_user_id FROM tickets WHERE id = ?').get(lid);
       if (!lt) return null;
-      const assignee = lt.assignee_user_id ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(lt.assignee_user_id) : null;
-      const syncedFor = lt.synced_for_user_id ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(lt.synced_for_user_id) : null;
+      const assignee = lt.assignee_user_id ? db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(lt.assignee_user_id) : null;
+      const syncedFor = lt.synced_for_user_id ? db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(lt.synced_for_user_id) : null;
       return { id: toStr(lt.id), subject: toStr(lt.subject), status: toStr(lt.status), assignee, syncedFor };
     }).filter(Boolean);
   }
