@@ -487,7 +487,7 @@ router.post('/:id/status', requireAuth, (req, res) => {
 
 router.post('/:id/reply', requireAuth, async (req, res) => {
   const db = getDb();
-  const { body, attachments: replyAttachments } = req.body;
+  const { body, attachments: replyAttachments, to: overrideTo, cc: overrideCc } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'Body required' });
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
@@ -500,8 +500,11 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const fullBody = body + '\n\n—\n' + user.name + '\nCare Coordinator — ' + region.name + '\n' + user.email;
   const msgId = uuid();
   const refs = lastIn ? JSON.parse(lastIn.reference_ids || '[]').concat(lastIn.provider_message_id) : [];
-  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, in_reply_to, reference_ids, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(msgId, req.params.id, fromAddr, JSON.stringify(extP), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), lastIn?.provider_message_id || null, JSON.stringify(refs), req.user.id, Date.now());
+  // Determine recipients: explicit override takes precedence over ticket's external participants
+  const toList = overrideTo ? overrideTo.split(',').map(s => s.trim()).filter(Boolean) : extP;
+  const ccList = overrideCc ? overrideCc.split(',').map(s => s.trim()).filter(Boolean) : [];
+  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, cc_addresses, subject, body_text, sent_at, provider_message_id, in_reply_to, reference_ids, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(msgId, req.params.id, fromAddr, JSON.stringify(toList), JSON.stringify(ccList), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), lastIn?.provider_message_id || null, JSON.stringify(refs), req.user.id, Date.now());
 
   // Save reply attachments to DB
   if (replyAttachments && replyAttachments.length > 0) {
@@ -520,7 +523,8 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
 
-      const toAddr = extP[0] || '';
+      const toAddr = toList.join(', ') || extP[0] || '';
+      const ccAddr = ccList.join(', ');
       const subject = 'Re: ' + ticket.subject;
       const replyTo = lastIn?.provider_message_id || '';
 
@@ -532,9 +536,10 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
       if (replyAttachments && replyAttachments.length > 0) {
         const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
         const headers = [
-          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: ' + subject,
-          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+          'From: ' + senderEmail, 'To: ' + toAddr,
         ];
+        if (ccAddr) headers.push('Cc: ' + ccAddr);
+        headers.push('Subject: ' + subject, 'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"');
         if (replyTo) { headers.push('In-Reply-To: <' + replyTo + '>'); headers.push('References: <' + replyTo + '>'); }
         let mimeBody = headers.join(CRLF) + CRLF + CRLF;
         mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
@@ -549,9 +554,10 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
         raw = Buffer.from(mimeBody).toString('base64url');
       } else {
         const emailLines = [
-          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: ' + subject,
-          'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0',
+          'From: ' + senderEmail, 'To: ' + toAddr,
         ];
+        if (ccAddr) emailLines.push('Cc: ' + ccAddr);
+        emailLines.push('Subject: ' + subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0');
         if (replyTo) { emailLines.push('In-Reply-To: <' + replyTo + '>'); emailLines.push('References: <' + replyTo + '>'); }
         emailLines.push(''); emailLines.push(fullBody);
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
@@ -591,7 +597,7 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
 // Reply All — sends reply and copies to all linked tickets
 router.post('/:id/reply-all', requireAuth, async (req, res) => {
   const db = getDb();
-  const { body: replyBody, attachments: replyAttachments } = req.body;
+  const { body: replyBody, attachments: replyAttachments, to: overrideTo, cc: overrideCc } = req.body;
   if (!replyBody?.trim()) return res.status(400).json({ error: 'Body required' });
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
   if (!ticket) return res.status(404).json({ error: 'Not found' });
@@ -604,8 +610,10 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   const fullBody = replyBody + '\n\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
   const msgId = uuid();
-  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(msgId, req.params.id, fromAddr, JSON.stringify(extP), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), req.user.id, Date.now());
+  const toList = overrideTo ? overrideTo.split(',').map(s => s.trim()).filter(Boolean) : extP;
+  const ccList = overrideCc ? overrideCc.split(',').map(s => s.trim()).filter(Boolean) : [];
+  db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, cc_addresses, subject, body_text, sent_at, provider_message_id, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(msgId, req.params.id, fromAddr, JSON.stringify(toList), JSON.stringify(ccList), 'Re: ' + ticket.subject, fullBody, Date.now(), 'msg-int-' + Date.now(), req.user.id, Date.now());
   db.prepare("UPDATE tickets SET status = 'WAITING_ON_EXTERNAL', last_activity_at = ?, has_unread = 0 WHERE id = ?").run(Date.now(), req.params.id);
 
   // Copy the reply as a message on all linked tickets
@@ -631,23 +639,27 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
     }
   }
 
-  // Send via Gmail to ALL external participants across main + linked tickets
+  // Send via Gmail. If user provided explicit recipients, use those. Otherwise gather all linked participants.
   try {
     const gmailAuth = getGmailAuth(req.user.id);
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
-      // Collect all external participants from main ticket + linked tickets
-      const allRecipients = new Set(extP);
-      for (const lid of linkedIds) {
-        const lt = db.prepare('SELECT external_participants FROM tickets WHERE id = ?').get(lid);
-        if (lt) {
-          const lep = JSON.parse(toStr(lt.external_participants) || '[]');
-          lep.forEach(e => allRecipients.add(e));
+      let toAddr, ccAddr = ccList.join(', ');
+      if (overrideTo) {
+        toAddr = toList.join(', ');
+      } else {
+        // Default behavior: collect all external participants from main + linked tickets
+        const allRecipients = new Set(extP);
+        for (const lid of linkedIds) {
+          const lt = db.prepare('SELECT external_participants FROM tickets WHERE id = ?').get(lid);
+          if (lt) {
+            const lep = JSON.parse(toStr(lt.external_participants) || '[]');
+            lep.forEach(e => allRecipients.add(e));
+          }
         }
+        allRecipients.delete(gmailAuth.email);
+        toAddr = Array.from(allRecipients).join(', ') || '';
       }
-      // Remove sender from recipients
-      allRecipients.delete(gmailAuth.email);
-      const toAddr = Array.from(allRecipients).join(', ') || '';
       const CRLF = '\r\n';
       const senderEmail = gmailAuth.email || fromAddr;
 
@@ -655,9 +667,10 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
       if (replyAttachments && replyAttachments.length > 0) {
         const boundary = 'boundary_' + Date.now() + '_' + Math.random().toString(36).slice(2);
         const headers = [
-          'From: ' + senderEmail, 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject,
-          'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"',
+          'From: ' + senderEmail, 'To: ' + toAddr,
         ];
+        if (ccAddr) headers.push('Cc: ' + ccAddr);
+        headers.push('Subject: Re: ' + ticket.subject, 'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"');
         let mimeBody = headers.join(CRLF) + CRLF + CRLF;
         mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
         for (const att of replyAttachments) {
@@ -670,7 +683,9 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
         mimeBody += '--' + boundary + '--';
         raw = Buffer.from(mimeBody).toString('base64url');
       } else {
-        const emailLines = ['From: ' + senderEmail, 'To: ' + toAddr, 'Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
+        const emailLines = ['From: ' + senderEmail, 'To: ' + toAddr];
+        if (ccAddr) emailLines.push('Cc: ' + ccAddr);
+        emailLines.push('Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody);
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
       }
       await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });

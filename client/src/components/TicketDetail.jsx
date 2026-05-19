@@ -46,6 +46,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
+  const [replyMode, setReplyMode] = useState('reply'); // 'reply' | 'replyAll' | 'forward'
+  const [replyTo, setReplyTo] = useState('');
+  const [replyCc, setReplyCc] = useState('');
   const [noteText, setNoteText] = useState('');
   const [activeTab, setActiveTab] = useState(initialTab || 'reply');
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -137,6 +140,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
       api.stopClock(ticketId).catch(() => {});
     };
   }, [ticketId]);
+
+  // Initialize reply To/Cc when ticket and messages first load
+  useEffect(() => {
+    if (ticket && messages.length > 0 && !replyTo) {
+      initReplyMode('reply');
+    }
+  }, [ticket?.id, messages.length]);
 
   // Tick the clock every second when running
   useEffect(() => {
@@ -346,25 +356,62 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     }
   };
 
-  const handleSendReply = async (replyAll) => {
+  const handleSendReply = async () => {
     if (!replyText.trim() || sending) return;
+    if (!replyTo.trim()) { showToast('Add at least one recipient in the To field'); return; }
     setSending(true);
     try {
       const atts = replyAttachments.length > 0 ? replyAttachments : undefined;
-      if (replyAll) {
-        const d = await api.sendReplyAll(ticketId, replyText, atts);
-        showToast('Reply sent to ' + d.sent + ' recipients');
+      if (replyMode === 'replyAll') {
+        const d = await api.sendReplyAll(ticketId, replyText, atts, replyTo, replyCc);
+        showToast('Reply sent');
       } else {
-        await api.sendReply(ticketId, replyText, atts);
+        await api.sendReply(ticketId, replyText, atts, replyTo, replyCc);
         showToast('Reply sent');
       }
       setReplyText('');
+      setReplyTo('');
+      setReplyCc('');
       setReplyAttachments([]);
       await fetchData();
     } catch (e) {
       showToast(e.message);
     } finally {
       setSending(false);
+    }
+  };
+
+  // Set up the reply form when switching modes or when ticket loads
+  const initReplyMode = (mode) => {
+    setReplyMode(mode);
+    if (!ticket) return;
+    const lastInbound = [...messages].reverse().find(m => m.direction === 'inbound');
+    const sender = lastInbound ? lastInbound.from_address : (ticket.external_participants || [])[0] || '';
+    if (mode === 'reply') {
+      setReplyTo(sender);
+      setReplyCc('');
+    } else if (mode === 'replyAll') {
+      setReplyTo(sender);
+      // Build Cc from all external participants + linked ticket participants, excluding sender and current user
+      const all = new Set();
+      (ticket.external_participants || []).forEach(e => all.add(e));
+      (ticket.linkedTickets || []).forEach(lt => {
+        if (lt.syncedFor?.email) all.add(lt.syncedFor.email);
+      });
+      // Also pull from last inbound's To/Cc if available
+      if (lastInbound) {
+        const tos = Array.isArray(lastInbound.to_addresses) ? lastInbound.to_addresses : [];
+        tos.forEach(e => all.add(e));
+        const ccs = Array.isArray(lastInbound.cc_addresses) ? lastInbound.cc_addresses : [];
+        ccs.forEach(e => all.add(e));
+      }
+      const myEmail = (currentUser?.email || '').toLowerCase();
+      const senderLower = (sender || '').toLowerCase();
+      const cc = Array.from(all).filter(e => {
+        const l = (e || '').toLowerCase();
+        return l && !l.includes(myEmail) && !l.includes(senderLower);
+      });
+      setReplyCc(cc.join(', '));
     }
   };
 
@@ -594,22 +641,32 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
         {/* Compose */}
         {ticket.status !== 'CLOSED' && (
           <div style={{ padding: '16px 24px', borderTop: '1px solid #dde8f2', background: '#ffffff' }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <button onClick={() => setActiveTab('reply')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'reply' ? '#1a5e9a' : '#dde8f2', color: activeTab === 'reply' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> Compose Reply
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => { setActiveTab('reply'); initReplyMode('reply'); }}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'reply' && replyMode === 'reply' ? '#1a5e9a' : '#dadce0', background: activeTab === 'reply' && replyMode === 'reply' ? '#1a5e9a' : '#fff', color: activeTab === 'reply' && replyMode === 'reply' ? '#fff' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
+                Reply
               </button>
-              <button onClick={() => setActiveTab('forward')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'forward' ? '#c96a1b' : '#dde8f2', color: activeTab === 'forward' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> Forward
+              <button onClick={() => { setActiveTab('reply'); initReplyMode('replyAll'); }}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'reply' && replyMode === 'replyAll' ? '#1a5e9a' : '#dadce0', background: activeTab === 'reply' && replyMode === 'replyAll' ? '#1a5e9a' : '#fff', color: activeTab === 'reply' && replyMode === 'replyAll' ? '#fff' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 8V5l-7 7 7 7v-3l-4-4 4-4zm6 1V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
+                Reply All
               </button>
-              <button onClick={() => setActiveTab('note')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'note' ? '#c9963b' : '#dde8f2', color: activeTab === 'note' ? '#000' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => setActiveTab('forward')}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'forward' ? '#c96a1b' : '#dadce0', background: activeTab === 'forward' ? '#c96a1b' : '#fff', color: activeTab === 'forward' ? '#fff' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8V4l8 8-8 8v-4H4V8z"/></svg>
+                Forward
+              </button>
+              <button onClick={() => setActiveTab('note')}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'note' ? '#c9963b' : '#dadce0', background: activeTab === 'note' ? '#c9963b' : '#fff', color: activeTab === 'note' ? '#000' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="note" size={12} /> Internal Note
               </button>
-              <button onClick={() => setActiveTab('discussion')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none',
-                background: activeTab === 'discussion' ? '#1a5e9a' : hasExistingChat ? '#1a5e9a' : '#dde8f2',
-                color: activeTab === 'discussion' ? '#fff' : hasExistingChat ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                <Icon name="send" size={12} /> {hasExistingChat ? 'Open Chat' : 'Start a Chat'}
+              <button onClick={() => setActiveTab('discussion')}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'discussion' || hasExistingChat ? '#1a5e9a' : '#dadce0', background: activeTab === 'discussion' ? '#1a5e9a' : hasExistingChat ? '#e8f0fe' : '#fff', color: activeTab === 'discussion' ? '#fff' : hasExistingChat ? '#1a5e9a' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {hasExistingChat ? 'Open Chat' : 'Start a Chat'}
               </button>
-              <button onClick={() => setActiveTab('ai')} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', background: activeTab === 'ai' ? '#52a8c7' : '#dde8f2', color: activeTab === 'ai' ? '#fff' : '#5a7a8a', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button onClick={() => setActiveTab('ai')}
+                style={{ padding: '6px 14px', borderRadius: 18, border: '1px solid', borderColor: activeTab === 'ai' ? '#52a8c7' : '#dadce0', background: activeTab === 'ai' ? '#52a8c7' : '#fff', color: activeTab === 'ai' ? '#fff' : '#1e3a4f', fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <img src="/ai-logo.jpg" alt="" style={{ width: 14, height: 14, borderRadius: 2, objectFit: 'contain' }} /> Seniority AI
               </button>
             </div>
@@ -792,62 +849,49 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 </div>
               </div>
             ) : activeTab === 'reply' ? (
-              <div>
-                {/* Show recipients info */}
-                <div style={{ marginBottom: 8, fontSize: 11, color: '#6b8299' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontWeight: 600 }}>To:</span>
-                    <span>{(ticket.external_participants || [])[0] || 'unknown'}</span>
-                  </div>
-                  {((ticket.linkedTickets && ticket.linkedTickets.length > 0) || (ticket.external_participants && ticket.external_participants.length > 1)) && (
-                    <div style={{ marginTop: 4, padding: '6px 10px', background: '#ede9fe', border: '1px solid #ddd6fe', borderRadius: 6 }}>
-                      <div style={{ fontWeight: 600, color: '#7c3aed', marginBottom: 2 }}>Reply All recipients:</div>
-                      {(ticket.external_participants || []).map((ep, i) => (
-                        <div key={i} style={{ color: '#5b21b6' }}>{ep}</div>
-                      ))}
-                      {(ticket.linkedTickets || []).map(lt => (
-                        lt.syncedFor ? <div key={lt.id} style={{ color: '#5b21b6' }}>{lt.syncedFor.name} ({lt.id})</div> : null
-                      ))}
-                    </div>
-                  )}
+              <div style={{ border: '1px solid #dadce0', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '6px 12px', borderBottom: '1px solid #f1f3f4', background: '#f8fafc', fontSize: 12, color: '#5a7a8a', fontWeight: 600 }}>
+                  {replyMode === 'replyAll' ? 'Reply All' : 'Reply'}
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
-                      placeholder={`Reply to ${(ticket.external_participants || [])[0]}...`}
-                      rows={3} style={{ width: '100%', padding: '10px 14px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 10, color: '#1e3a4f', fontSize: 13, resize: 'vertical', outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' }} />
-                    {replyAttachments.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                        {replyAttachments.map((a, i) => (
-                          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#c8d8ec', borderRadius: 6, fontSize: 11, color: '#1a5e9a' }}>
-                            <Icon name="file" size={10} />
-                            {a.name} ({a.size > 1048576 ? (a.size/1048576).toFixed(1)+'MB' : Math.round(a.size/1024)+'KB'})
-                            <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))}
-                              style={{ background: 'none', border: 'none', color: '#d94040', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ marginTop: 6 }}>
-                      <input type="file" ref={fileInputRef} onChange={handleAttachFile} multiple style={{ display: 'none' }} />
-                      <button onClick={() => fileInputRef.current?.click()}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#f0f4f9', border: '1px solid #c0d0e4', borderRadius: 6, cursor: 'pointer', fontSize: 11, color: '#6b8299' }}>
-                        <Icon name="file" size={12} /> Attach File
-                      </button>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px', borderBottom: '1px solid #f1f3f4', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#5f6368', flexShrink: 0, width: 28 }}>To</span>
+                  <input value={replyTo} onChange={e => setReplyTo(e.target.value)}
+                    placeholder="Recipients (comma-separated)"
+                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px', borderBottom: '1px solid #f1f3f4', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#5f6368', flexShrink: 0, width: 28 }}>Cc</span>
+                  <input value={replyCc} onChange={e => setReplyCc(e.target.value)}
+                    placeholder="Add Cc recipients (comma-separated)"
+                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                </div>
+                <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
+                  placeholder="Type your message..."
+                  rows={4}
+                  style={{ width: '100%', padding: '10px 14px', border: 'none', outline: 'none', fontSize: 13, lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', color: '#1e3a4f' }} />
+                {replyAttachments.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '0 12px 6px' }}>
+                    {replyAttachments.map((a, i) => (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#e8eaed', borderRadius: 6, fontSize: 11, color: '#1e3a4f' }}>
+                        <Icon name="file" size={10} />
+                        {a.name} ({a.size > 1048576 ? (a.size/1048576).toFixed(1)+'MB' : Math.round(a.size/1024)+'KB'})
+                        <button onClick={() => setReplyAttachments(prev => prev.filter((_, j) => j !== i))}
+                          style={{ background: 'none', border: 'none', color: '#d94040', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</button>
+                      </span>
+                    ))}
                   </div>
-                  <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
-                    <button onClick={() => handleSendReply(false)} disabled={!replyText.trim() || sending}
-                      style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#1a5e9a' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
-                      {sending ? '...' : 'Reply'}
-                    </button>
-                    {(ticket.linkedTickets && ticket.linkedTickets.length > 0) || (ticket.external_participants && ticket.external_participants.length > 1) ? (
-                      <button onClick={() => handleSendReply(true)} disabled={!replyText.trim() || sending}
-                        style={{ padding: '10px 20px', background: replyText.trim() && !sending ? '#7c3aed' : '#dde8f2', color: replyText.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 10, cursor: replyText.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
-                        {sending ? '...' : 'Reply All (' + ((ticket.linkedTickets?.length || 0) + (ticket.external_participants?.length || 1)) + ')'}
-                      </button>
-                    ) : null}
-                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '1px solid #f1f3f4', background: '#f8fafc' }}>
+                  <button onClick={handleSendReply} disabled={!replyText.trim() || !replyTo.trim() || sending}
+                    style={{ padding: '8px 24px', background: replyText.trim() && replyTo.trim() && !sending ? '#1a5e9a' : '#dde8f2', color: replyText.trim() && replyTo.trim() && !sending ? '#fff' : '#8a9fb0', border: 'none', borderRadius: 18, cursor: replyText.trim() && replyTo.trim() && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13 }}>
+                    {sending ? 'Sending...' : 'Send'}
+                  </button>
+                  <input type="file" ref={fileInputRef} onChange={handleAttachFile} multiple style={{ display: 'none' }} />
+                  <button onClick={() => fileInputRef.current?.click()}
+                    title="Attach files"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 11, color: '#5a7a8a', borderRadius: 18 }}>
+                    <Icon name="file" size={14} /> Attach
+                  </button>
                 </div>
               </div>
             ) : (
