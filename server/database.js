@@ -36,7 +36,7 @@ async function initDb() {
   try { rawDb.exec('ALTER TABLE tags ADD COLUMN region_id TEXT'); } catch(e) {}
   r('CREATE TABLE IF NOT EXISTS tickets (id TEXT PRIMARY KEY, region_id TEXT, status TEXT DEFAULT \'OPEN\', assignee_user_id TEXT, subject TEXT, external_participants TEXT, last_activity_at INTEGER, created_at INTEGER, closed_at INTEGER, close_reason_id TEXT, locked_closed INTEGER DEFAULT 0, has_unread INTEGER DEFAULT 0, from_email TEXT, to_email TEXT, priority TEXT, category TEXT)');
   r('CREATE TABLE IF NOT EXISTS ticket_tags (ticket_id TEXT, tag_id TEXT, PRIMARY KEY(ticket_id, tag_id))');
-  r('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, ticket_id TEXT, direction TEXT, channel TEXT, from_address TEXT, to_addresses TEXT, subject TEXT, body_text TEXT, sent_at INTEGER, provider_message_id TEXT, in_reply_to TEXT, reference_ids TEXT, created_by_user_id TEXT, created_at INTEGER, gmail_message_id TEXT, gmail_thread_id TEXT, gmail_user_id TEXT, sender TEXT, body TEXT, timestamp INTEGER)');
+  r('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, ticket_id TEXT, direction TEXT, channel TEXT, from_address TEXT, to_addresses TEXT, cc_addresses TEXT, subject TEXT, body_text TEXT, sent_at INTEGER, provider_message_id TEXT, in_reply_to TEXT, reference_ids TEXT, created_by_user_id TEXT, created_at INTEGER, gmail_message_id TEXT, gmail_thread_id TEXT, gmail_user_id TEXT, sender TEXT, body TEXT, timestamp INTEGER)');
   r('CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, ticket_id TEXT, author_user_id TEXT, body TEXT, created_at INTEGER, user_id TEXT, timestamp INTEGER)');
   r('CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, actor_user_id TEXT, action_type TEXT, entity_type TEXT, entity_id TEXT, ts TEXT, detail TEXT, before_json TEXT, after_json TEXT)');
   r('CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, ticket_id TEXT, filename TEXT, data TEXT, message_id TEXT, mime_type TEXT, size INTEGER)');
@@ -50,6 +50,7 @@ async function initDb() {
   try { r('ALTER TABLE tickets ADD COLUMN synced_for_user_id TEXT'); } catch(e) {}
   try { r('ALTER TABLE tickets ADD COLUMN synced_for_user_ids TEXT'); } catch(e) {} // JSON array of user IDs
   try { r('ALTER TABLE tickets ADD COLUMN linked_ticket_ids TEXT'); } catch(e) {} // JSON array of sibling ticket IDs (multi-recipient)
+  try { r('ALTER TABLE messages ADD COLUMN cc_addresses TEXT'); } catch(e) {} // JSON array of Cc recipients
   try { r('CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_gmail_id ON messages(gmail_message_id)'); } catch(e) {}
   r("CREATE TABLE IF NOT EXISTS time_entries (id TEXT PRIMARY KEY, ticket_id TEXT, user_id TEXT, started_at INTEGER, stopped_at INTEGER, duration_ms INTEGER, note TEXT)");
   r('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)');
