@@ -141,10 +141,13 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     };
   }, [ticketId]);
 
-  // Initialize reply To/Cc when ticket and messages first load
+  // Initialize reply To when ticket and messages first load
   useEffect(() => {
     if (ticket && messages.length > 0 && !replyTo) {
-      initReplyMode('reply');
+      const lastInbound = [...messages].reverse().find(m => m.direction === 'inbound');
+      const sender = lastInbound ? lastInbound.from_address : (ticket.external_participants || [])[0] || '';
+      setReplyTo(sender);
+      setReplyMode('reply');
     }
   }, [ticket?.id, messages.length]);
 
