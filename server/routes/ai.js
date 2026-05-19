@@ -513,7 +513,7 @@ GUIDELINES:
 - Structure responses clearly with relevant details
 
 FORMATTING RULES:
-- NEVER use markdown formatting (no **, ##, *, -, ```, or bullet markers)
+- NEVER use markdown formatting. No double-asterisks for bold, no hash symbols for headers, no asterisks or dashes for bullets, and no triple-backtick code fences.
 - Use plain text only. Use line breaks to separate sections.
 - For lists, use numbered items (1. 2. 3.) or write in paragraph form
 - For emphasis, use CAPS sparingly or just write clearly`;
