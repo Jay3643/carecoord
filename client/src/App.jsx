@@ -350,6 +350,7 @@ export default function App() {
             { key: '_adp' },
             { key: '_updox' },
             { key: '_carelink' },
+            { key: '_pdf_editor' },
             { key: '_prompted' },
           ].map(item => {
             if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
@@ -467,6 +468,19 @@ export default function App() {
                 title="CareLink">
                 <svg width="18" height="18" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" fill="#1a73e8"/></svg>
                 {!sidebarCollapsed && <span>CareLink</span>}
+              </a>
+            );
+            if (item.key === '_pdf_editor') return (
+              <a key="_pdf_editor" href="/pdf-editor/" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
+                  borderRadius: 8, textDecoration: 'none', background: 'transparent', color: '#143d6b',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500, width: '100%', textAlign: 'left',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start', marginTop: 2 }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#143d6b'; }}
+                title="PDF Editor Pro">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e5322d" strokeWidth="2.2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+                {!sidebarCollapsed && <span>PDF Editor</span>}
               </a>
             );
             if (item.key === '_adp') return (

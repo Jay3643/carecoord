@@ -23,9 +23,10 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       styleSrcElem: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
       connectSrc: ["'self'", "https://carecoord-o3en.onrender.com", "wss://carecoord-o3en.onrender.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      workerSrc: ["'self'", "blob:"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
     },
@@ -91,6 +92,20 @@ app.get('/api/users', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
+
+// PDF Editor Pro — installable PWA, served as static assets at /pdf-editor/.
+// Mounted before the SPA catch-all so these paths don't fall through to React.
+// Redirect only the no-slash path (Express non-strict routing matches both, so guard against a loop).
+app.get('/pdf-editor', (req, res, next) => {
+  if (req.path === '/pdf-editor') return res.redirect(301, '/pdf-editor/');
+  next();
+});
+app.use('/pdf-editor', express.static(path.join(__dirname, '..', 'pdf-editor'), {
+  setHeaders: (res, filePath) => {
+    // Service worker must always revalidate so updates ship on redeploy.
+    if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));
