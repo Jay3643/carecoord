@@ -558,6 +558,10 @@
       case 'whiteout':
         el.style.background = 'white';
         break;
+      case 'redaction':
+        el.classList.add('annot-redaction');
+        el.style.background = '#000';
+        break;
       case 'underline':
         el.style.borderBottomColor = ann.color || '#e5322d';
         break;
@@ -986,6 +990,16 @@
       case 'crop':
         // Crop is visual-only here
         return;
+    }
+
+    // Redaction — drag a box to permanently black out the region on save
+    if (tool === 'redact') {
+      startDrawRect(e, rect, (rx, ry, rw, rh) => {
+        if (rw > 3 || rh > 3) {
+          addAnn(pageNum, { type: 'redaction', x: rx, y: ry, width: rw, height: rh });
+        }
+      });
+      return;
     }
 
     // Drawing tools
@@ -1470,7 +1484,7 @@
 
     // Update cursor on all annotation layers directly
     const cursorClass = toolName
-      ? (['freehand','highlight','underline','strikethrough','shape-rect','shape-ellipse','shape-line','shape-arrow','eraser','crop'].includes(toolName) ? 'tool-active'
+      ? (['freehand','highlight','underline','strikethrough','shape-rect','shape-ellipse','shape-line','shape-arrow','eraser','crop','redact'].includes(toolName) ? 'tool-active'
         : ['add-text','edit-text','fill-text','callout'].includes(toolName) ? 'tool-text'
         : ['sign','initials','stamp'].includes(toolName) ? 'tool-sign'
         : 'tool-active')
@@ -1946,9 +1960,8 @@
   // =============================================================
   // SAVE PDF
   // =============================================================
-  async function savePDF() {
-    if (!S.pdfBytes) return;
-
+  // Flatten all rotations + annotations into the loaded PDF and return the bytes.
+  async function buildEditedPdfBytes() {
     const pdfDoc = await PDFDocument.load(S.pdfBytes);
     const pages = pdfDoc.getPages();
 
@@ -2030,6 +2043,15 @@
               page.drawRectangle({
                 x: ax, y: ay - wh, width: ww, height: wh,
                 color: rgb(1, 1, 1),
+              });
+              break;
+            }
+            case 'redaction': {
+              const rw = (ann.width || 100) * ratio;
+              const rh = (ann.height || 20) * ratio;
+              page.drawRectangle({
+                x: ax, y: ay - rh, width: rw, height: rh,
+                color: rgb(0, 0, 0), opacity: 1,
               });
               break;
             }
@@ -2192,7 +2214,12 @@
       }
     }
 
-    const savedBytes = await pdfDoc.save();
+    return await pdfDoc.save();
+  }
+
+  async function savePDF() {
+    if (!S.pdfBytes) return;
+    const savedBytes = await buildEditedPdfBytes();
     downloadBytes(savedBytes, S.fileName.replace(/\.pdf$/i, '') + '_edited.pdf');
   }
 

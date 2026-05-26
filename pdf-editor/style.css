@@ -379,6 +379,12 @@ kbd {
   font-weight: 700; text-transform: uppercase; white-space: nowrap;
 }
 
+.annot-redaction {
+  background: #000; min-width: 8px; min-height: 8px;
+}
+.annot-redaction:hover { outline: 2px solid var(--red); }
+.annot-redaction.selected { outline: 2px solid var(--red); }
+
 /* ===== RIGHT PROPS PANEL ===== */
 #props-panel {
   width: 240px; background: var(--bg-main);
