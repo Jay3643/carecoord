@@ -1977,13 +1977,30 @@
       if (idx < 0 || idx >= pages.length) continue;
       const page = pages[idx];
       const { width: pw, height: ph } = page.getSize();
-      const cvs = S.pages[idx]?.canvas;
+      const pg = S.pages[idx];
+      const cvs = pg?.canvas;
       if (!cvs) continue;
-      const ratio = pw / cvs.width;
+      const ratio = pw / cvs.width; // PDF points per canvas pixel — used for sizes
+      const vp = pg?.viewport;      // the pdf.js viewport this page was rendered with
+      // pdf-lib draws relative to the MediaBox lower-left; convertToPdfPoint returns
+      // absolute user-space, so subtract the MediaBox origin (no-op for [0,0,…] pages).
+      const mb = (typeof page.getMediaBox === 'function') ? page.getMediaBox() : { x: 0, y: 0 };
+
+      // Map a canvas pixel (top-left origin) to pdf-lib coords (bottom-left origin).
+      // Uses pdf.js's exact inverse render transform so flattened annotations land
+      // where they were drawn, accounting for rotation / CropBox / MediaBox offsets.
+      const toPdfPoint = (x, y) => {
+        if (vp && typeof vp.convertToPdfPoint === 'function') {
+          const p = vp.convertToPdfPoint(x, y);
+          return { x: p[0] - (mb.x || 0), y: p[1] - (mb.y || 0) };
+        }
+        return { x: x * ratio, y: ph - y * ratio };
+      };
 
       for (const ann of anns) {
-        const ax = ann.x * ratio;
-        const ay = ph - (ann.y * ratio);
+        const pt = toPdfPoint(ann.x, ann.y);
+        const ax = pt.x;
+        const ay = pt.y;
 
         try {
           switch (ann.type) {
