@@ -443,7 +443,9 @@ async function syncUser(db, row) {
       // Message-ID is identical across all recipients, unlike gmail thread/message IDs
       let existingTicketId = null;
       if (rfcMessageId) {
-        const existingByMsgId = db.prepare("SELECT ticket_id FROM messages WHERE provider_message_id = ? LIMIT 1").get(rfcMessageId);
+        // Compare normalized (bracket-stripped) since stored values may be in either form.
+        const normalized = String(rfcMessageId).replace(/[<>]/g, '').trim();
+        const existingByMsgId = db.prepare("SELECT ticket_id FROM messages WHERE TRIM(provider_message_id, '<>') = ? LIMIT 1").get(normalized);
         if (existingByMsgId) existingTicketId = toStr(existingByMsgId.ticket_id);
       }
       // Check by gmail thread ID for replies within same account
@@ -453,11 +455,13 @@ async function syncUser(db, row) {
           existingTicketId = toStr(existingByThread.ticket_id);
         }
       }
-      // Check by In-Reply-To header — matches against our stored gmail_message_id or provider_message_id
+      // Check by In-Reply-To header — matches against our stored gmail_message_id or provider_message_id.
+      // TRIM(provider_message_id, '<>') strips angle brackets at query time so we match whether the
+      // stored value is bracketed (raw header) or unbracketed (normalized outbound).
       if (!existingTicketId) {
         const inReplyTo = (hdr(h, 'In-Reply-To') || '').replace(/[<>]/g, '').trim();
         if (inReplyTo) {
-          const byInReplyTo = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR provider_message_id = ? LIMIT 1").get(inReplyTo, inReplyTo);
+          const byInReplyTo = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR TRIM(provider_message_id, '<>') = ? LIMIT 1").get(inReplyTo, inReplyTo);
           if (byInReplyTo && db.prepare('SELECT id FROM tickets WHERE id = ?').get(byInReplyTo.ticket_id)) {
             existingTicketId = toStr(byInReplyTo.ticket_id);
           }
@@ -467,7 +471,7 @@ async function syncUser(db, row) {
       if (!existingTicketId) {
         const refs = (hdr(h, 'References') || '').split(/\s+/).map(r => r.replace(/[<>]/g, '').trim()).filter(Boolean);
         for (const ref of refs) {
-          const byRef = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR provider_message_id = ? LIMIT 1").get(ref, ref);
+          const byRef = db.prepare("SELECT ticket_id FROM messages WHERE gmail_message_id = ? OR TRIM(provider_message_id, '<>') = ? LIMIT 1").get(ref, ref);
           if (byRef && db.prepare('SELECT id FROM tickets WHERE id = ?').get(byRef.ticket_id)) {
             existingTicketId = toStr(byRef.ticket_id);
             break;

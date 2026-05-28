@@ -60,6 +60,33 @@ function getGmailAuth(userId) {
   return null;
 }
 
+// After Gmail accepts a send, fetch the Message-ID header it assigned and stamp the
+// outbound row with the real values (gmail_message_id, gmail_thread_id, gmail_user_id,
+// provider_message_id). This is what makes future external replies thread back to the
+// existing ticket: their In-Reply-To header references this Message-ID, and the sync
+// looks it up via TRIM(provider_message_id, '<>') in gmail.js. Without this update,
+// replies routed through users who weren't on the original create unlinked tickets.
+async function captureOutboundIds(db, gmail, sent, msgId, userId) {
+  if (!sent?.data) return;
+  let realMsgId = null;
+  try {
+    const meta = await gmail.users.messages.get({
+      userId: 'me', id: sent.data.id,
+      format: 'metadata', metadataHeaders: ['Message-ID'],
+    });
+    const hdrs = meta.data.payload?.headers || [];
+    const found = hdrs.find(x => x.name.toLowerCase() === 'message-id');
+    if (found?.value) realMsgId = String(found.value).replace(/[<>]/g, '').trim();
+  } catch (e) { /* non-fatal — threadId still saves within-mailbox threading */ }
+
+  const sets = ['gmail_message_id = ?', 'gmail_thread_id = ?', 'gmail_user_id = ?'];
+  const vals = [sent.data.id, sent.data.threadId, userId];
+  if (realMsgId) { sets.push('provider_message_id = ?'); vals.push(realMsgId); }
+  vals.push(msgId);
+  db.prepare('UPDATE messages SET ' + sets.join(', ') + ' WHERE id = ?').run(...vals);
+  saveDb();
+}
+
 function sanitize(obj) {
   if (!obj) return obj;
   for (const k of Object.keys(obj)) {
@@ -563,12 +590,8 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
       }
       const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
-      // Save Gmail thread ID and message ID on the outbound message so future replies thread correctly
-      if (sent.data) {
-        db.prepare('UPDATE messages SET gmail_message_id = ?, gmail_thread_id = ?, gmail_user_id = ? WHERE id = ?')
-          .run(sent.data.id, sent.data.threadId, req.user.id, msgId);
-        saveDb();
-      }
+      // Capture real RFC Message-ID + threadId so external replies thread back.
+      await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
       console.log('[Gmail] Reply sent to', toAddr, 'threadId:', sent.data?.threadId);
     } else {
       console.log('[Gmail] No auth for user', req.user.id, '— message saved but not sent via Gmail');
@@ -662,6 +685,13 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
       }
       const CRLF = '\r\n';
       const senderEmail = gmailAuth.email || fromAddr;
+      // Pull the latest inbound's Message-ID so we can set In-Reply-To/References.
+      // Without these, recipients' mail clients don't thread our reply-all, and
+      // future external replies arriving via new participants can't be threaded
+      // back to this ticket through the References chain.
+      const lastIn = db.prepare("SELECT provider_message_id, reference_ids FROM messages WHERE ticket_id = ? AND direction = 'inbound' ORDER BY sent_at DESC LIMIT 1").get(req.params.id);
+      const replyTo = lastIn ? toStr(lastIn.provider_message_id) || '' : '';
+      const replyToBare = replyTo.replace(/[<>]/g, '').trim();
 
       let raw;
       if (replyAttachments && replyAttachments.length > 0) {
@@ -671,6 +701,7 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
         ];
         if (ccAddr) headers.push('Cc: ' + ccAddr);
         headers.push('Subject: Re: ' + ticket.subject, 'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="' + boundary + '"');
+        if (replyToBare) { headers.push('In-Reply-To: <' + replyToBare + '>'); headers.push('References: <' + replyToBare + '>'); }
         let mimeBody = headers.join(CRLF) + CRLF + CRLF;
         mimeBody += '--' + boundary + CRLF + 'Content-Type: text/plain; charset=utf-8' + CRLF + 'Content-Transfer-Encoding: 7bit' + CRLF + CRLF + fullBody + CRLF + CRLF;
         for (const att of replyAttachments) {
@@ -685,10 +716,15 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
       } else {
         const emailLines = ['From: ' + senderEmail, 'To: ' + toAddr];
         if (ccAddr) emailLines.push('Cc: ' + ccAddr);
-        emailLines.push('Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody);
+        emailLines.push('Subject: Re: ' + ticket.subject, 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0');
+        if (replyToBare) { emailLines.push('In-Reply-To: <' + replyToBare + '>'); emailLines.push('References: <' + replyToBare + '>'); }
+        emailLines.push('', fullBody);
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
       }
-      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      // Stamp the main ticket's outbound row with the real Gmail IDs so future
+      // external replies (and any new participants Cc'd onto them) thread back.
+      await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
     }
   } catch(e) { console.error('[Gmail] Reply-all send failed:', e.message); }
 
@@ -772,7 +808,9 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
         const emailLines = ['From: ' + senderEmail, 'To: ' + toEmail.trim(), 'Subject: Fwd: ' + toStr(ticket.subject), 'Content-Type: text/plain; charset=utf-8', 'MIME-Version: 1.0', '', fullBody];
         raw = Buffer.from(emailLines.join(CRLF)).toString('base64url');
       }
-      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+      // Stamp outbound row so a reply to the forward threads back to this ticket.
+      await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
     }
   } catch(e) { console.error('[Gmail] Forward failed:', e.message); }
 
