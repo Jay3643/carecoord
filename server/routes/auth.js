@@ -341,6 +341,13 @@ router.get('/me', (req, res) => {
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
       signature: toStr(user.signature) || '',
+      away: {
+        enabled: !!user.away_enabled,
+        start: user.away_start || null,
+        end: user.away_end || null,
+        subject: toStr(user.away_subject) || '',
+        message: toStr(user.away_message) || '',
+      },
     }
   });
 });
@@ -355,6 +362,25 @@ router.put('/me/signature', requireAuth, (req, res) => {
   db.prepare('UPDATE users SET signature = ? WHERE id = ?').run(trimmed || null, req.user.id);
   saveDb();
   res.json({ signature: trimmed });
+});
+
+// Save the current user's away/vacation auto-responder settings.
+//   { enabled: bool, start: ms|null, end: ms|null, subject: string, message: string }
+// When enabled (and the current time falls within [start, end] if provided),
+// the sync path in gmail.js will send a one-time auto-reply to each new
+// external sender on tickets routed to or synced for this user.
+router.put('/me/away', requireAuth, (req, res) => {
+  const db = getDb();
+  const b = req.body || {};
+  const enabled = b.enabled ? 1 : 0;
+  const start = Number.isFinite(b.start) ? Math.floor(b.start) : null;
+  const end = Number.isFinite(b.end) ? Math.floor(b.end) : null;
+  const subject = typeof b.subject === 'string' ? b.subject.slice(0, 200) : '';
+  const message = typeof b.message === 'string' ? b.message.replace(/\r\n/g, '\n').slice(0, 3000) : '';
+  db.prepare('UPDATE users SET away_enabled=?, away_start=?, away_end=?, away_subject=?, away_message=? WHERE id=?')
+    .run(enabled, start, end, subject || null, message || null, req.user.id);
+  saveDb();
+  res.json({ away: { enabled: !!enabled, start, end, subject, message } });
 });
 
 // ── Work Status (coordinator availability) ──

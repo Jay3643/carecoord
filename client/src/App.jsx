@@ -94,6 +94,44 @@ export default function App() {
       setSignatureSaving(false);
     }
   };
+
+  // Away message editor — out-of-office auto-responder. Empty start/end means
+  // "always active while enabled"; otherwise the server only replies when now
+  // falls within [start, end].
+  const [showAwayModal, setShowAwayModal] = useState(false);
+  const [awayDraft, setAwayDraft] = useState({ enabled: false, start: null, end: null, subject: '', message: '' });
+  const [awaySaving, setAwaySaving] = useState(false);
+  const openAwayEditor = () => {
+    const a = currentUser?.away || {};
+    setAwayDraft({
+      enabled: !!a.enabled,
+      start: a.start || null,
+      end: a.end || null,
+      subject: a.subject || '',
+      message: a.message || '',
+    });
+    setShowAwayModal(true);
+  };
+  const saveAway = async () => {
+    setAwaySaving(true);
+    try {
+      const r = await api.updateAway(awayDraft);
+      setCurrentUser(u => u ? { ...u, away: r.away } : u);
+      setShowAwayModal(false);
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      setAwaySaving(false);
+    }
+  };
+  // <input type="datetime-local"> wants ISO-ish "YYYY-MM-DDTHH:MM" in LOCAL time.
+  const tsToLocalInput = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  };
+  const localInputToTs = (v) => v ? new Date(v).getTime() : null;
   const [previousScreen, setPreviousScreen] = useState('regionQueue');
   const [ticketSourceScreen, setTicketSourceScreen] = useState('regionQueue');
   const [toast, setToast] = useState(null);
@@ -694,13 +732,22 @@ export default function App() {
               </select>
             )}
             {!sidebarCollapsed && (
-              <button onClick={openSignatureEditor}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#102f54', border: '1px solid #143d6b', borderRadius: 6, color: '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%', justifyContent: 'center' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#1a5e9a'; e.currentTarget.style.color = '#ffffff'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#a8c8e8'; }}
-                title="Edit email signature">
-                ✎ Signature
-              </button>
+              <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                <button onClick={openSignatureEditor}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px', background: '#102f54', border: '1px solid #143d6b', borderRadius: 6, color: '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, justifyContent: 'center' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#1a5e9a'; e.currentTarget.style.color = '#ffffff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#a8c8e8'; }}
+                  title="Edit email signature">
+                  ✎ Signature
+                </button>
+                <button onClick={openAwayEditor}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px', background: currentUser?.away?.enabled ? '#3b2e0d' : '#102f54', border: '1px solid', borderColor: currentUser?.away?.enabled ? '#c9963b' : '#143d6b', borderRadius: 6, color: currentUser?.away?.enabled ? '#fbbf24' : '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, justifyContent: 'center' }}
+                  onMouseEnter={e => { if (!currentUser?.away?.enabled) { e.currentTarget.style.background = '#1a5e9a'; e.currentTarget.style.color = '#ffffff'; } }}
+                  onMouseLeave={e => { if (!currentUser?.away?.enabled) { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#a8c8e8'; } }}
+                  title={currentUser?.away?.enabled ? 'Away message ON — click to edit' : 'Set away message'}>
+                  {currentUser?.away?.enabled ? '● Away' : '☼ Away'}
+                </button>
+              </div>
             )}
             {!sidebarCollapsed && (
               <button onClick={handleLogout}
@@ -936,6 +983,71 @@ export default function App() {
 
       {/* Onboarding Tour */}
       <OnboardingTour currentUser={currentUser} />
+
+      {/* Away message editor */}
+      {showAwayModal && (
+        <div onClick={() => !awaySaving && setShowAwayModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, width: 560, maxWidth: '92vw', maxHeight: '92vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Away / out-of-office message</div>
+              <button onClick={() => !awaySaving && setShowAwayModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b8299', fontSize: 18, padding: 4 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b8299', lineHeight: 1.5 }}>
+              When enabled, each external sender on a ticket assigned to or routed for you gets a one-time auto-reply. Skips known auto-responders and mail flagged <code>Auto-Submitted</code> to avoid loops. A region-wide closure (set by admins) takes precedence over your personal message.
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#1e3a4f', fontWeight: 600 }}>
+              <input type="checkbox" checked={awayDraft.enabled}
+                onChange={e => setAwayDraft(d => ({ ...d, enabled: e.target.checked }))} />
+              Auto-reply is enabled
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 4 }}>Start (optional)</label>
+                <input type="datetime-local" value={tsToLocalInput(awayDraft.start)}
+                  onChange={e => setAwayDraft(d => ({ ...d, start: localInputToTs(e.target.value) }))}
+                  style={{ width: '100%', padding: '6px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 4 }}>End (optional)</label>
+                <input type="datetime-local" value={tsToLocalInput(awayDraft.end)}
+                  onChange={e => setAwayDraft(d => ({ ...d, end: localInputToTs(e.target.value) }))}
+                  style={{ width: '100%', padding: '6px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 4 }}>Subject (optional — defaults to "Out of office: &lt;original subject&gt;")</label>
+              <input type="text" value={awayDraft.subject}
+                onChange={e => setAwayDraft(d => ({ ...d, subject: e.target.value }))}
+                placeholder="Out of office: re: your message"
+                style={{ width: '100%', padding: '6px 10px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b8299', marginBottom: 4 }}>Message</label>
+              <textarea value={awayDraft.message}
+                onChange={e => setAwayDraft(d => ({ ...d, message: e.target.value }))}
+                rows={6}
+                placeholder={'Thank you for your message. I am currently out of the office and will respond when I return.\n\nFor urgent matters please contact ___@seniorityhealthcare.com.'}
+                style={{ width: '100%', padding: 10, border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical', outline: 'none', color: '#1e3a4f', boxSizing: 'border-box' }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button onClick={() => setShowAwayModal(false)} disabled={awaySaving}
+                style={{ padding: '8px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', cursor: awaySaving ? 'default' : 'pointer', fontSize: 12, fontWeight: 500 }}>Cancel</button>
+              <button onClick={saveAway} disabled={awaySaving || (awayDraft.enabled && !awayDraft.message.trim())}
+                style={{ padding: '8px 16px', background: '#1a5e9a', border: 'none', borderRadius: 8, color: '#fff', cursor: awaySaving || (awayDraft.enabled && !awayDraft.message.trim()) ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, opacity: awaySaving || (awayDraft.enabled && !awayDraft.message.trim()) ? 0.6 : 1 }}>
+                {awaySaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Signature editor */}
       {showSignatureModal && (

@@ -101,6 +101,108 @@ function parseAddrList(s) {
   return out;
 }
 
+// ── Auto-reply (away message / holiday closure) ──────────────────────────────
+// Sends one out-of-office reply per external sender per ticket. Region closure
+// takes precedence over user away. Skips replies to known auto-responders and
+// to mail that's itself marked Auto-Submitted / Precedence: bulk (RFC 3834).
+
+const AUTO_RESPONDER_RE = /^(noreply|no-reply|do-not-reply|donotreply|mailer-daemon|mail-daemon|postmaster|bounce|bounces|notifications?|automated|auto-confirm)([._\-+].*)?@/i;
+
+function extractBareEmail(s) {
+  if (!s) return '';
+  const m = String(s).match(/<([^>]+)>/);
+  return (m ? m[1] : String(s)).trim().toLowerCase();
+}
+
+function isAutoSubmittedHeaders(headers) {
+  const get = (n) => (headers || []).find(x => x.name?.toLowerCase() === n.toLowerCase())?.value || '';
+  const as = get('Auto-Submitted').toLowerCase().trim();
+  if (as && as !== 'no') return true;
+  const prec = get('Precedence').toLowerCase().trim();
+  if (prec === 'bulk' || prec === 'list' || prec === 'junk') return true;
+  if (get('List-Id') || get('List-Unsubscribe')) return true;
+  if (get('X-Auto-Response-Suppress')) return true;
+  return false;
+}
+
+async function maybeAutoReply(db, gm, ctx) {
+  const { ticketId, ownerUserId, regionId, senderHeader, originalSubject, rfcMessageId, originalHeaders, syncingUserEmail } = ctx;
+  if (!ticketId || !senderHeader || !gm) return;
+  if (isAutoSubmittedHeaders(originalHeaders)) return;
+
+  const senderEmail = extractBareEmail(senderHeader);
+  if (!senderEmail || !senderEmail.includes('@')) return;
+  if (AUTO_RESPONDER_RE.test(senderEmail)) return;
+  if (senderEmail === (syncingUserEmail || '').toLowerCase()) return;
+
+  // One auto-reply per sender per ticket — table created by tickets.js migration
+  const existing = db.prepare('SELECT 1 FROM auto_reply_log WHERE ticket_id = ? AND sender_email = ?').get(ticketId, senderEmail);
+  if (existing) return;
+
+  const now = Date.now();
+  let kind = null, subject = '', message = '';
+
+  // Region closure first — organization-wide overrides personal
+  if (regionId) {
+    const r = db.prepare('SELECT closure_enabled, closure_start, closure_end, closure_subject, closure_message FROM regions WHERE id = ?').get(regionId);
+    if (r && r.closure_enabled && r.closure_message) {
+      const okStart = !r.closure_start || now >= r.closure_start;
+      const okEnd = !r.closure_end || now <= r.closure_end;
+      if (okStart && okEnd) {
+        kind = 'closure';
+        subject = toStr(r.closure_subject) || ('Office closed: ' + (originalSubject || ''));
+        message = toStr(r.closure_message);
+      }
+    }
+  }
+
+  if (!kind && ownerUserId) {
+    const u = db.prepare('SELECT away_enabled, away_start, away_end, away_subject, away_message FROM users WHERE id = ?').get(ownerUserId);
+    if (u && u.away_enabled && u.away_message) {
+      const okStart = !u.away_start || now >= u.away_start;
+      const okEnd = !u.away_end || now <= u.away_end;
+      if (okStart && okEnd) {
+        kind = 'away';
+        subject = toStr(u.away_subject) || ('Out of office: ' + (originalSubject || ''));
+        message = toStr(u.away_message);
+      }
+    }
+  }
+
+  if (!kind) return;
+
+  // Build RFC 2822 message. Auto-Submitted + Precedence + X-Auto-Response-Suppress
+  // signal to other mailers (and to our own re-sync) that this is automated.
+  const CRLF = '\r\n';
+  const replyToBare = String(rfcMessageId || '').replace(/[<>]/g, '').trim();
+  const lines = [
+    'From: ' + (syncingUserEmail || ''),
+    'To: ' + senderEmail,
+    'Subject: ' + (subject || '').slice(0, 200),
+    'Auto-Submitted: auto-replied',
+    'Precedence: bulk',
+    'X-Auto-Response-Suppress: All',
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+  ];
+  if (replyToBare) {
+    lines.push('In-Reply-To: <' + replyToBare + '>');
+    lines.push('References: <' + replyToBare + '>');
+  }
+  lines.push('', message);
+  const raw = Buffer.from(lines.join(CRLF)).toString('base64url');
+
+  try {
+    await gm.users.messages.send({ userId: 'me', requestBody: { raw } });
+    db.prepare('INSERT OR IGNORE INTO auto_reply_log (ticket_id, sender_email, kind, sent_at) VALUES (?,?,?,?)')
+      .run(ticketId, senderEmail, kind, Date.now());
+    saveDb();
+    console.log('[AutoReply]', kind, '→', senderEmail, 'for', ticketId);
+  } catch (e) {
+    console.error('[AutoReply] send failed:', e.message);
+  }
+}
+
 // Recursively find attachments in nested multipart structures (e.g. voicemail audio)
 function findAttachments(parts) {
   const atts = [];
@@ -537,6 +639,8 @@ async function syncUser(db, row) {
             // Inbound reply always sets status to OPEN (whether it was WAITING or CLOSED)
             // Also reset locked_closed and clear closed_at so the ticket is fully reopened with tags intact
             db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=?, locked_closed=0, closed_at=NULL WHERE id=?').run(ts, 'OPEN', myTicketId);
+            // Fire-and-forget — dedup table prevents repeats per sender+ticket
+            maybeAutoReply(db, gm, { ticketId: myTicketId, ownerUserId: uid, regionId: rid, senderHeader: from, originalSubject: subj, rfcMessageId, originalHeaders: h, syncingUserEmail: toStr(row.email) }).catch(() => {});
           }
         } else {
           // No ticket for this user yet — create a new one and link
@@ -561,6 +665,7 @@ async function syncUser(db, row) {
           const allLinked = [...existingLinks.filter(id => id !== tid), existingTicketId];
           db.prepare('UPDATE tickets SET linked_ticket_ids = ? WHERE id = ?').run(JSON.stringify(allLinked), tid);
           console.log('[Sync] Multi-recipient — created', tid, 'for', uid, 'linked to', existingTicketId);
+          maybeAutoReply(db, gm, { ticketId: tid, ownerUserId: uid, regionId: rid, senderHeader: from, originalSubject: subj, rfcMessageId, originalHeaders: h, syncingUserEmail: toStr(row.email) }).catch(() => {});
         }
       } else {
         // Brand new email — routing depends on user's work status
@@ -582,6 +687,7 @@ async function syncUser(db, row) {
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
           .run(msgId, tid, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+        maybeAutoReply(db, gm, { ticketId: tid, ownerUserId: uid, regionId: rid, senderHeader: from, originalSubject: subj, rfcMessageId, originalHeaders: h, syncingUserEmail: toStr(row.email) }).catch(() => {});
 
         // Attachments (recursive to find nested audio/voicemail parts)
         try {

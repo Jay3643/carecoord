@@ -159,8 +159,35 @@ router.get('/regions', requireAuth, requireAdmin, (req, res) => {
     r.routing_aliases = JSON.parse(r.routing_aliases || '[]');
     const users = db.prepare('SELECT u.id, u.name, u.role FROM users u JOIN user_regions ur ON ur.user_id = u.id WHERE ur.region_id = ? AND u.is_active = 1').all(r.id);
     r.users = users;
+    r.closure = {
+      enabled: !!r.closure_enabled,
+      start: r.closure_start || null,
+      end: r.closure_end || null,
+      subject: r.closure_subject || '',
+      message: r.closure_message || '',
+    };
   });
   res.json({ regions });
+});
+
+// Save the holiday/closure auto-responder settings for a region. While
+// enabled (and within [start,end] if set), any external sender whose mail
+// routes to this region gets a one-time auto-reply.
+router.put('/regions/:id/closure', requireAuth, requireAdmin, (req, res) => {
+  const db = getDb();
+  const region = db.prepare('SELECT id FROM regions WHERE id = ?').get(req.params.id);
+  if (!region) return res.status(404).json({ error: 'Region not found' });
+  const b = req.body || {};
+  const enabled = b.enabled ? 1 : 0;
+  const start = Number.isFinite(b.start) ? Math.floor(b.start) : null;
+  const end = Number.isFinite(b.end) ? Math.floor(b.end) : null;
+  const subject = typeof b.subject === 'string' ? b.subject.slice(0, 200) : '';
+  const message = typeof b.message === 'string' ? b.message.replace(/\r\n/g, '\n').slice(0, 3000) : '';
+  db.prepare('UPDATE regions SET closure_enabled=?, closure_start=?, closure_end=?, closure_subject=?, closure_message=? WHERE id=?')
+    .run(enabled, start, end, subject || null, message || null, req.params.id);
+  saveDb();
+  addAudit(db, req.user.id, 'region_closure_updated', 'region', req.params.id, enabled ? 'Closure enabled' : 'Closure cleared');
+  res.json({ closure: { enabled: !!enabled, start, end, subject, message } });
 });
 
 // Normalize aliases on save: lowercase, trim, drop empties + duplicates.

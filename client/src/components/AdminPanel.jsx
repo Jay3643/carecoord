@@ -310,6 +310,36 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
   const [diagEmail, setDiagEmail] = useState('');
   const [diagResult, setDiagResult] = useState(null);
   const [diagRunning, setDiagRunning] = useState(false);
+  // Region holiday-closure editor
+  const [editingClosureId, setEditingClosureId] = useState(null);
+  const [closureDraft, setClosureDraft] = useState({ enabled: false, start: null, end: null, subject: '', message: '' });
+  const [closureSaving, setClosureSaving] = useState(false);
+  const openClosureEditor = (region) => {
+    const c = region.closure || {};
+    setClosureDraft({
+      enabled: !!c.enabled,
+      start: c.start || null,
+      end: c.end || null,
+      subject: c.subject || '',
+      message: c.message || '',
+    });
+    setEditingClosureId(region.id);
+  };
+  const saveClosure = async () => {
+    setClosureSaving(true);
+    try {
+      const r = await api.adminUpdateClosure(editingClosureId, closureDraft);
+      setRegions(prev => prev.map(reg => reg.id === editingClosureId ? { ...reg, closure: r.closure } : reg));
+      setEditingClosureId(null);
+    } catch (e) { showToast(e.message); }
+    finally { setClosureSaving(false); }
+  };
+  const closureTsToInput = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts), pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  };
+  const closureInputToTs = (v) => v ? new Date(v).getTime() : null;
   const runDiagnose = async () => {
     if (!diagEmail.trim()) return;
     setDiagRunning(true);
@@ -684,6 +714,68 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
                     </span>
                   ))}
                   {(!r.users || r.users.length === 0) && <span style={{ fontSize: 11, color: '#8a9fb0', fontStyle: 'italic' }}>No users assigned</span>}
+                </div>
+
+                {/* Holiday closure footer */}
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e2e8f0' }}>
+                  {editingClosureId === r.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a4f' }}>Holiday / closure auto-reply</div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <input type="checkbox" checked={closureDraft.enabled}
+                          onChange={e => setClosureDraft(d => ({ ...d, enabled: e.target.checked }))} />
+                        Enabled
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#6b8299', marginBottom: 2 }}>Start (optional)</label>
+                          <input type="datetime-local" value={closureTsToInput(closureDraft.start)}
+                            onChange={e => setClosureDraft(d => ({ ...d, start: closureInputToTs(e.target.value) }))}
+                            style={{ width: '100%', padding: '5px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 11, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#6b8299', marginBottom: 2 }}>End (optional)</label>
+                          <input type="datetime-local" value={closureTsToInput(closureDraft.end)}
+                            onChange={e => setClosureDraft(d => ({ ...d, end: closureInputToTs(e.target.value) }))}
+                            style={{ width: '100%', padding: '5px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 11, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      <input type="text" value={closureDraft.subject}
+                        onChange={e => setClosureDraft(d => ({ ...d, subject: e.target.value }))}
+                        placeholder="Subject (optional, e.g. 'Office closed for the holiday')"
+                        style={{ padding: '6px 8px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 11, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                      <textarea value={closureDraft.message}
+                        onChange={e => setClosureDraft(d => ({ ...d, message: e.target.value }))}
+                        rows={4}
+                        placeholder={'Our office is closed for the holiday. We will respond on the next business day.'}
+                        style={{ padding: 8, border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 11, fontFamily: 'inherit', lineHeight: 1.4, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => setEditingClosureId(null)} disabled={closureSaving} style={s.btnOutline}>Cancel</button>
+                        <button onClick={saveClosure} disabled={closureSaving || (closureDraft.enabled && !closureDraft.message.trim())}
+                          style={{ ...s.btn('#1a5e9a', '#fff'), opacity: closureSaving || (closureDraft.enabled && !closureDraft.message.trim()) ? 0.6 : 1 }}>
+                          {closureSaving ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: r.closure?.enabled ? '#c9963b' : '#6b8299' }}>
+                        Holiday closure: {r.closure?.enabled
+                          ? (
+                              <strong style={{ color: '#c9963b' }}>
+                                ON
+                                {r.closure.start || r.closure.end
+                                  ? ' (' + (r.closure.start ? new Date(r.closure.start).toLocaleDateString() : '–') + ' → ' + (r.closure.end ? new Date(r.closure.end).toLocaleDateString() : '–') + ')'
+                                  : ''}
+                              </strong>
+                            )
+                          : 'off'}
+                      </span>
+                      {r.is_active && (
+                        <button onClick={() => openClosureEditor(r)} style={s.btnOutline}>Configure</button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

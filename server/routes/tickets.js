@@ -7,13 +7,36 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
-// Schema migration — add signature column to users (idempotent: ALTER throws if
-// the column already exists, which is fine on every restart after the first).
-try {
-  getDb().exec('ALTER TABLE users ADD COLUMN signature TEXT');
-  saveDb();
-  console.log('[DB] Added signature column to users');
-} catch (e) { /* already exists */ }
+// Schema migrations — idempotent: ALTER throws if the column already exists,
+// which is fine on every restart after the first.
+(function migrate() {
+  const db = getDb();
+  const tries = [
+    'ALTER TABLE users ADD COLUMN signature TEXT',
+    // Personal away message ("vacation responder")
+    'ALTER TABLE users ADD COLUMN away_enabled INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN away_start INTEGER',
+    'ALTER TABLE users ADD COLUMN away_end INTEGER',
+    'ALTER TABLE users ADD COLUMN away_subject TEXT',
+    'ALTER TABLE users ADD COLUMN away_message TEXT',
+    // Region-level holiday closure
+    'ALTER TABLE regions ADD COLUMN closure_enabled INTEGER DEFAULT 0',
+    'ALTER TABLE regions ADD COLUMN closure_start INTEGER',
+    'ALTER TABLE regions ADD COLUMN closure_end INTEGER',
+    'ALTER TABLE regions ADD COLUMN closure_subject TEXT',
+    'ALTER TABLE regions ADD COLUMN closure_message TEXT',
+  ];
+  let changed = false;
+  for (const sql of tries) {
+    try { db.exec(sql); changed = true; } catch (e) { /* already exists */ }
+  }
+  // Auto-reply dedup log so we never spam the same sender on the same ticket.
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS auto_reply_log (ticket_id TEXT, sender_email TEXT, kind TEXT, sent_at INTEGER, PRIMARY KEY (ticket_id, sender_email))");
+    changed = true;
+  } catch (e) {}
+  if (changed) saveDb();
+})();
 
 // Build the signature block appended to every outbound message. If the user has
 // saved a custom signature, use it verbatim. Otherwise fall back to the legacy
