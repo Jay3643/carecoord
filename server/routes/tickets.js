@@ -544,9 +544,13 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   db.prepare("UPDATE tickets SET status = 'WAITING_ON_EXTERNAL', last_activity_at = ?, has_unread = 0 WHERE id = ?").run(Date.now(), req.params.id);
   saveDb();
 
-  // Actually send via Gmail
+  // Actually send via Gmail. Capture any failure so the client can warn the user
+  // that the in-system record was saved but external delivery didn't happen.
+  let gmailError = null;
+  let gmailSent = false;
   try {
     const gmailAuth = getGmailAuth(req.user.id);
+    if (!gmailAuth) gmailError = 'No Gmail workspace connected for your account';
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
 
@@ -592,16 +596,18 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
       const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
       // Capture real RFC Message-ID + threadId so external replies thread back.
       await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
+      gmailSent = true;
       console.log('[Gmail] Reply sent to', toAddr, 'threadId:', sent.data?.threadId);
     } else {
       console.log('[Gmail] No auth for user', req.user.id, '— message saved but not sent via Gmail');
     }
   } catch (gmailErr) {
+    gmailError = gmailErr.message;
     console.error('[Gmail] Send failed:', gmailErr.message);
     // Message is still saved in DB, just not sent via Gmail
   }
 
-  addAudit(db, req.user.id, 'outbound_sent', 'message', msgId, 'Reply sent to ' + extP[0]);
+  addAudit(db, req.user.id, 'outbound_sent', 'message', msgId, gmailSent ? 'Reply sent to ' + extP[0] : 'Reply to ' + extP[0] + ' SAVED BUT NOT DELIVERED: ' + (gmailError || 'unknown'));
   const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
   message.to_addresses = JSON.parse(message.to_addresses);
   message.reference_ids = JSON.parse(message.reference_ids);
@@ -614,7 +620,7 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
     addAudit(db, req.user.id, 'auto_assigned', 'ticket', req.params.id, 'Auto-assigned on reply');
     saveDb();
   }
-  res.json({ message });
+  res.json({ message, gmailSent, gmailError });
 });
 
 // Reply All — sends reply and copies to all linked tickets
@@ -663,8 +669,11 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
   }
 
   // Send via Gmail. If user provided explicit recipients, use those. Otherwise gather all linked participants.
+  let gmailError = null;
+  let gmailSent = false;
   try {
     const gmailAuth = getGmailAuth(req.user.id);
+    if (!gmailAuth) gmailError = 'No Gmail workspace connected for your account';
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
       let toAddr, ccAddr = ccList.join(', ');
@@ -725,10 +734,14 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
       // Stamp the main ticket's outbound row with the real Gmail IDs so future
       // external replies (and any new participants Cc'd onto them) thread back.
       await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
+      gmailSent = true;
     }
-  } catch(e) { console.error('[Gmail] Reply-all send failed:', e.message); }
+  } catch(e) {
+    gmailError = e.message;
+    console.error('[Gmail] Reply-all send failed:', e.message);
+  }
 
-  res.json({ sent: linkedIds.length + 1 });
+  res.json({ sent: linkedIds.length + 1, gmailSent, gmailError });
 });
 
 // Forward ticket to a new recipient

@@ -367,11 +367,14 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     setSending(true);
     try {
       const atts = replyAttachments.length > 0 ? replyAttachments : undefined;
-      if (replyMode === 'replyAll') {
-        const d = await api.sendReplyAll(ticketId, replyText, atts, replyTo, replyCc);
-        showToast('Reply sent');
+      // Server returns { ..., gmailSent, gmailError }. Surface delivery failures
+      // instead of silently claiming the reply was sent when Gmail rejected it.
+      const result = replyMode === 'replyAll'
+        ? await api.sendReplyAll(ticketId, replyText, atts, replyTo, replyCc)
+        : await api.sendReply(ticketId, replyText, atts, replyTo, replyCc);
+      if (result?.gmailError) {
+        showToast('Saved on the ticket, but email delivery failed: ' + result.gmailError);
       } else {
-        await api.sendReply(ticketId, replyText, atts, replyTo, replyCc);
         showToast('Reply sent');
       }
       setReplyText('');
