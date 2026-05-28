@@ -3,6 +3,7 @@ import { api } from '../api';
 import { fmt } from '../utils';
 import Icon from './Icons';
 import { StatusBadge, TagPill, Avatar } from './ui';
+import EmailAutocomplete from './EmailAutocomplete';
 
 function formatAiText(text) {
   if (!text) return '';
@@ -447,8 +448,14 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
     setSending(true);
     try {
       const atts = replyAttachments.length > 0 ? replyAttachments : undefined;
-      await api.forwardTicket(ticketId, forwardTo.trim(), forwardBody, atts);
-      showToast('Forwarded to ' + forwardTo.trim());
+      const result = await api.forwardTicket(ticketId, forwardTo.trim(), forwardBody, atts);
+      // Server returns { success, gmailSent, gmailError } — surface delivery failures
+      // instead of silently claiming success when Gmail actually rejected the send.
+      if (result?.gmailError) {
+        showToast('Saved on the ticket, but email delivery failed: ' + result.gmailError);
+      } else {
+        showToast('Forwarded to ' + forwardTo.trim());
+      }
       setForwardTo('');
       setForwardBody('');
       setReplyAttachments([]);
@@ -886,9 +893,11 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 <div style={{ display: 'flex', gap: 10, flexDirection: 'column' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: '#6b8299', flexShrink: 0 }}>To:</span>
-                    <input value={forwardTo} onChange={e => setForwardTo(e.target.value)}
-                      placeholder="recipient@example.com"
-                      style={{ flex: 1, padding: '8px 12px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', fontSize: 12, outline: 'none' }} />
+                    <div style={{ flex: 1 }}>
+                      <EmailAutocomplete value={forwardTo} onChange={setForwardTo}
+                        placeholder="recipient@example.com"
+                        style={{ width: '100%', padding: '8px 12px', background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
                   </div>
                   <textarea value={forwardBody} onChange={e => setForwardBody(e.target.value)}
                     placeholder="Add a message (optional)..."
@@ -920,15 +929,19 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px', borderBottom: '1px solid #f1f3f4', gap: 6 }}>
                   <span style={{ fontSize: 12, color: '#5f6368', flexShrink: 0, width: 28 }}>To</span>
-                  <input value={replyTo} onChange={e => setReplyTo(e.target.value)}
-                    placeholder="Recipients (comma-separated)"
-                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                  <div style={{ flex: 1 }}>
+                    <EmailAutocomplete value={replyTo} onChange={setReplyTo}
+                      placeholder="Recipients (comma-separated)"
+                      style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', padding: '4px 12px', borderBottom: '1px solid #f1f3f4', gap: 6 }}>
                   <span style={{ fontSize: 12, color: '#5f6368', flexShrink: 0, width: 28 }}>Cc</span>
-                  <input value={replyCc} onChange={e => setReplyCc(e.target.value)}
-                    placeholder="Add Cc recipients (comma-separated)"
-                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                  <div style={{ flex: 1 }}>
+                    <EmailAutocomplete value={replyCc} onChange={setReplyCc}
+                      placeholder="Add Cc recipients (comma-separated)"
+                      style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '6px 4px', fontFamily: 'inherit', color: '#1e3a4f', background: 'transparent' }} />
+                  </div>
                 </div>
                 <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
                   placeholder="Type your message..."

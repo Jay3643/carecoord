@@ -10,9 +10,12 @@ function loadContacts() {
   if (contactsLoading) return new Promise(r => contactsCallbacks.push(r));
   contactsLoading = true;
   // Load Gmail contacts AND internal users, merge and deduplicate
+  // Use /api/users (open to all authenticated roles) — /api/admin/users is admin-only
+  // and silently 403'd for coordinators/supervisors, which made the contact list look
+  // like it wasn't generating.
   return Promise.all([
     api.getGmailContacts().then(d => d.contacts || []).catch(() => []),
-    fetch('/api/admin/users', { credentials: 'include' }).then(r => r.json()).then(d => (d.users || []).map(u => ({ email: u.email, name: u.name, org: 'Seniority Healthcare' }))).catch(() => []),
+    fetch('/api/users', { credentials: 'include' }).then(r => r.json()).then(d => (d.users || []).map(u => ({ email: u.email, name: u.name, org: 'Seniority Healthcare' }))).catch(() => []),
   ]).then(([gmail, internal]) => {
     const seen = new Set();
     const merged = [];

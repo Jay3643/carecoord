@@ -779,9 +779,13 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
   db.prepare('UPDATE tickets SET last_activity_at = ? WHERE id = ?').run(Date.now(), req.params.id);
   saveDb();
 
-  // Send via Gmail
+  // Send via Gmail. Capture any failure so the client can warn the user that the
+  // in-system record was saved but external delivery didn't happen.
+  let gmailError = null;
+  let gmailSent = false;
   try {
     const gmailAuth = getGmailAuth(req.user.id);
+    if (!gmailAuth) { gmailError = 'No Gmail workspace connected for your account'; }
     if (gmailAuth) {
       const gmail = google.gmail({ version: 'v1', auth: gmailAuth.auth });
       const senderEmail = gmailAuth.email || fromAddr;
@@ -811,11 +815,15 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
       const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
       // Stamp outbound row so a reply to the forward threads back to this ticket.
       await captureOutboundIds(db, gmail, sent, msgId, req.user.id);
+      gmailSent = true;
     }
-  } catch(e) { console.error('[Gmail] Forward failed:', e.message); }
+  } catch(e) {
+    gmailError = e.message;
+    console.error('[Gmail] Forward failed:', e.message);
+  }
 
-  addAudit(db, req.user.id, 'forwarded', 'ticket', req.params.id, 'Forwarded to ' + toEmail.trim());
-  res.json({ success: true });
+  addAudit(db, req.user.id, 'forwarded', 'ticket', req.params.id, gmailSent ? 'Forwarded to ' + toEmail.trim() : 'Forward to ' + toEmail.trim() + ' SAVED BUT NOT DELIVERED: ' + (gmailError || 'unknown'));
+  res.json({ success: true, gmailSent, gmailError });
 });
 
 router.post('/:id/notes', requireAuth, (req, res) => {
