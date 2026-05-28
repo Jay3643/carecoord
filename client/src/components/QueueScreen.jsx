@@ -13,7 +13,11 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   // immediately when they land on the Region Queue — no caret-hunt required.
   const [expandedGroups, setExpandedGroups] = useState(() => new Set(currentUser?.id ? [currentUser.id] : []));
   const PAGE_SIZE = 50;
-  const [selectedRegion, setSelectedRegion] = useState('all');
+  // selectedRegions is a Set of region IDs the user wants visible. Empty
+  // Set means "all my regions" (server-side filter falls back to the
+  // user_regions IN (...) clause). Server accepts a comma-separated list.
+  const [selectedRegions, setSelectedRegions] = useState(new Set());
+  const [showRegionPicker, setShowRegionPicker] = useState(false);
   const [queueFilter, setQueueFilter] = useState('open');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState(null);
@@ -43,7 +47,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     try {
       if (mode === 'region') api.gmailAutoSync().catch(() => {});
       const params = { queue: mode === 'personal' ? 'personal' : 'region', status: 'all' };
-      if (selectedRegion && selectedRegion !== 'all') params.region = selectedRegion;
+      // Empty Set → omit param → server returns all regions the user can see
+      if (selectedRegions.size > 0) params.region = Array.from(selectedRegions).join(',');
       if (searchQuery) params.search = searchQuery;
       const data = await api.getTickets(params);
       setTickets(data.tickets || data || []);
@@ -51,7 +56,10 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     if (!silent) setLoading(false);
   };
 
-  useEffect(() => { fetchTickets(); }, [selectedRegion, searchQuery]);
+  // Stable key from the region Set so the effect only refires when its
+  // contents actually change (not when the Set instance is reassigned).
+  const selectedRegionsKey = useMemo(() => Array.from(selectedRegions).sort().join(','), [selectedRegions]);
+  useEffect(() => { fetchTickets(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selectedRegionsKey, searchQuery]);
 
   // When searching, show flat results (no grouping needed)
   const isSearching = searchQuery.trim().length > 0;
@@ -69,7 +77,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, selectedRegion, searchQuery]);
+  }, [mode, selectedRegionsKey, searchQuery]);
 
   // Collect all unique tags across tickets for the tag dropdown
   const allTags = useMemo(() => {
@@ -253,11 +261,43 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
           <h1 style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>{title}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {mode === 'region' && userRegions.length > 1 && (
-              <select value={selectedRegion} onChange={e => setSelectedRegion(e.target.value)}
-                style={{ background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, padding: '6px 12px', color: '#1e3a4f', fontSize: 12, cursor: 'pointer' }}>
-                <option value="all">All Regions</option>
-                {userRegions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowRegionPicker(s => !s)}
+                  style={{ background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, padding: '6px 12px', color: '#1e3a4f', fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  title="Choose which regions to view">
+                  {selectedRegions.size === 0
+                    ? 'All Regions'
+                    : selectedRegions.size === 1
+                      ? userRegions.find(r => selectedRegions.has(r.id))?.name || '1 region'
+                      : selectedRegions.size + ' of ' + userRegions.length + ' regions'}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                </button>
+                {showRegionPicker && (
+                  <>
+                    {/* Click-outside catcher */}
+                    <div onClick={() => setShowRegionPicker(false)}
+                      style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'transparent' }} />
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 220, padding: 6 }}>
+                      <div onClick={() => setSelectedRegions(new Set())}
+                        style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 12, color: '#1e3a4f', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, background: selectedRegions.size === 0 ? '#e8f0f8' : 'transparent', fontWeight: 600 }}>
+                        <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 3, border: '1.5px solid #1a5e9a', background: selectedRegions.size === 0 ? '#1a5e9a' : '#fff', color: '#fff', textAlign: 'center', fontSize: 10, lineHeight: '11px' }}>{selectedRegions.size === 0 ? '✓' : ''}</span>
+                        All Regions
+                      </div>
+                      <div style={{ height: 1, background: '#dde8f2', margin: '4px 0' }} />
+                      {userRegions.map(r => {
+                        const checked = selectedRegions.has(r.id);
+                        return (
+                          <div key={r.id} onClick={() => setSelectedRegions(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; })}
+                            style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 12, color: '#1e3a4f', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, background: checked ? '#e8f0f8' : 'transparent' }}>
+                            <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 3, border: '1.5px solid #1a5e9a', background: checked ? '#1a5e9a' : '#fff', color: '#fff', textAlign: 'center', fontSize: 10, lineHeight: '11px' }}>{checked ? '✓' : ''}</span>
+                            {r.name}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             <button onClick={fetchTickets} style={{ background: '#dde8f2', border: '1px solid #c0d0e4', borderRadius: 8, padding: '6px 10px', color: '#6b8299', cursor: 'pointer' }} title="Refresh">
               <Icon name="inbox" size={14} />

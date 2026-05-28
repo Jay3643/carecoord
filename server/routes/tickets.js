@@ -254,7 +254,16 @@ router.get('/', requireAuth, (req, res) => {
       params.push(req.user.id);
     }
   }
-  if (region && region !== 'all') { where.push('t.region_id = ?'); params.push(region); }
+  // region param: 'all' or omitted = no extra filter; otherwise comma-separated
+  // list of region IDs ("r-abc,r-def") so supervisors can pick any subset.
+  if (region && region !== 'all') {
+    const ids = String(region).split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length) {
+      const ph = ids.map(() => '?').join(',');
+      where.push('t.region_id IN (' + ph + ')');
+      params.push(...ids);
+    }
+  }
   if (status === 'unassigned') { where.push("t.assignee_user_id IS NULL AND t.status != ?"); params.push('CLOSED'); }
   else if (status === 'open') where.push("t.status = 'OPEN'");
   else if (status === 'waiting') where.push("t.status = 'WAITING_ON_EXTERNAL'");
