@@ -955,6 +955,43 @@ router.get('/:ticketId/attachments/:attId/download', requireAuth, (req, res) => 
   res.send(buf);
 });
 
+// Inline variant for media playback (audio/video tags, image previews). Same
+// access check as /download, but Content-Disposition: inline + Accept-Ranges
+// support so the browser's audio scrubber can seek. Returns 206 Partial
+// Content when a Range header is present.
+router.get('/:ticketId/attachments/:attId/inline', requireAuth, (req, res) => {
+  const db = getDb();
+  const att = db.prepare('SELECT * FROM attachments WHERE id = ? AND ticket_id = ?').get(req.params.attId, req.params.ticketId);
+  if (!att) return res.status(404).json({ error: 'Not found' });
+  const buf = Buffer.from(att.data, 'base64');
+  const mime = toStr(att.mime_type) || 'application/octet-stream';
+  const filename = toStr(att.filename) || 'file';
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Content-Type', mime);
+  res.set('Content-Disposition', 'inline; filename="' + filename.replace(/"/g, '') + '"');
+  res.set('Cache-Control', 'private, max-age=3600');
+
+  const range = req.headers.range;
+  if (!range) {
+    res.set('Content-Length', buf.length);
+    return res.send(buf);
+  }
+  // Parse "bytes=START-END" — END is optional (means "to end of file")
+  const m = /^bytes=(\d+)-(\d*)$/.exec(range);
+  if (!m) { res.set('Content-Length', buf.length); return res.send(buf); }
+  const start = parseInt(m[1], 10);
+  const end = m[2] ? Math.min(parseInt(m[2], 10), buf.length - 1) : buf.length - 1;
+  if (isNaN(start) || start >= buf.length || end < start) {
+    res.status(416).set('Content-Range', 'bytes */' + buf.length).end();
+    return;
+  }
+  const chunk = buf.slice(start, end + 1);
+  res.status(206);
+  res.set('Content-Range', 'bytes ' + start + '-' + end + '/' + buf.length);
+  res.set('Content-Length', chunk.length);
+  res.send(chunk);
+});
+
 
 // ── Time Tracking ──
 

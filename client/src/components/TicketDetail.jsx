@@ -41,6 +41,53 @@ function MessageBody({ text }) {
   return <div style={{ fontSize: 13, lineHeight: 1.6, color: '#1e3a4f', whiteSpace: 'pre-wrap' }}>{text}</div>;
 }
 
+// Detect audio attachments by MIME type OR filename extension — voicemail
+// services sometimes send audio/* under generic mime types like
+// application/octet-stream.
+function isAudioAttachment(att) {
+  const mime = (att.mime_type || '').toLowerCase();
+  if (mime.startsWith('audio/')) return true;
+  const name = (att.filename || '').toLowerCase();
+  return /\.(mp3|wav|ogg|oga|m4a|aac|webm|amr|opus)$/.test(name);
+}
+
+function formatAttachmentSize(size) {
+  if (!size) return '';
+  if (size > 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + 'MB';
+  return (size / 1024).toFixed(0) + 'KB';
+}
+
+// Renders a single attachment row. Audio attachments get an inline <audio>
+// player (streamed from /attachments/:id/inline which supports Range and
+// uses Content-Disposition: inline). Everything else stays a download link.
+function AttachmentRow({ att, ticketId, accentBg }) {
+  const inlineUrl = '/api/tickets/' + ticketId + '/attachments/' + att.id + '/inline';
+  const downloadUrl = '/api/tickets/' + ticketId + '/attachments/' + att.id + '/download';
+  if (isAudioAttachment(att)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginRight: 6, marginBottom: 6, padding: '8px 10px', background: accentBg, borderRadius: 8, maxWidth: 360 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: '#1a5e9a' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{att.filename}</span>
+          {att.size > 0 && <span style={{ color: '#6b8299', fontWeight: 400 }}>{formatAttachmentSize(att.size)}</span>}
+          <a href={downloadUrl} target="_blank" rel="noopener" title="Download" style={{ color: '#6b8299', textDecoration: 'none', display: 'inline-flex' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </a>
+        </div>
+        <audio controls preload="metadata" src={inlineUrl} style={{ width: '100%', height: 32 }} />
+      </div>
+    );
+  }
+  return (
+    <a href={downloadUrl} target="_blank" rel="noopener"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: accentBg, borderRadius: 6, color: '#1a5e9a', fontSize: 11, fontWeight: 600, textDecoration: 'none', marginRight: 6, marginBottom: 4 }}>
+      <Icon name="file" size={12} />
+      {att.filename}
+      {att.size ? ' (' + formatAttachmentSize(att.size) + ')' : ''}
+    </a>
+  );
+}
+
 export default function TicketDetail({ ticketId, currentUser, isSupervisor, regions, allTags, closeReasons, allUsers, onBack, onClose, showToast, initialTab }) {
   const [ticket, setTicket] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -647,14 +694,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   <div style={{ marginLeft: 36, padding: '14px 18px', background: '#dde8f2', borderRadius: '4px 12px 12px 12px', border: '1px solid #c0d0e4', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
                     <MessageBody text={m.body_text} />
                     {m.attachments && m.attachments.length > 0 && (
-                      <div style={{ marginTop: 8, borderTop: '1px solid #c0d0e4', paddingTop: 8 }}>
+                      <div style={{ marginTop: 8, borderTop: '1px solid #c0d0e4', paddingTop: 8, display: 'flex', flexWrap: 'wrap' }}>
                         {m.attachments.map(att => (
-                          <a key={att.id} href={'/api/tickets/' + ticket.id + '/attachments/' + att.id + '/download'} target="_blank" rel="noopener"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#c8d8ec', borderRadius: 6, color: '#1a5e9a', fontSize: 11, fontWeight: 600, textDecoration: 'none', marginRight: 6, marginBottom: 4 }}>
-                            <Icon name="file" size={12} />
-                            {att.filename}
-                            {att.size ? ' (' + (att.size > 1024*1024 ? (att.size/1024/1024).toFixed(1)+'MB' : (att.size/1024).toFixed(0)+'KB') + ')' : ''}
-                          </a>
+                          <AttachmentRow key={att.id} att={att} ticketId={ticket.id} accentBg="#c8d8ec" />
                         ))}
                       </div>
                     )}
@@ -680,13 +722,9 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
                   <div style={{ padding: '14px 18px', background: '#e8f0f8', borderRadius: '12px 4px 12px 12px', border: '1px solid #a8c0dc', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#2d4a5e' }}>
                     <MessageBody text={m.body_text} />
                     {m.attachments && m.attachments.length > 0 && (
-                      <div style={{ marginTop: 8, borderTop: '1px solid #a8c0dc', paddingTop: 8 }}>
+                      <div style={{ marginTop: 8, borderTop: '1px solid #a8c0dc', paddingTop: 8, display: 'flex', flexWrap: 'wrap' }}>
                         {m.attachments.map(att => (
-                          <a key={att.id} href={'/api/tickets/' + ticket.id + '/attachments/' + att.id + '/download'} target="_blank" rel="noopener"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#d0e0f0', borderRadius: 6, color: '#1a5e9a', fontSize: 11, fontWeight: 600, textDecoration: 'none', marginRight: 6, marginBottom: 4 }}>
-                            <Icon name="file" size={12} />
-                            {att.filename}
-                          </a>
+                          <AttachmentRow key={att.id} att={att} ticketId={ticket.id} accentBg="#d0e0f0" />
                         ))}
                       </div>
                     )}
