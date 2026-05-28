@@ -2346,35 +2346,69 @@
   // =============================================================
   let dragOverlay = null;
 
-  viewport.addEventListener('dragover', e => {
+  // Find the first PDF in a DataTransfer. Many sources (File Explorer on
+  // Windows, Outlook/Gmail attachments, browser drag-out, cloud-sync folders)
+  // hand us files with an empty or non-standard MIME type, so we also accept
+  // anything with a .pdf extension. Returns { file } if found, otherwise
+  // { rejected: 'name.ext' } if files were dropped but none looked like a PDF.
+  function extractPdfFromDrop(dt) {
+    const files = dt && dt.files ? Array.from(dt.files) : [];
+    if (!files.length) return { rejected: null };
+    const isPdf = (f) => f && (
+      f.type === 'application/pdf' ||
+      f.type === 'application/x-pdf' ||
+      /\.pdf$/i.test(f.name || '')
+    );
+    const match = files.find(isPdf);
+    if (match) return { file: match };
+    return { rejected: files[0].name || 'file' };
+  }
+
+  function removeDragOverlay() {
+    if (dragOverlay) { dragOverlay.remove(); dragOverlay = null; }
+  }
+
+  // dragenter + dragover must both preventDefault to mark this as a drop zone
+  // in every browser (Firefox in particular needs the dragenter).
+  function showDragOverlay(e) {
     e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     if (!dragOverlay) {
       dragOverlay = document.createElement('div');
       dragOverlay.className = 'drag-overlay';
       dragOverlay.textContent = 'Drop PDF here';
       viewport.appendChild(dragOverlay);
     }
-  });
+  }
+
+  viewport.addEventListener('dragenter', showDragOverlay);
+  viewport.addEventListener('dragover', showDragOverlay);
 
   viewport.addEventListener('dragleave', e => {
-    if (dragOverlay && !viewport.contains(e.relatedTarget)) {
-      dragOverlay.remove();
-      dragOverlay = null;
-    }
+    // Only remove when the pointer actually leaves the viewport (not when it
+    // moves between child elements — relatedTarget would still be inside).
+    if (dragOverlay && !viewport.contains(e.relatedTarget)) removeDragOverlay();
   });
 
   viewport.addEventListener('drop', e => {
     e.preventDefault();
-    if (dragOverlay) { dragOverlay.remove(); dragOverlay = null; }
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === 'application/pdf') loadPDF(file);
+    e.stopPropagation(); // prevent the body-level fallback from double-loading
+    removeDragOverlay();
+    const { file, rejected } = extractPdfFromDrop(e.dataTransfer);
+    if (file) loadPDF(file);
+    else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
   });
 
+  // Whole-window fallback so a drop slightly outside #viewport still works,
+  // and so the page never navigates away to the dropped file by default.
+  document.body.addEventListener('dragenter', e => e.preventDefault());
   document.body.addEventListener('dragover', e => e.preventDefault());
   document.body.addEventListener('drop', e => {
     e.preventDefault();
-    const file = e.dataTransfer?.files?.[0];
-    if (file && file.type === 'application/pdf') loadPDF(file);
+    removeDragOverlay();
+    const { file, rejected } = extractPdfFromDrop(e.dataTransfer);
+    if (file) loadPDF(file);
+    else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
   });
 
   // =============================================================
