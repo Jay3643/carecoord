@@ -429,6 +429,24 @@ async function syncUser(db, row) {
       for (const [alias, regionId] of Object.entries(aliasMap)) {
         if (allRecipients.includes(alias)) { rid = regionId; matchedAlias = true; break; }
       }
+      // Breadcrumb: when an inbound email looks intra-org (a recipient on the
+      // same domain as the syncing user) but doesn't match any alias, log it.
+      // Filters out vendor/external noise while still catching the common
+      // "I sent to region1@ourdomain.com and nothing happened" case.
+      if (!matchedAlias) {
+        const userDomain = (toStr(row.email) || '').split('@')[1]?.toLowerCase();
+        const intraOrg = userDomain && allRecipients.includes('@' + userDomain);
+        if (intraOrg) {
+          const disposition = aliasMatchOnly ? 'skipping (alias-match-only role)' : 'routing to default region ' + defaultRid;
+          console.log('[Sync] alias-MISS', JSON.stringify({
+            mailbox: toStr(row.email),
+            subject: (subj || '').slice(0, 80),
+            to: toAddr.slice(0, 200),
+            cc: ccAddr.slice(0, 200),
+            disposition,
+          }));
+        }
+      }
       // Admins/supervisors only route emails that explicitly hit a region alias
       if (aliasMatchOnly && !matchedAlias) continue;
 
