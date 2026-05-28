@@ -71,6 +71,7 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
   const [discussionMembers, setDiscussionMembers] = useState([]);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState(new Set());
+  const [showAllRecipients, setShowAllRecipients] = useState(false);
   const discussionEndRef = useRef(null);
   const [aiMessages, setAiMessages] = useState([]);
   const [pullMenuOpen, setPullMenuOpen] = useState(false);
@@ -529,19 +530,57 @@ export default function TicketDetail({ ticketId, currentUser, isSupervisor, regi
               <StatusBadge status={ticket.status} />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ticket.subject}</div>
-            {ticket.linkedTickets && ticket.linkedTickets.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, background: '#ede9fe', padding: '1px 8px', borderRadius: 4, border: '1px solid #ddd6fe' }}>
-                  Sent to {ticket.linkedTickets.length + 1} recipients
-                </span>
-                {ticket.linkedTickets.map(lt => (
-                  <span key={lt.id} style={{ fontSize: 10, color: '#6b8299', background: '#f0f4f9', padding: '1px 6px', borderRadius: 4 }}
-                    title={lt.syncedFor ? 'To: ' + lt.syncedFor.name + ' (' + lt.status + ')' : lt.id}>
-                    {lt.syncedFor ? lt.syncedFor.name : lt.id}
-                  </span>
-                ))}
-              </div>
-            )}
+            {(() => {
+              // Surface the full distribution list in the header. Sources, in priority order:
+              //   1) the first inbound message's To/Cc arrays (the actual addresses the email was sent to)
+              //   2) linkedTickets (other in-system users who got the same email and have their own ticket)
+              // The badge expands to reveal raw addresses so users never have to guess who was on the thread.
+              const firstInbound = messages.find(m => m.direction === 'inbound');
+              const tos = Array.isArray(firstInbound?.to_addresses) ? firstInbound.to_addresses : [];
+              const ccs = Array.isArray(firstInbound?.cc_addresses) ? firstInbound.cc_addresses : [];
+              const linked = ticket.linkedTickets || [];
+              const totalAddrs = tos.length + ccs.length;
+              // Suppress when truly single-recipient and no linked colleagues.
+              if (totalAddrs <= 1 && linked.length === 0) return null;
+              const totalCount = totalAddrs > 0 ? totalAddrs : (linked.length + 1);
+              return (
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllRecipients(v => !v)}
+                      style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, background: '#ede9fe', padding: '1px 8px', borderRadius: 4, border: '1px solid #ddd6fe', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      title={showAllRecipients ? 'Hide full recipient list' : 'Show full recipient list'}>
+                      Sent to {totalCount} recipient{totalCount === 1 ? '' : 's'}
+                      <span style={{ display: 'inline-flex', transform: showAllRecipients ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                        <Icon name="chevronDown" size={10} />
+                      </span>
+                    </button>
+                    {linked.map(lt => (
+                      <span key={lt.id} style={{ fontSize: 10, color: '#6b8299', background: '#f0f4f9', padding: '1px 6px', borderRadius: 4 }}
+                        title={lt.syncedFor ? lt.syncedFor.name + (lt.syncedFor.email ? ' <' + lt.syncedFor.email + '>' : '') + ' (' + lt.status + ')' : lt.id}>
+                        {lt.syncedFor ? lt.syncedFor.name : lt.id}
+                      </span>
+                    ))}
+                  </div>
+                  {showAllRecipients && (
+                    <div style={{ marginTop: 6, padding: '8px 12px', background: '#f6f8fb', border: '1px solid #dde8f2', borderRadius: 6, fontSize: 11, color: '#1e3a4f', lineHeight: 1.7, wordBreak: 'break-word' }}>
+                      {tos.length > 0 && (
+                        <div><span style={{ fontWeight: 600, color: '#6b8299', marginRight: 4 }}>To:</span>{tos.join(', ')}</div>
+                      )}
+                      {ccs.length > 0 && (
+                        <div><span style={{ fontWeight: 600, color: '#6b8299', marginRight: 4 }}>Cc:</span>{ccs.join(', ')}</div>
+                      )}
+                      {tos.length === 0 && ccs.length === 0 && linked.length > 0 && (
+                        <div><span style={{ fontWeight: 600, color: '#6b8299', marginRight: 4 }}>To:</span>
+                          {[currentUser?.name && (currentUser.name + (currentUser.email ? ' <' + currentUser.email + '>' : '')), ...linked.map(lt => lt.syncedFor && (lt.syncedFor.name + (lt.syncedFor.email ? ' <' + lt.syncedFor.email + '>' : '')))].filter(Boolean).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           {/* Clock */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

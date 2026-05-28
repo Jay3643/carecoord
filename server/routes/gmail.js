@@ -589,12 +589,8 @@ router.get('/personal', requireAuth, async (req, res) => {
     const cacheKey = req.user.id + ':' + q + ':' + (req.query.labelId || '') + ':' + max + ':' + pt;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
-    // Only apply cutoff for coordinators — admin/supervisor see full inbox
-    if (req.user.role === 'coordinator') {
-      const syncState = getDb().prepare('SELECT sync_start_date FROM email_sync_state WHERE user_id=?').get(req.user.id);
-      const cutoffDate = syncState?.sync_start_date || '2026/03/01';
-      q = q ? q + ' before:' + cutoffDate : 'before:' + cutoffDate;
-    }
+    // All roles see their full personal inbox (no cutoff). Recent mail may also
+    // appear in the shared Region Queue; coordinators can route it there manually.
     const listParams = { userId: 'me', q, maxResults: max };
     // Support filtering by label ID directly for reliable label-based views
     if (req.query.labelId) listParams.labelIds = [req.query.labelId];
@@ -975,9 +971,7 @@ router.get('/attachment/:msgId/:attId', requireAuth, async (req, res) => {
 
 // ── Push email to queue (supervisor + admin) ──
 router.post('/push-to-queue', requireAuth, async (req, res) => {
-  if (req.user.role !== 'supervisor' && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Supervisor or admin access required' });
-  }
+  // All roles may route an email into the shared regional queue (workflow, not admin).
   const db = getDb();
   const { gmailMessageId, regionId } = req.body;
   if (!gmailMessageId) return res.status(400).json({ error: 'gmailMessageId required' });
@@ -1202,9 +1196,7 @@ router.post('/bulk-pull', requireAuth, async (req, res) => {
 
 // ── Bulk push to queue (supervisor + admin) ──
 router.post('/bulk-push', requireAuth, async (req, res) => {
-  if (req.user.role !== 'supervisor' && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Supervisor or admin access required' });
-  }
+  // All roles may route emails into the shared regional queue (workflow, not admin).
   const db = getDb();
   const { gmailMessageIds, regionId } = req.body;
   if (!gmailMessageIds || !gmailMessageIds.length) return res.status(400).json({ error: 'gmailMessageIds required' });

@@ -620,12 +620,10 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                   </div>
                 )}
               </div>
-              {isSupervisorOrAdmin && (
-                <div onClick={bulkPushToQueue}
-                  style={{ display:'flex',alignItems:'center',gap:6,padding:'4px 16px',background:'#1a73e8',color:'#fff',borderRadius:16,cursor:'pointer',fontSize:13,fontWeight:500,marginLeft:4 }}>
-                  Push to Queue
-                </div>
-              )}
+              <div onClick={bulkPushToQueue}
+                style={{ display:'flex',alignItems:'center',gap:6,padding:'4px 16px',background:'#1a73e8',color:'#fff',borderRadius:16,cursor:'pointer',fontSize:13,fontWeight:500,marginLeft:4 }}>
+                Push to Queue
+              </div>
               <div onClick={() => { setCheckedIds(new Set()); setShowMoveMenu(false); }}
                 style={{ padding:'4px 12px',border:'1px solid #dadce0',borderRadius:16,cursor:'pointer',fontSize:13,color:'#5f6368',marginLeft:4 }}>
                 Cancel
@@ -791,19 +789,17 @@ export default function PersonalInbox({ currentUser, showToast, refreshCounts })
                     <div onClick={() => startReply('forward')} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14 }} className="gi-row">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="#444746"><path d="M12 8V4l8 8-8 8v-4H4V8z"/></svg> Forward
                     </div>
-                    {isSupervisorOrAdmin && (
-                      <div onClick={async () => {
-                        try {
-                          const d = await api.pushToQueue(selected.id);
-                          showToast?.('Pushed to queue: ' + (d.subject || ''));
-                          setMessages(prev => prev.filter(m => m.id !== selected.id));
-                          setSelected(null); setDetail(null);
-                          if (refreshCounts) refreshCounts();
-                        } catch(e) { showToast?.(e.message || 'Failed'); }
-                      }} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14,color:'#1a73e8' }} className="gi-row">
-                        Push to Queue
-                      </div>
-                    )}
+                    <div onClick={async () => {
+                      try {
+                        const d = await api.pushToQueue(selected.id);
+                        showToast?.('Pushed to queue: ' + (d.subject || ''));
+                        setMessages(prev => prev.filter(m => m.id !== selected.id));
+                        setSelected(null); setDetail(null);
+                        if (refreshCounts) refreshCounts();
+                      } catch(e) { showToast?.(e.message || 'Failed'); }
+                    }} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'8px 24px',border:'1px solid #dadce0',borderRadius:18,cursor:'pointer',fontSize:14,color:'#1a73e8' }} className="gi-row">
+                      Push to Queue
+                    </div>
                   </div>
                 ) : (
                   <div style={{ border:'1px solid #dadce0',borderRadius:'8px 8px 0 0',margin:'0 16px',background:'#fff' }}>
