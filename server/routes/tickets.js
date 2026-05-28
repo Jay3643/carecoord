@@ -413,8 +413,16 @@ router.get('/:id', requireAuth, (req, res) => {
   if (rids.length > 0 && !rids.includes(toStr(ticket.region_id)) && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Not authorized to access this ticket' });
   }
-  // Mark as read when opened — record who read it and when
-  if (ticket.has_unread) {
+  // Mark as read when opened — but only when the opener actually owns the ticket.
+  // Supervisors/admins reviewing a coordinator's ticket should NOT consume the
+  // coordinator's unread indicator. has_unread is a per-ticket flag, not
+  // per-user, so the safest rule is:
+  //   - Assigned ticket: only the assignee clears it.
+  //   - Unassigned ticket: anyone clears it (triage workflow unchanged).
+  const assigneeId = toStr(ticket.assignee_user_id);
+  const isAssignee = assigneeId && assigneeId === req.user.id;
+  const isUnassigned = !assigneeId;
+  if (ticket.has_unread && (isAssignee || isUnassigned)) {
     db.prepare('UPDATE tickets SET has_unread = 0, read_at = ?, read_by_user_id = ? WHERE id = ?').run(Date.now(), req.user.id, req.params.id);
     saveDb();
     ticket.has_unread = 0;
