@@ -7,6 +7,29 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
+// Schema migration — add signature column to users (idempotent: ALTER throws if
+// the column already exists, which is fine on every restart after the first).
+try {
+  getDb().exec('ALTER TABLE users ADD COLUMN signature TEXT');
+  saveDb();
+  console.log('[DB] Added signature column to users');
+} catch (e) { /* already exists */ }
+
+// Build the signature block appended to every outbound message. If the user has
+// saved a custom signature, use it verbatim. Otherwise fall back to the legacy
+// format (name + "Care Coordinator — <region>" + email) so existing behavior is
+// unchanged for users who never visit the editor.
+function buildSignature(user, region) {
+  if (user && user.signature) {
+    const s = String(user.signature).replace(/\r\n/g, '\n').trim();
+    if (s) return '\n\n—\n' + s;
+  }
+  const name = toStr(user?.name) || '';
+  const email = toStr(user?.email) || '';
+  const regionName = toStr(region?.name) || '';
+  return '\n\n—\n' + name + (regionName ? '\nCare Coordinator — ' + regionName : '') + (email ? '\n' + email : '');
+}
+
 // Generate short ticket ID: REGION-NNNN (e.g. CPA-0042)
 function generateTicketId(db, regionId) {
   const region = regionId ? db.prepare('SELECT name FROM regions WHERE id = ?').get(regionId) : null;
@@ -160,7 +183,7 @@ router.post('/', requireAuth, async (req, res) => {
   const aliases = JSON.parse(region.routing_aliases || '[]');
   const fromAddr = aliases[0] || 'intake@carecoord.org';
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  const fullBody = body + '\n\n—\n' + user.name + '\nCare Coordinator — ' + region.name + '\n' + user.email;
+  const fullBody = body + buildSignature(user, region);
   const providerMsgId = 'msg-int-' + now;
 
   // Create ticket
@@ -541,7 +564,7 @@ router.post('/:id/reply', requireAuth, async (req, res) => {
   const extP = JSON.parse(ticket.external_participants || '[]');
   const lastIn = db.prepare("SELECT * FROM messages WHERE ticket_id = ? AND direction = 'inbound' ORDER BY sent_at DESC LIMIT 1").get(req.params.id);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  const fullBody = body + '\n\n—\n' + user.name + '\nCare Coordinator — ' + region.name + '\n' + user.email;
+  const fullBody = body + buildSignature(user, region);
   const msgId = uuid();
   const refs = lastIn ? JSON.parse(lastIn.reference_ids || '[]').concat(lastIn.provider_message_id) : [];
   // Determine recipients: explicit override takes precedence over ticket's external participants
@@ -654,7 +677,7 @@ router.post('/:id/reply-all', requireAuth, async (req, res) => {
   const fromAddr = aliases[0] || 'intake@carecoord.org';
   const extP = JSON.parse(ticket.external_participants || '[]');
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  const fullBody = replyBody + '\n\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
+  const fullBody = replyBody + buildSignature(user, region);
   const msgId = uuid();
   const toList = overrideTo ? overrideTo.split(',').map(s => s.trim()).filter(Boolean) : extP;
   const ccList = overrideCc ? overrideCc.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -787,7 +810,7 @@ router.post('/:id/forward', requireAuth, async (req, res) => {
     forwardedContent += dir + ': ' + toStr(msg.from_address) + ' (' + new Date(msg.sent_at).toLocaleString() + ')\n';
     forwardedContent += (plainBody || bodyText) + '\n\n---\n\n';
   }
-  const fullBody = forwardedContent + '\n—\n' + user.name + '\nCare Coordinator — ' + (region?.name || '') + '\n' + user.email;
+  const fullBody = forwardedContent + buildSignature(user, region);
 
   const msgId = uuid();
   db.prepare('INSERT INTO messages (id, ticket_id, direction, channel, from_address, to_addresses, subject, body_text, sent_at, provider_message_id, created_by_user_id, created_at) VALUES (?, ?, \'outbound\', \'email\', ?, ?, ?, ?, ?, ?, ?, ?)')

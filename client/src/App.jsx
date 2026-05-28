@@ -75,6 +75,25 @@ export default function App() {
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [openTicketTabs, setOpenTicketTabs] = useState([]); // [{ id, subject }]
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [signatureDraft, setSignatureDraft] = useState('');
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const openSignatureEditor = () => {
+    setSignatureDraft(currentUser?.signature || '');
+    setShowSignatureModal(true);
+  };
+  const saveSignature = async () => {
+    setSignatureSaving(true);
+    try {
+      const r = await api.updateSignature(signatureDraft);
+      setCurrentUser(u => u ? { ...u, signature: r.signature } : u);
+      setShowSignatureModal(false);
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
   const [previousScreen, setPreviousScreen] = useState('regionQueue');
   const [ticketSourceScreen, setTicketSourceScreen] = useState('regionQueue');
   const [toast, setToast] = useState(null);
@@ -675,6 +694,15 @@ export default function App() {
               </select>
             )}
             {!sidebarCollapsed && (
+              <button onClick={openSignatureEditor}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#102f54', border: '1px solid #143d6b', borderRadius: 6, color: '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%', justifyContent: 'center' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#1a5e9a'; e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#102f54'; e.currentTarget.style.color = '#a8c8e8'; }}
+                title="Edit email signature">
+                ✎ Signature
+              </button>
+            )}
+            {!sidebarCollapsed && (
               <button onClick={handleLogout}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#102f54', border: '1px solid #143d6b', borderRadius: 6, color: '#a8c8e8', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%', justifyContent: 'center' }}
                 onMouseEnter={e => { e.currentTarget.style.background = '#1a5e9a'; e.currentTarget.style.color = '#ffffff'; }}
@@ -908,6 +936,40 @@ export default function App() {
 
       {/* Onboarding Tour */}
       <OnboardingTour currentUser={currentUser} />
+
+      {/* Signature editor */}
+      {showSignatureModal && (
+        <div onClick={() => !signatureSaving && setShowSignatureModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, width: 520, maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Email signature</div>
+              <button onClick={() => !signatureSaving && setShowSignatureModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b8299', fontSize: 18, padding: 4 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b8299', lineHeight: 1.5 }}>
+              Appended to every email you send from CareCoord (reply, reply all, forward). Leave empty to use the default <em>Name / Care Coordinator — Region / email</em> format.
+            </div>
+            <textarea value={signatureDraft} onChange={e => setSignatureDraft(e.target.value)}
+              placeholder={(currentUser?.name || 'Your Name') + '\nCare Coordinator — Region\n' + (currentUser?.email || 'you@example.com')}
+              rows={8}
+              style={{ width: '100%', padding: 12, border: '1px solid #c0d0e4', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical', outline: 'none', color: '#1e3a4f', boxSizing: 'border-box' }} />
+            <div style={{ padding: 10, background: '#f6f8fb', border: '1px solid #dde8f2', borderRadius: 8, fontSize: 11, color: '#6b8299' }}>
+              <div style={{ fontWeight: 600, marginBottom: 4, color: '#1e3a4f' }}>Preview (appended after every outbound body)</div>
+              <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', color: '#1e3a4f' }}>—{'\n'}{signatureDraft.trim() || (currentUser?.name || 'Your Name') + '\nCare Coordinator — Region\n' + (currentUser?.email || 'you@example.com')}</pre>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button onClick={() => setShowSignatureModal(false)} disabled={signatureSaving}
+                style={{ padding: '8px 16px', background: '#fff', border: '1px solid #c0d0e4', borderRadius: 8, color: '#1e3a4f', cursor: signatureSaving ? 'default' : 'pointer', fontSize: 12, fontWeight: 500 }}>Cancel</button>
+              <button onClick={saveSignature} disabled={signatureSaving}
+                style={{ padding: '8px 16px', background: '#1a5e9a', border: 'none', borderRadius: 8, color: '#fff', cursor: signatureSaving ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, opacity: signatureSaving ? 0.7 : 1 }}>
+                {signatureSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </ErrorBoundary>
   );

@@ -33,6 +33,7 @@ export const api = {
   resetPassword: (token, password) => request('/auth/reset-password/' + token, { method: 'POST', body: { password } }),
   setWorkStatus: (status) => request('/auth/work-status', { method: 'POST', body: { status } }),
   me: () => request('/auth/me'),
+  updateSignature: (signature) => request('/auth/me/signature', { method: 'PUT', body: { signature } }),
   getTickets: (p) => request('/tickets' + (p ? '?' + new URLSearchParams(p) : '')),
   getRegionTickets: (id) => request('/tickets/region/' + id),
   getMyTickets: () => request('/tickets/my'),

@@ -340,8 +340,21 @@ router.get('/me', (req, res) => {
       photoUrl: toStr(user.profile_photo_url) || null,
       regionIds: regions.map(r => r.region_id),
       workStatus: toStr(user.work_status) || 'active',
+      signature: toStr(user.signature) || '',
     }
   });
+});
+
+// Save the current user's email signature. Empty string clears it (outbound
+// then falls back to the legacy default format in tickets.js buildSignature).
+router.put('/me/signature', requireAuth, (req, res) => {
+  const db = getDb();
+  const sig = typeof req.body?.signature === 'string' ? req.body.signature : '';
+  // Cap at 2000 chars — generous for a multi-line signature, prevents abuse.
+  const trimmed = sig.replace(/\r\n/g, '\n').slice(0, 2000);
+  db.prepare('UPDATE users SET signature = ? WHERE id = ?').run(trimmed || null, req.user.id);
+  saveDb();
+  res.json({ signature: trimmed });
 });
 
 // ── Work Status (coordinator availability) ──
