@@ -9,7 +9,9 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTicketIds, setSelectedTicketIds] = useState(new Set());
-  const [expandedGroups, setExpandedGroups] = useState(new Set());
+  // Default-expand the current user's group so their own tickets are visible
+  // immediately when they land on the Region Queue — no caret-hunt required.
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set(currentUser?.id ? [currentUser.id] : []));
   const PAGE_SIZE = 50;
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [queueFilter, setQueueFilter] = useState('open');
@@ -200,10 +202,14 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
       }
     }
 
-    // Sort: unassigned first, then by assignee name
+    // Sort: unassigned first, then the current user's own group (so it's findable
+    // without scrolling), then everyone else alphabetically by assignee name.
+    const myId = currentUser?.id;
     const sorted = Object.values(groups).sort((a, b) => {
       if (a.key === '_unassigned') return -1;
       if (b.key === '_unassigned') return 1;
+      if (myId && a.key === myId) return -1;
+      if (myId && b.key === myId) return 1;
       return a.label.localeCompare(b.label);
     });
     return sorted;
@@ -477,8 +483,8 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
                     <Icon name="inbox" size={14} />
                   </div>
                 )}
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.key === '_unassigned' ? '#c9963b' : '#1e3a4f' }}>
-                  {group.label}
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: group.key === '_unassigned' ? '#c9963b' : group.key === currentUser?.id ? '#1a5e9a' : '#1e3a4f' }}>
+                  {group.key === currentUser?.id ? 'My Queue' : group.label}
                 </span>
                 {unreadCount > 0 && (
                   <span style={{ background: '#1a5e9a', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>
