@@ -363,12 +363,17 @@ async function syncUser(db, row) {
   const archiveEmail = db.prepare("SELECT value FROM settings WHERE key='archive_email'").get();
   const archiveAddr = archiveEmail ? toStr(archiveEmail.value) : 'thinkprompted@gmail.com';
 
-  // Build alias-to-region map for routing by To address
+  // Build alias-to-region map for routing by To address. Trim + lowercase at
+  // build time so historical rows with stray whitespace still match (the admin
+  // sanitizeAliases() handles new writes, this covers pre-existing data).
   const allRegions = db.prepare("SELECT id, routing_aliases FROM regions WHERE is_active = 1").all();
   const aliasMap = {};
   for (const r of allRegions) {
     const aliases = JSON.parse(toStr(r.routing_aliases) || '[]');
-    for (const a of aliases) aliasMap[a.toLowerCase()] = toStr(r.id);
+    for (const a of aliases) {
+      const norm = String(a).trim().toLowerCase();
+      if (norm) aliasMap[norm] = toStr(r.id);
+    }
   }
 
   // Load exception list — these senders/domains SKIP the queue, stay in personal inbox

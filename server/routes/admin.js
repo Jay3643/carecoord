@@ -163,13 +163,30 @@ router.get('/regions', requireAuth, requireAdmin, (req, res) => {
   res.json({ regions });
 });
 
+// Normalize aliases on save: lowercase, trim, drop empties + duplicates.
+// Sync-side matching lowercases recipients before comparing, so any stored
+// alias with stray whitespace or mixed case would silently fail to match.
+function sanitizeAliases(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const a = raw.trim().toLowerCase();
+    if (!a || seen.has(a)) continue;
+    seen.add(a);
+    out.push(a);
+  }
+  return out;
+}
+
 router.post('/regions', requireAuth, requireAdmin, (req, res) => {
   const db = getDb();
   const { name, routingAliases } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
 
   const id = 'r-' + uuid().split('-')[0];
-  const aliases = routingAliases || [];
+  const aliases = sanitizeAliases(routingAliases);
   db.prepare('INSERT INTO regions (id, name, routing_aliases, is_active) VALUES (?, ?, ?, 1)')
     .run(id, name.trim(), JSON.stringify(aliases));
   saveDb();
@@ -184,12 +201,77 @@ router.put('/regions/:id', requireAuth, requireAdmin, (req, res) => {
   const region = db.prepare('SELECT * FROM regions WHERE id = ?').get(req.params.id);
   if (!region) return res.status(404).json({ error: 'Region not found' });
 
+  const nextAliases = routingAliases !== undefined
+    ? sanitizeAliases(routingAliases)
+    : JSON.parse(region.routing_aliases || '[]');
   db.prepare('UPDATE regions SET name = ?, routing_aliases = ? WHERE id = ?')
-    .run(name?.trim() || region.name, JSON.stringify(routingAliases || JSON.parse(region.routing_aliases || '[]')), req.params.id);
+    .run(name?.trim() || region.name, JSON.stringify(nextAliases), req.params.id);
   saveDb();
 
   addAudit(db, req.user.id, 'region_updated', 'region', req.params.id, 'Updated region: ' + (name?.trim() || region.name));
   res.json({ success: true });
+});
+
+// ── Diagnose-routing ─────────────────────────────────────────────────────────
+// Given a test address, returns whether any region's alias list would catch it,
+// plus the full alias inventory and a note on whether any active connected user
+// has that mailbox (because an unmatched alias OR an unreached mailbox can both
+// explain "I sent to Region1 and nothing showed up").
+router.post('/diagnose-routing', requireAuth, requireAdmin, (req, res) => {
+  const db = getDb();
+  const raw = String(req.body?.testEmail || '').trim().toLowerCase();
+  if (!raw) return res.status(400).json({ error: 'testEmail required' });
+  // Extract the bare email if user pasted "Name <addr@x>" form
+  const m = raw.match(/<([^>]+)>/);
+  const testEmail = (m ? m[1] : raw).trim();
+
+  const regions = db.prepare("SELECT id, name, routing_aliases, is_active FROM regions WHERE is_active = 1").all();
+  const allAliases = [];
+  let matchedRegion = null;
+  for (const r of regions) {
+    const aliases = JSON.parse(r.routing_aliases || '[]');
+    for (const a of aliases) {
+      const aLow = String(a).trim().toLowerCase();
+      allAliases.push({ alias: aLow, regionId: r.id, regionName: r.name });
+      // Mirror sync exactly: sync does recipientList.includes(alias) on a
+      // lowercased recipient string. So the alias must be a substring of
+      // testEmail. A misleading bidirectional check would falsely predict
+      // matches that the real sync won't make.
+      if (!matchedRegion && aLow && testEmail.includes(aLow)) {
+        matchedRegion = { id: r.id, name: r.name, viaAlias: aLow };
+      }
+    }
+  }
+
+  // Is this address one of our connected users' actual mailboxes? If yes, the
+  // sync will see it directly. If no, the email only routes if it's forwarded
+  // into a connected user's inbox.
+  const userMatch = db.prepare(
+    'SELECT u.id, u.name, u.email FROM users u WHERE u.is_active = 1 AND LOWER(u.email) = ? LIMIT 1'
+  ).get(testEmail);
+
+  const connectedToken = userMatch
+    ? db.prepare('SELECT 1 FROM gmail_tokens WHERE user_id = ? AND access_token IS NOT NULL').get(userMatch.id)
+    : null;
+
+  const notes = [];
+  if (!matchedRegion) {
+    notes.push('No region alias matches this address. Either add it to a region\'s "Routing Email Aliases", or send to a recipient whose address is already an alias.');
+  }
+  if (!userMatch) {
+    notes.push('This address is not a CareCoord user mailbox. The sync only sees mail that lands in a connected user\'s Gmail inbox — confirm the address forwards into one.');
+  } else if (!connectedToken) {
+    const sa = !!(process.env.SA_CLIENT_EMAIL || require('fs').existsSync(require('path').join(__dirname, '..', 'service-account.json')));
+    if (!sa) notes.push('User ' + userMatch.name + ' exists but has no OAuth tokens, and no service account is configured — their inbox cannot be synced.');
+  }
+
+  res.json({
+    testEmail,
+    matchedRegion,
+    allAliases,
+    userMailbox: userMatch ? { id: userMatch.id, name: userMatch.name, email: userMatch.email, hasOAuth: !!connectedToken } : null,
+    notes,
+  });
 });
 
 router.delete('/regions/:id', requireAuth, requireAdmin, (req, res) => {

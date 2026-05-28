@@ -77,6 +77,7 @@ export const api = {
   adminCreateRegion: (d) => request('/admin/regions', { method: 'POST', body: d }),
   adminUpdateRegion: (id, d) => request('/admin/regions/' + id, { method: 'PUT', body: d }),
   adminDeleteRegion: (id) => request('/admin/regions/' + id, { method: 'DELETE' }),
+  adminDiagnoseRouting: (testEmail) => request('/admin/diagnose-routing', { method: 'POST', body: { testEmail } }),
 
   getAttachments: (id) => request('/tickets/' + id + '/attachments'),
   downloadAttachment: (ticketId, attId) => '/api/tickets/' + ticketId + '/attachments/' + attId + '/download',

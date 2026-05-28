@@ -305,6 +305,24 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
   const [editingRegion, setEditingRegion] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
   const [workspaceStatus, setWorkspaceStatus] = useState({});
+  // Routing diagnostic — confirms whether a given address will be caught by a
+  // region alias and whether any connected user actually receives that mail.
+  const [diagEmail, setDiagEmail] = useState('');
+  const [diagResult, setDiagResult] = useState(null);
+  const [diagRunning, setDiagRunning] = useState(false);
+  const runDiagnose = async () => {
+    if (!diagEmail.trim()) return;
+    setDiagRunning(true);
+    setDiagResult(null);
+    try {
+      const r = await api.adminDiagnoseRouting(diagEmail.trim());
+      setDiagResult(r);
+    } catch (e) {
+      setDiagResult({ error: e.message });
+    } finally {
+      setDiagRunning(false);
+    }
+  };
 
   // User form
   const [uName, setUName] = useState('');
@@ -578,6 +596,66 @@ export default function AdminPanel({ currentUser, showToast, regions: passedRegi
               <button onClick={openNewRegion} style={s.btn('#1a5e9a', '#fff')}>
                 + Add Region
               </button>
+            </div>
+
+            {/* Routing diagnostic */}
+            <div style={{ ...s.card, marginBottom: 16, background: '#f8fafc', border: '1px solid #dde8f2' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a4f', marginBottom: 6 }}>Test routing</div>
+              <div style={{ fontSize: 11, color: '#6b8299', marginBottom: 10 }}>
+                Paste an address (e.g. <code>region1@seniorityhealthcare.com</code>) to see if any region's aliases will catch it and whether any connected user receives that mail.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input value={diagEmail} onChange={e => setDiagEmail(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') runDiagnose(); }}
+                  placeholder="address to test"
+                  style={{ flex: 1, padding: '6px 10px', border: '1px solid #c0d0e4', borderRadius: 6, fontSize: 12, fontFamily: 'inherit' }} />
+                <button onClick={runDiagnose} disabled={diagRunning || !diagEmail.trim()} style={s.btn('#1a5e9a', '#fff')}>
+                  {diagRunning ? 'Testing...' : 'Test'}
+                </button>
+              </div>
+              {diagResult && (
+                <div style={{ marginTop: 10, padding: 10, background: '#fff', border: '1px solid #dde8f2', borderRadius: 6, fontSize: 12, lineHeight: 1.6 }}>
+                  {diagResult.error ? (
+                    <div style={{ color: '#d94040' }}>{diagResult.error}</div>
+                  ) : (
+                    <>
+                      <div>
+                        <strong>Alias match:</strong>{' '}
+                        {diagResult.matchedRegion ? (
+                          <span style={{ color: '#107c10' }}>✓ {diagResult.matchedRegion.name} (via <code>{diagResult.matchedRegion.viaAlias}</code>)</span>
+                        ) : (
+                          <span style={{ color: '#d94040' }}>✗ No alias matches</span>
+                        )}
+                      </div>
+                      <div>
+                        <strong>Mailbox:</strong>{' '}
+                        {diagResult.userMailbox ? (
+                          <span style={{ color: diagResult.userMailbox.hasOAuth ? '#107c10' : '#c9963b' }}>
+                            {diagResult.userMailbox.name} ({diagResult.userMailbox.email})
+                            {diagResult.userMailbox.hasOAuth ? ' — OAuth connected' : ' — no OAuth token'}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#6b8299' }}>Not a CareCoord user mailbox (must forward into a connected inbox to sync)</span>
+                        )}
+                      </div>
+                      {diagResult.notes?.length > 0 && (
+                        <ul style={{ margin: '6px 0 0', paddingLeft: 20, color: '#6b8299' }}>
+                          {diagResult.notes.map((n, i) => <li key={i}>{n}</li>)}
+                        </ul>
+                      )}
+                      <details style={{ marginTop: 8 }}>
+                        <summary style={{ cursor: 'pointer', color: '#6b8299', fontSize: 11 }}>Show all configured aliases ({diagResult.allAliases.length})</summary>
+                        <div style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 11, color: '#1e3a4f' }}>
+                          {diagResult.allAliases.length === 0 && <div style={{ color: '#d94040' }}>No aliases configured on any region.</div>}
+                          {diagResult.allAliases.map((a, i) => (
+                            <div key={i}>{a.alias} → {a.regionName}</div>
+                          ))}
+                        </div>
+                      </details>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {regions.map(r => (
