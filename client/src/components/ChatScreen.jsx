@@ -21,6 +21,15 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
   const [searchUser, setSearchUser] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [newName, setNewName] = useState('');
+  // Chat ping toggle — synced to localStorage so it persists across reloads.
+  const [soundMuted, setSoundMuted] = useState(() => typeof window !== 'undefined' && localStorage.getItem('chat_sound_muted') === '1');
+  const toggleSoundMute = () => {
+    setSoundMuted(m => {
+      const next = !m;
+      try { localStorage.setItem('chat_sound_muted', next ? '1' : '0'); } catch (e) {}
+      return next;
+    });
+  };
   const endRef = useRef(null);
   const pollRef = useRef(null);
   const channelPollRef = useRef(null);
@@ -228,8 +237,19 @@ export default function ChatScreen({ currentUser, allUsers, showToast, isPanel, 
         <div style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {isPanel && onClose && <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 18, padding: 4 }}>✕</button>}
           <span style={{ fontSize: 16, fontWeight: 700, color: '#1e3a4f' }}>Messages</span>
-          <button onClick={() => { setShowNew(true); setSearchUser(''); setSelectedMembers([]); setNewName(''); }}
-            style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={toggleSoundMute}
+              title={soundMuted ? 'Unmute chat ping' : 'Mute chat ping'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: soundMuted ? '#94a3b8' : '#1a5e9a', display: 'flex', alignItems: 'center' }}>
+              {soundMuted ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              )}
+            </button>
+            <button onClick={() => { setShowNew(true); setSearchUser(''); setSelectedMembers([]); setNewName(''); }}
+              style={{ background: '#1a5e9a', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ New</button>
+          </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>

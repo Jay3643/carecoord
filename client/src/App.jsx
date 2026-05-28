@@ -1,5 +1,54 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from './api';
+
+// ── Chat attention cues ──────────────────────────────────────────────────────
+// Lazily initialized AudioContext for the chat ping. Browsers suspend the
+// context until a user gesture; resume() handles that. If the user has muted
+// via the chat panel toggle, localStorage.chat_sound_muted === '1'.
+let chatAudioCtx = null;
+function playChatPing() {
+  if (typeof window === 'undefined') return;
+  if (localStorage.getItem('chat_sound_muted') === '1') return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!chatAudioCtx) chatAudioCtx = new AC();
+    if (chatAudioCtx.state === 'suspended') chatAudioCtx.resume().catch(() => {});
+    const t = chatAudioCtx.currentTime;
+    const osc = chatAudioCtx.createOscillator();
+    const gain = chatAudioCtx.createGain();
+    osc.connect(gain); gain.connect(chatAudioCtx.destination);
+    osc.type = 'sine';
+    // Short two-tone chirp 880Hz → 660Hz — pleasant, distinct from system sounds.
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(660, t + 0.15);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.15, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  } catch (e) { /* silent — sound is a nice-to-have, never block on it */ }
+}
+
+function notifyDesktopChat(unreadCount) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    // tag collapses repeats into one notification instead of stacking.
+    new Notification('CareCoord — new chat', {
+      body: unreadCount === 1 ? 'You have 1 unread chat message' : `You have ${unreadCount} unread chat messages`,
+      tag: 'carecoord-chat',
+      silent: false,
+    });
+  } catch (e) {}
+}
+
+function requestChatNotifyPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
 import Icon from './components/Icons';
 import { Avatar } from './components/ui';
 import LoginScreen from './components/LoginScreen';
@@ -228,6 +277,29 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [personalCount, setPersonalCount] = useState(0);
 
+  // Chat attention cues: ping + tab-title flash when the unread count goes up
+  // and the chat panel isn't already open. Skip the very first transition so
+  // an existing unread state on app load doesn't beep on every refresh.
+  const prevChatUnreadRef = useRef(0);
+  const chatNotifyInitRef = useRef(false);
+  useEffect(() => {
+    const prev = prevChatUnreadRef.current;
+    prevChatUnreadRef.current = chatUnread;
+    if (!chatNotifyInitRef.current) { chatNotifyInitRef.current = true; return; }
+    if (chatUnread > prev && !chatOpen) {
+      playChatPing();
+      notifyDesktopChat(chatUnread);
+    }
+  }, [chatUnread, chatOpen]);
+
+  // Reflect unread count in the browser tab so users see a badge even when
+  // the CareCoord tab isn't focused. Restored when chat opens or count hits 0.
+  useEffect(() => {
+    const base = 'CareCoord';
+    document.title = (chatUnread > 0 && !chatOpen) ? `(${chatUnread}) ${base}` : base;
+    return () => { document.title = base; };
+  }, [chatUnread, chatOpen]);
+
   useEffect(() => {
     if (!currentUser) return;
     const fetchCounts = () => {
@@ -358,7 +430,7 @@ export default function App() {
           ].map(item => {
             if (item.key === '_divider') return !sidebarCollapsed ? <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 12px' }} /> : <div key="_div" style={{ height: 1, background: '#102f54', margin: '8px 4px' }} />;
             if (item.key === '_chat_toggle') return (
-              <button key="_chat_toggle" onClick={() => setChatOpen(c => { if (!c) { api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {}); } return !c; })}
+              <button key="_chat_toggle" onClick={() => setChatOpen(c => { if (!c) { api.chatUnread().then(d => setChatUnread(d.unread || 0)).catch(() => {}); requestChatNotifyPermission(); } return !c; })}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: sidebarCollapsed ? '10px 14px' : '10px 12px',
                   borderRadius: 8, border: 'none', background: chatOpen ? '#102f54' : 'transparent',
                   color: chatOpen ? '#ffffff' : '#143d6b', cursor: 'pointer', fontSize: 13, fontWeight: 500,
