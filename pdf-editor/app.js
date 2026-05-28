@@ -285,9 +285,19 @@
   // =============================================================
   // THUMBNAILS
   // =============================================================
+  // Pick a render scale that matches the thumb's actual on-screen size times
+  // devicePixelRatio, so the bitmap doesn't get upscaled (which is what made
+  // the sidebar previews look blurry). Falls back to a sensible default if the
+  // thumb hasn't been laid out yet.
+  function computeThumbScale(item, pageVpAtScale1) {
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = item.clientWidth || 140;
+    const targetBitmapPx = Math.max(cssWidth * dpr, 280);
+    return targetBitmapPx / pageVpAtScale1.width;
+  }
+
   function buildThumbnails() {
     sidebarThumbs.innerHTML = '';
-    const thumbScale = 0.2;
 
     S.thumbObserver = new IntersectionObserver(entries => {
       entries.forEach(async e => {
@@ -298,9 +308,13 @@
 
         const page = await S.pdfDoc.getPage(idx + 1);
         const rot = S.pageRotations[idx + 1] || 0;
-        const vp = page.getViewport({ scale: thumbScale, rotation: rot });
+        const baseVp = page.getViewport({ scale: 1, rotation: rot });
+        const scale = computeThumbScale(e.target, baseVp);
+        const vp = page.getViewport({ scale, rotation: rot });
         cvs.width = vp.width;
         cvs.height = vp.height;
+        cvs.style.width = '100%';
+        cvs.style.height = 'auto';
         await page.render({ canvasContext: cvs.getContext('2d'), viewport: vp }).promise;
         cvs.dataset.rendered = '1';
       });
@@ -1858,9 +1872,13 @@
     cvs.dataset.rendered = '';
     const page = await S.pdfDoc.getPage(idx + 1);
     const rot = S.pageRotations[idx + 1] || 0;
-    const vp = page.getViewport({ scale: 0.2, rotation: rot });
+    const baseVp = page.getViewport({ scale: 1, rotation: rot });
+    const scale = computeThumbScale(item, baseVp);
+    const vp = page.getViewport({ scale, rotation: rot });
     cvs.width = vp.width;
     cvs.height = vp.height;
+    cvs.style.width = '100%';
+    cvs.style.height = 'auto';
     await page.render({ canvasContext: cvs.getContext('2d'), viewport: vp }).promise;
     cvs.dataset.rendered = '1';
   }
