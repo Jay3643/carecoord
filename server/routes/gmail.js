@@ -1438,4 +1438,68 @@ router.get('/drive/shared', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
+// ── One-time backfill: repopulate to_addresses + cc_addresses on inbound messages
+// that were synced before the recipient-persistence fix. Identifier: cc_addresses
+// IS NULL (post-fix inserts always write '[]' for empty Cc). Re-fetches each message
+// from Gmail using its original syncing user's auth and rewrites both columns.
+// Run in batches (default 100, max 500) until `remaining` reaches 0.
+//   curl -X POST /api/gmail/backfill-recipients -d '{"limit":200}' -H 'Content-Type: application/json'
+// Pass {"dryRun":true} to scan without writing.
+router.post('/backfill-recipients', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const limit = Math.min(Math.max(parseInt(req.body?.limit) || 100, 1), 500);
+  const dryRun = !!req.body?.dryRun;
+  const db = getDb();
+
+  const rows = db.prepare(
+    "SELECT id, gmail_message_id, gmail_user_id FROM messages " +
+    "WHERE direction = 'inbound' AND cc_addresses IS NULL " +
+    "AND gmail_message_id IS NOT NULL AND gmail_user_id IS NOT NULL " +
+    "LIMIT ?"
+  ).all(limit);
+
+  const authCache = {};
+  let updated = 0, failed = 0, skipped = 0;
+  const errors = [];
+
+  for (const row of rows) {
+    const uid = toStr(row.gmail_user_id);
+    if (!(uid in authCache)) authCache[uid] = getAuthForUser(uid);
+    const userAuth = authCache[uid];
+    if (!userAuth) { skipped++; continue; }
+
+    try {
+      const gm = google.gmail({ version: 'v1', auth: userAuth.auth });
+      const msg = await gm.users.messages.get({
+        userId: 'me', id: toStr(row.gmail_message_id),
+        format: 'metadata', metadataHeaders: ['To', 'Cc'],
+      });
+      const h = msg.data.payload?.headers || [];
+      const parsedTos = parseAddrList(hdr(h, 'To'));
+      const parsedCcs = parseAddrList(hdr(h, 'Cc'));
+      const tosJson = JSON.stringify(parsedTos.length ? parsedTos : [userAuth.email]);
+      const ccsJson = JSON.stringify(parsedCcs);
+      if (!dryRun) {
+        db.prepare('UPDATE messages SET to_addresses = ?, cc_addresses = ? WHERE id = ?')
+          .run(tosJson, ccsJson, toStr(row.id));
+      }
+      updated++;
+    } catch (e) {
+      failed++;
+      if (errors.length < 10) errors.push({ id: toStr(row.id), error: e.message });
+    }
+  }
+
+  if (!dryRun && updated > 0) saveDb();
+
+  const remaining = db.prepare(
+    "SELECT COUNT(*) AS c FROM messages " +
+    "WHERE direction = 'inbound' AND cc_addresses IS NULL " +
+    "AND gmail_message_id IS NOT NULL AND gmail_user_id IS NOT NULL"
+  ).get().c;
+
+  console.log('[Backfill]', { scanned: rows.length, updated, failed, skipped, remaining, dryRun });
+  res.json({ scanned: rows.length, updated, failed, skipped, remaining, dryRun, errors });
+});
+
 module.exports = router;
