@@ -82,6 +82,24 @@ function getAuthForUser(userId) {
 
 function hdr(h, n) { const x = (h||[]).find(x => x.name.toLowerCase() === n.toLowerCase()); return x ? x.value : ''; }
 function body(payload) { let t='',h=''; (function w(p){ if(p.body&&p.body.data){ const d=Buffer.from(p.body.data,'base64').toString(); if(p.mimeType==='text/plain'&&!t)t=d; if(p.mimeType==='text/html')h=d; } if(p.parts)p.parts.forEach(w); })(payload); return h||t; }
+// Parse an RFC-5322 address-list header into individual address strings.
+// Splits on commas at the top level only, so quoted display names like
+// "Last, First" <a@b.com> stay intact.
+function parseAddrList(s) {
+  if (!s) return [];
+  const out = []; let buf = '', inQuote = false, depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"' && s[i-1] !== '\\') inQuote = !inQuote;
+    else if (!inQuote && ch === '(') depth++;
+    else if (!inQuote && ch === ')') depth = Math.max(0, depth - 1);
+    if (ch === ',' && !inQuote && depth === 0) {
+      const t = buf.trim(); if (t) out.push(t); buf = '';
+    } else { buf += ch; }
+  }
+  const t = buf.trim(); if (t) out.push(t);
+  return out;
+}
 
 // Recursively find attachments in nested multipart structures (e.g. voicemail audio)
 function findAttachments(parts) {
@@ -391,6 +409,14 @@ async function syncUser(db, row) {
       const toAddr = hdr(h, 'To') || '';
       const ccAddr = hdr(h, 'Cc') || '';
       const allRecipients = (toAddr + ',' + ccAddr).toLowerCase();
+      // Parsed lists for persistence so Reply All can see the full distribution.
+      // Fall back to the syncing user's own address if the To header is empty
+      // (e.g. "undisclosed-recipients:;" Bcc'd mail).
+      const parsedTos = parseAddrList(toAddr);
+      const parsedCcs = parseAddrList(ccAddr);
+      const inboundTos = parsedTos.length ? parsedTos : [toStr(row.email)];
+      const inboundCcsJson = JSON.stringify(parsedCcs);
+      const inboundTosJson = JSON.stringify(inboundTos);
 
       // Route to region by matching To/Cc against region aliases
       let rid = defaultRid;
@@ -479,8 +505,8 @@ async function syncUser(db, row) {
           const alreadyRecorded = rfcMessageId ? db.prepare("SELECT 1 FROM messages WHERE ticket_id = ? AND provider_message_id = ?").get(myTicketId, rfcMessageId) : null;
           if (!alreadyRecorded) {
             const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-            db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-              .run(msgId, myTicketId, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+            db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+              .run(msgId, myTicketId, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
             // Inbound reply always sets status to OPEN (whether it was WAITING or CLOSED)
             // Also reset locked_closed and clear closed_at so the ticket is fully reopened with tags intact
             db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=?, locked_closed=0, closed_at=NULL WHERE id=?').run(ts, 'OPEN', myTicketId);
@@ -497,8 +523,8 @@ async function syncUser(db, row) {
           db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids,linked_ticket_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)')
             .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignTo ? ts : null, syncForUidMR, syncForIdsMR, JSON.stringify([existingTicketId]));
           const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-          db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-            .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+          db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(msgId, tid, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
           // Link tickets bidirectionally
           const existingLinks = JSON.parse(toStr(db.prepare('SELECT linked_ticket_ids FROM tickets WHERE id = ?').get(existingTicketId)?.linked_ticket_ids) || '[]');
           if (!existingLinks.includes(tid)) {
@@ -527,8 +553,8 @@ async function syncUser(db, row) {
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,assignee_user_id,created_at,last_activity_at,external_participants,has_unread,assigned_at,synced_for_user_id,synced_for_user_ids) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)')
           .run(tid, subj, from, rid, 'OPEN', assignTo, ts, ts, JSON.stringify([from]), assignedAt, syncForUid, syncForIds);
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, tid, 'inbound', 'email', from, JSON.stringify([toStr(row.email)]), from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
+        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(msgId, tid, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, rfcMessageId || m.id, null, '[]', m.id, thId, uid, ts);
 
         // Attachments (recursive to find nested audio/voicemail parts)
         try {
@@ -988,6 +1014,10 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
     const from = hdr(h, 'From'), subj = hdr(h, 'Subject') || '(no subject)';
     const bd = body(msg.data.payload), thId = msg.data.threadId;
     const ts = parseInt(msg.data.internalDate) || Date.now();
+    // Capture full recipient list so Reply All can rebuild the distribution.
+    const parsedTos = parseAddrList(hdr(h, 'To'));
+    const inboundTosJson = JSON.stringify(parsedTos.length ? parsedTos : [userEmail]);
+    const inboundCcsJson = JSON.stringify(parseAddrList(hdr(h, 'Cc')));
     const regions = db.prepare('SELECT region_id FROM user_regions WHERE user_id=?').all(req.user.id);
     const rid = regionId || (regions.length ? toStr(regions[0].region_id) : 'r1');
     const existing = db.prepare('SELECT ticket_id FROM messages WHERE gmail_thread_id = ? LIMIT 1').get(thId);
@@ -995,16 +1025,16 @@ router.post('/push-to-queue', requireAuth, async (req, res) => {
     if (existing && db.prepare('SELECT id FROM tickets WHERE id = ?').get(existing.ticket_id)) {
       ticketId = existing.ticket_id;
       const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+      db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(msgId, ticketId, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
     } else {
       ticketId = generateTicketId(db, rid);
       db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,1)')
         .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
       const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+      db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(msgId, ticketId, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       try {
         const attachmentParts = findAttachments(msg.data.payload.parts || []);
         for (const part of attachmentParts) {
@@ -1220,22 +1250,25 @@ router.post('/bulk-push', requireAuth, async (req, res) => {
       const from = hdr(h, 'From'), subj = hdr(h, 'Subject') || '(no subject)';
       const bd = body(msg.data.payload), thId = msg.data.threadId;
       const ts = parseInt(msg.data.internalDate) || Date.now();
+      const parsedTos = parseAddrList(hdr(h, 'To'));
+      const inboundTosJson = JSON.stringify(parsedTos.length ? parsedTos : [userEmail]);
+      const inboundCcsJson = JSON.stringify(parseAddrList(hdr(h, 'Cc')));
 
       const existing = db.prepare('SELECT ticket_id FROM messages WHERE gmail_thread_id = ? LIMIT 1').get(thId);
       let ticketId;
       if (existing && db.prepare('SELECT id FROM tickets WHERE id = ?').get(existing.ticket_id)) {
         ticketId = existing.ticket_id;
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(msgId, ticketId, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
         db.prepare('UPDATE tickets SET last_activity_at=?, has_unread=1, status=? WHERE id=?').run(ts, 'OPEN', ticketId);
       } else {
         ticketId = generateTicketId(db, rid);
         db.prepare('INSERT OR IGNORE INTO tickets (id,subject,from_email,region_id,status,created_at,last_activity_at,external_participants,has_unread) VALUES (?,?,?,?,?,?,?,?,1)')
           .run(ticketId, subj, from, rid, 'OPEN', ts, ts, JSON.stringify([from]));
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(msgId, ticketId, 'inbound', 'email', from, JSON.stringify([userEmail]), from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
+        db.prepare('INSERT OR IGNORE INTO messages (id,ticket_id,direction,channel,from_address,to_addresses,cc_addresses,sender,subject,body_text,sent_at,provider_message_id,in_reply_to,reference_ids,gmail_message_id,gmail_thread_id,gmail_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(msgId, ticketId, 'inbound', 'email', from, inboundTosJson, inboundCcsJson, from, subj, bd || subj, ts, gmailMessageId, null, '[]', gmailMessageId, thId, req.user.id, ts);
       }
 
       // Forward to archive
