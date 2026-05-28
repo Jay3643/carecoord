@@ -244,10 +244,13 @@ export default function App() {
     // Heartbeat for presence tracking (every 60s)
     api.heartbeat().catch(() => {});
     const hbInterval = setInterval(() => api.heartbeat().catch(() => {}), 60000);
-    // Background email sync — trigger every 2 minutes
+    // Background email sync. Server caps at one real sync per 15s (see
+    // /api/gmail/auto-sync cache), so calling at 30s ensures idle clients
+    // get near-real-time pulls without redundant work. QueueScreen also
+    // triggers this on its 15s ticket-list poll while in view.
     const triggerSync = () => api.gmailAutoSync().catch(() => {});
     triggerSync();
-    const syncInterval = setInterval(triggerSync, 120000);
+    const syncInterval = setInterval(triggerSync, 30000);
     // Refresh user data every 60s to pick up admin changes (region assignments, role changes)
     const refreshUser = () => api.me().then(d => { if (d.user) setCurrentUser(d.user); }).catch(() => {});
     const userRefreshInterval = setInterval(refreshUser, 60000);

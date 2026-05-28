@@ -35,8 +35,11 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
     [regions, currentUser]
   );
 
-  const fetchTickets = async () => {
-    setLoading(true);
+  // Background refreshes (the 15s poll below) pass silent=true so they don't
+  // flicker the loading skeleton or fight an in-progress user action.
+  const fetchTickets = async (opts = {}) => {
+    const { silent = false } = opts;
+    if (!silent) setLoading(true);
     try {
       if (mode === 'region') api.gmailAutoSync().catch(() => {});
       const params = { queue: mode === 'personal' ? 'personal' : 'region', status: 'all' };
@@ -45,7 +48,7 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
       const data = await api.getTickets(params);
       setTickets(data.tickets || data || []);
     } catch (e) { console.error(e); }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => { fetchTickets(); }, [selectedRegion, searchQuery]);
@@ -53,7 +56,20 @@ export default function QueueScreen({ title, mode, currentUser, regions, allUser
   // When searching, show flat results (no grouping needed)
   const isSearching = searchQuery.trim().length > 0;
 
-  // Polling for near-real-time
+  // Poll for near-real-time updates. The sidebar badge already polls /counts
+  // every 15s in App.jsx — without this, the count would tick up but the list
+  // wouldn't show the new ticket until the user changed a filter or hit refresh.
+  // Polling cadence matches /counts (and the server /auto-sync has a 15s cache
+  // window so this also serves as the auto-sync trigger from the queue view).
+  useEffect(() => {
+    const iv = setInterval(() => { fetchTickets({ silent: true }); }, 15000);
+    // Refresh when the tab regains focus so users coming back from another app
+    // see fresh data immediately rather than waiting up to 15s for the next tick.
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchTickets({ silent: true }); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVisible); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, selectedRegion, searchQuery]);
 
   // Collect all unique tags across tickets for the tag dropdown
   const allTags = useMemo(() => {
