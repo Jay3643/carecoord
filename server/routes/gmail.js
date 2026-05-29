@@ -427,11 +427,27 @@ router.get('/auto-sync', requireAuth, async (req, res) => {
   } catch(e) { res.json({ synced: 0 }); }
 });
 
+// 2026-05-28 direction pivot: CareCord is no longer queue-first. New inbound
+// email must NOT be auto-converted into tickets, and the coordinator's Gmail
+// inbox must NOT be hidden via the CareCoord/Archived label. Tickets are now
+// created only on explicit workflow action (status change, push-to-queue,
+// reassign, help request, follow-up). The full alias-routing logic below is
+// preserved as reference for the future selective-create path, but is gated
+// behind EMAIL_AUTO_ROUTING_ENABLED (defaults off) so it cannot run silently.
+// To temporarily re-enable for debugging, set EMAIL_AUTO_ROUTING_ENABLED=true.
+let _autoRoutingDisabledLogged = false;
 async function syncUser(db, row) {
+  if (process.env.EMAIL_AUTO_ROUTING_ENABLED !== 'true') {
+    if (!_autoRoutingDisabledLogged) {
+      console.log('[Sync] Auto-routing disabled (2026-05-28 pivot). Set EMAIL_AUTO_ROUTING_ENABLED=true to re-enable.');
+      _autoRoutingDisabledLogged = true;
+    }
+    return 0;
+  }
   const uid = toStr(row.user_id);
   // Try service account first, fall back to OAuth tokens
   const userAuth = getAuthForUser(uid);
-  if (!userAuth) { 
+  if (!userAuth) {
     // Last resort: use OAuth token directly
     if (!row.access_token) return 0;
   }
