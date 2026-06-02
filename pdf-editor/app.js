@@ -34,7 +34,48 @@
     rendering: false,
     observer: null,
     thumbObserver: null,
+    fileHandle: null,           // FS Access API handle for Save-to-original
+    signatureLibrary: [],       // [{ id, dataUrl, label, kind: 'signature'|'initials' }]
   };
+
+  // =============================================================
+  // SIGNATURE LIBRARY (persists across sessions via localStorage)
+  // =============================================================
+  const SIG_STORE_KEY = 'pdfeditor.signatures.v1';
+  function loadSignatureLibrary() {
+    try {
+      const raw = localStorage.getItem(SIG_STORE_KEY);
+      S.signatureLibrary = raw ? JSON.parse(raw) : [];
+    } catch { S.signatureLibrary = []; }
+    // Mirror most-recent into legacy slots for any callers that still read them
+    const lastSig = S.signatureLibrary.filter(s => s.kind === 'signature').slice(-1)[0];
+    const lastIni = S.signatureLibrary.filter(s => s.kind === 'initials').slice(-1)[0];
+    S.signatureData = lastSig ? lastSig.dataUrl : null;
+    S.initialsData = lastIni ? lastIni.dataUrl : null;
+  }
+  function saveSignatureLibrary() {
+    try { localStorage.setItem(SIG_STORE_KEY, JSON.stringify(S.signatureLibrary)); }
+    catch (e) { console.warn('Could not persist signatures:', e); }
+  }
+  function addToSignatureLibrary(dataUrl, kind, label) {
+    const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const entry = { id, dataUrl, kind, label: label || (kind === 'initials' ? 'Initials' : 'Signature') };
+    // Cap at 12 entries per kind to keep localStorage healthy
+    const sameKind = S.signatureLibrary.filter(s => s.kind === kind);
+    if (sameKind.length >= 12) {
+      const first = S.signatureLibrary.find(s => s.kind === kind);
+      const i = S.signatureLibrary.indexOf(first);
+      if (i >= 0) S.signatureLibrary.splice(i, 1);
+    }
+    S.signatureLibrary.push(entry);
+    saveSignatureLibrary();
+    return entry;
+  }
+  function removeFromSignatureLibrary(id) {
+    const i = S.signatureLibrary.findIndex(s => s.id === id);
+    if (i >= 0) { S.signatureLibrary.splice(i, 1); saveSignatureLibrary(); }
+  }
+  loadSignatureLibrary();
 
   const $ = (s, p) => (p || document).querySelector(s);
   const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
@@ -76,7 +117,29 @@
   // =============================================================
   // FILE OPEN
   // =============================================================
-  function openFile() { fileInput.click(); }
+  // Prefer the File System Access API so Save (Ctrl+S) can write back to the
+  // original file (issue #6). Falls back to the hidden <input type=file> for
+  // browsers that don't expose showOpenFilePicker (Firefox, Safari < 18).
+  async function openFile() {
+    if (window.showOpenFilePicker && !window.electronAPI) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } }],
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        S.fileHandle = handle;
+        await loadPDF(file);
+        showStatus('Opened: ' + file.name + ' — Ctrl+S to save back');
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // user cancelled
+        console.warn('showOpenFilePicker failed, falling back to input:', err);
+      }
+    }
+    S.fileHandle = null;
+    fileInput.click();
+  }
 
   fileInput.addEventListener('change', e => {
     if (e.target.files[0]) loadPDF(e.target.files[0]);
@@ -85,9 +148,27 @@
 
   async function loadPDF(file) {
     S.fileName = file.name || 'document.pdf';
-    const buf = await file.arrayBuffer();
-    S.pdfBytes = new Uint8Array(buf);
-    await initDocument(S.pdfBytes);
+    try {
+      const buf = await file.arrayBuffer();
+      S.pdfBytes = new Uint8Array(buf);
+      await initDocument(S.pdfBytes);
+    } catch (err) {
+      // Better error messages for the most common load failures (issue #11)
+      console.error('PDF load failed:', err);
+      const msg = describePdfLoadError(err);
+      alert('Could not open "' + S.fileName + '"\n\n' + msg);
+      showStatus('Open failed: ' + (err.message || 'unknown error'));
+    }
+  }
+
+  function describePdfLoadError(err) {
+    const m = (err && err.message ? err.message : String(err || '')).toLowerCase();
+    if (err && err.name === 'PasswordException') return 'This PDF is password-protected. PDF Editor Pro does not yet support encrypted documents.';
+    if (m.includes('invalidpdfexception') || m.includes('invalid pdf')) return 'The file does not look like a valid PDF (it may be corrupted, truncated, or a different file type).';
+    if (m.includes('missingpdfexception')) return 'The PDF file is missing or empty.';
+    if (m.includes('unexpectedresponseexception') || m.includes('network')) return 'Network error while loading the PDF.';
+    if (m.includes('worker')) return 'The PDF rendering worker failed to start. Try reloading the page.';
+    return 'Reason: ' + (err && err.message ? err.message : 'unknown');
   }
 
   async function loadPDFBytes(bytes, name) {
@@ -134,8 +215,8 @@
   }
 
   function enableUI() {
-    $$('#btn-save,#btn-print,#btn-undo,#btn-redo,#search-input,#zoom-select,#btn-zoom-in,#btn-zoom-out,#page-input')
-      .forEach(el => el.disabled = false);
+    $$('#btn-save,#btn-save-as,#btn-print,#btn-undo,#btn-redo,#search-input,#zoom-select,#btn-zoom-in,#btn-zoom-out,#page-input')
+      .forEach(el => { if (el) el.disabled = false; });
     $$('.tool-btn').forEach(b => b.disabled = false);
     $('#page-total').textContent = S.totalPages;
     $('#page-input').max = S.totalPages;
@@ -324,6 +405,7 @@
       const item = document.createElement('div');
       item.className = 'thumb-item' + (i === 0 ? ' active' : '');
       item.dataset.thumbIdx = i;
+      item.draggable = true;
 
       const cvs = document.createElement('canvas');
       cvs.style.width = '100%';
@@ -335,6 +417,41 @@
       item.appendChild(label);
 
       item.addEventListener('click', () => scrollToPage(i));
+
+      // Drag-and-drop to reorder pages (issue #10)
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', String(i));
+        e.dataTransfer.effectAllowed = 'move';
+        item.classList.add('dragging');
+      });
+      item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        $$('.thumb-item', sidebarThumbs).forEach(t => t.classList.remove('drop-before', 'drop-after'));
+      });
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = item.getBoundingClientRect();
+        const above = (e.clientY - rect.top) < rect.height / 2;
+        item.classList.toggle('drop-before', above);
+        item.classList.toggle('drop-after', !above);
+      });
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drop-before', 'drop-after');
+      });
+      item.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const srcIdx = parseInt(e.dataTransfer.getData('text/plain'));
+        if (Number.isNaN(srcIdx)) return;
+        const rect = item.getBoundingClientRect();
+        const above = (e.clientY - rect.top) < rect.height / 2;
+        let destIdx = i + (above ? 0 : 1);
+        // Adjust for removing the dragged item before insertion.
+        if (srcIdx < destIdx) destIdx -= 1;
+        item.classList.remove('drop-before', 'drop-after');
+        await reorderPages(srcIdx, destIdx);
+      });
+
       sidebarThumbs.appendChild(item);
       S.thumbObserver.observe(item);
     }
@@ -1312,29 +1429,104 @@
 
   function openSignatureModal(x, y, pageNum, mode) {
     sigTarget = { x, y, pageNum, mode };
-    // Check if we already have one
-    const existing = mode === 'signature' ? S.signatureData : S.initialsData;
-    if (existing) {
-      addAnn(pageNum, {
-        type: mode, x, y, width: mode === 'initials' ? 80 : 200,
-        height: mode === 'initials' ? 40 : 60,
-        dataUrl: existing,
-      });
-      setTool(null);
-      return;
-    }
+    renderSignatureLibrary();
     clearSigCanvas();
     $('#sig-text-input').value = '';
     $('#sig-upload-preview').style.display = 'none';
+    $('#sig-upload-preview').src = '';
+    // Always show modal so users can switch between saved signatures (issue #2)
+    // and reuse them across sessions (issue #3). The library tab is shown first
+    // when there are saved entries; otherwise default to Draw.
+    const hasSaved = S.signatureLibrary.some(s => s.kind === mode);
+    selectSigTab(hasSaved ? 'sig-library' : 'sig-draw');
+    // Update title to reflect mode
+    const titleEl = $('#modal-signature .modal-head h3');
+    if (titleEl) titleEl.textContent = mode === 'initials' ? 'Initials' : 'Signature';
     showModal('modal-signature');
+  }
+
+  function selectSigTab(id) {
+    $$('#modal-signature .mtab').forEach(b => b.classList.toggle('active', b.dataset.mtab === id));
+    $$('#modal-signature .mtab-pane').forEach(p => p.classList.toggle('active', p.id === id));
+  }
+
+  function renderSignatureLibrary() {
+    const grid = $('#sig-library-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const entries = S.signatureLibrary.filter(s => s.kind === sigTarget.mode);
+    if (!entries.length) {
+      const empty = document.createElement('p');
+      empty.className = 'sig-library-empty';
+      empty.textContent = 'No saved ' + (sigTarget.mode === 'initials' ? 'initials' : 'signatures') + ' yet. Use Draw, Type, or Upload to create one.';
+      grid.appendChild(empty);
+      return;
+    }
+    for (const entry of entries) {
+      const card = document.createElement('div');
+      card.className = 'sig-library-card';
+      card.title = 'Click to insert';
+      const img = document.createElement('img');
+      img.src = entry.dataUrl;
+      card.appendChild(img);
+      const del = document.createElement('button');
+      del.className = 'sig-library-del';
+      del.textContent = '×';
+      del.title = 'Delete';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFromSignatureLibrary(entry.id);
+        renderSignatureLibrary();
+      });
+      card.appendChild(del);
+      card.addEventListener('click', () => {
+        applySignatureFromDataUrl(entry.dataUrl, /*addToLib*/ false);
+      });
+      grid.appendChild(card);
+    }
+  }
+
+  function applySignatureFromDataUrl(dataUrl, addToLib) {
+    if (!dataUrl) return;
+    if (addToLib) {
+      const entry = addToSignatureLibrary(dataUrl, sigTarget.mode);
+      if (sigTarget.mode === 'signature') S.signatureData = entry.dataUrl;
+      else S.initialsData = entry.dataUrl;
+    }
+    // Size signature relative to natural aspect so signatures don't look stretched
+    const img = new Image();
+    img.onload = () => {
+      const targetW = sigTarget.mode === 'initials' ? 80 : 180;
+      const aspect = img.naturalHeight / img.naturalWidth || 0.35;
+      const w = targetW;
+      const h = Math.max(20, Math.round(targetW * aspect));
+      // Clamp position so signature fits on the page (issue #4)
+      const idx = sigTarget.pageNum - 1;
+      const pg = S.pages[idx];
+      const layerW = pg?.annotLayer.offsetWidth || pg?.canvas.width || 9999;
+      const layerH = pg?.annotLayer.offsetHeight || pg?.canvas.height || 9999;
+      const x = Math.max(0, Math.min(sigTarget.x, layerW - w));
+      const y = Math.max(0, Math.min(sigTarget.y, layerH - h));
+      addAnn(sigTarget.pageNum, {
+        type: sigTarget.mode, x, y, width: w, height: h, dataUrl,
+      });
+      hideModal('modal-signature');
+      setTool(null);
+    };
+    img.onerror = () => {
+      hideModal('modal-signature');
+      setTool(null);
+    };
+    img.src = dataUrl;
   }
 
   function clearSigCanvas() {
     const w = sigCanvas.parentElement ? Math.max(400, sigCanvas.parentElement.offsetWidth - 36) : 500;
     sigCanvas.width = w;
     sigCanvas.height = 180;
-    sigCtx.fillStyle = 'white';
-    sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
+    // Transparent — never fill with white. White fill bakes a box around the
+    // signature when flattened into the PDF (issue #1).
+    sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
   }
 
   sigCanvas.addEventListener('mousedown', e => {
@@ -1401,13 +1593,21 @@
     reader.readAsDataURL(file);
   });
 
-  // Apply signature
+  // Apply signature — Draw / Type / Upload tabs create a NEW signature and
+  // add it to the library; Library tab inserts an existing one (handled by
+  // card click in renderSignatureLibrary). This lets users keep multiple
+  // signatures and switch between them in the same document (issue #2)
+  // while persisting across sessions (issue #3).
   $('#sig-apply').addEventListener('click', () => {
     const activePane = $('.mtab-pane.active', $('#modal-signature'));
     let dataUrl = null;
 
-    if (activePane.id === 'sig-draw') {
+    if (activePane.id === 'sig-library') {
+      // Nothing to apply from this tab; user clicks a card directly.
+      return;
+    } else if (activePane.id === 'sig-draw') {
       dataUrl = trimSigCanvas(sigCanvas);
+      if (!dataUrl) { showStatus('Draw a signature first'); return; }
     } else if (activePane.id === 'sig-type') {
       const text = $('#sig-text-input').value.trim();
       if (!text) return;
@@ -1418,43 +1618,36 @@
       if (prev.src && prev.style.display !== 'none') dataUrl = prev.src;
     }
 
-    if (dataUrl) {
-      if (sigTarget.mode === 'signature') S.signatureData = dataUrl;
-      else S.initialsData = dataUrl;
-
-      addAnn(sigTarget.pageNum, {
-        type: sigTarget.mode,
-        x: sigTarget.x, y: sigTarget.y,
-        width: sigTarget.mode === 'initials' ? 80 : 200,
-        height: sigTarget.mode === 'initials' ? 40 : 60,
-        dataUrl,
-      });
-      hideModal('modal-signature');
-      setTool(null);
-    }
+    applySignatureFromDataUrl(dataUrl, /*addToLib*/ true);
   });
 
   function trimSigCanvas(src) {
     const w = src.width, h = src.height;
     const px = src.getContext('2d').getImageData(0, 0, w, h).data;
+    // Detect strokes by alpha channel — canvas is transparent, only stroke
+    // pixels have alpha > 0. Faster (only checks one byte per pixel) and
+    // works regardless of stroke color.
     let top = h, left = w, bot = 0, right = 0;
+    let found = false;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        if (px[i] < 250 || px[i + 1] < 250 || px[i + 2] < 250) {
-          if (y < top) top = y; if (y > bot) bot = y;
-          if (x < left) left = x; if (x > right) right = x;
+        if (px[(y * w + x) * 4 + 3] > 16) {
+          if (!found) { top = bot = y; left = right = x; found = true; }
+          else {
+            if (y < top) top = y; if (y > bot) bot = y;
+            if (x < left) left = x; if (x > right) right = x;
+          }
         }
       }
     }
-    if (bot <= top) return src.toDataURL();
-    const pad = 8;
+    if (!found) return null;
+    const pad = 6;
     top = Math.max(0, top - pad); left = Math.max(0, left - pad);
     bot = Math.min(h - 1, bot + pad); right = Math.min(w - 1, right + pad);
     const tc = document.createElement('canvas');
-    tc.width = right - left; tc.height = bot - top;
+    tc.width = right - left + 1; tc.height = bot - top + 1;
     tc.getContext('2d').drawImage(src, left, top, tc.width, tc.height, 0, 0, tc.width, tc.height);
-    return tc.toDataURL();
+    return tc.toDataURL('image/png');
   }
 
   function textToDataUrl(text, font, color) {
@@ -1699,7 +1892,7 @@
       if (!S.pdfDoc) { alert('Please open a PDF first.'); return; }
 
       // Special actions (not toggle tools)
-      if (['page-insert', 'page-delete', 'page-extract', 'page-rotate-cw', 'page-rotate-ccw', 'page-split', 'page-combine', 'header-footer'].includes(t)) {
+      if (['page-insert', 'page-delete', 'page-extract', 'page-rotate-cw', 'page-rotate-ccw', 'page-split', 'page-combine', 'header-footer', 'page-move-up', 'page-move-down'].includes(t)) {
         handlePageAction(t);
         return;
       }
@@ -1795,6 +1988,14 @@
         insertFileInput.click();
         break;
 
+      case 'page-move-up':
+        if (pageNum > 1) await reorderPages(pageNum - 1, pageNum - 2);
+        break;
+
+      case 'page-move-down':
+        if (pageNum < S.totalPages) await reorderPages(pageNum - 1, pageNum);
+        break;
+
       case 'header-footer': {
         const hf = prompt('Enter header text (appears on all pages):');
         if (!hf) return;
@@ -1815,6 +2016,44 @@
     doc.removePage(pageNum - 1);
     const bytes = await doc.save();
     await loadPDFBytes(bytes, S.fileName);
+  }
+
+  // Reorder a page: move srcIdx → destIdx (0-based). Rebuilds the PDF via
+  // copyPages so the in-memory bytes match the new on-screen order
+  // (issue #10).
+  async function reorderPages(srcIdx, destIdx) {
+    if (srcIdx === destIdx) return;
+    if (srcIdx < 0 || destIdx < 0 || srcIdx >= S.totalPages || destIdx >= S.totalPages) return;
+    showStatus('Reordering pages…');
+    try {
+      const src = await PDFDocument.load(S.pdfBytes);
+      const order = src.getPageIndices().slice();
+      const [moved] = order.splice(srcIdx, 1);
+      order.splice(destIdx, 0, moved);
+
+      const out = await PDFDocument.create();
+      const copied = await out.copyPages(src, order);
+      copied.forEach(p => out.addPage(p));
+      const bytes = await out.save();
+
+      // Map per-page state (annotations, rotations) to follow pages.
+      const newAnnotations = {};
+      const newRotations = {};
+      order.forEach((origIdx, newIdx) => {
+        if (S.annotations[origIdx + 1]) newAnnotations[newIdx + 1] = S.annotations[origIdx + 1];
+        if (S.pageRotations[origIdx + 1]) newRotations[newIdx + 1] = S.pageRotations[origIdx + 1];
+      });
+      S.annotations = newAnnotations;
+      S.pageRotations = newRotations;
+
+      await loadPDFBytes(bytes, S.fileName);
+      // Jump to where the moved page now lives.
+      scrollToPage(destIdx);
+      showStatus('Moved page ' + (srcIdx + 1) + ' → position ' + (destIdx + 1));
+    } catch (err) {
+      console.error('Reorder failed:', err);
+      showStatus('Reorder failed: ' + err.message);
+    }
   }
 
   async function extractPage(pageNum) {
@@ -2054,9 +2293,19 @@
                 try { img = await pdfDoc.embedJpg(ann.dataUrl); }
                 catch { img = await pdfDoc.embedPng(ann.dataUrl); }
               }
-              const iw = (ann.width || 200) * ratio;
-              const ih = ann.height ? ann.height * ratio : iw * (img.height / img.width);
-              page.drawImage(img, { x: ax, y: ay - ih, width: iw, height: ih });
+              let iw = (ann.width || 200) * ratio;
+              let ih = ann.height ? ann.height * ratio : iw * (img.height / img.width);
+              // Clamp to page bounds so signatures placed near edges don't
+              // get clipped off the page on save (issue #4). Shrink first
+              // if image is wider/taller than page, then nudge position.
+              if (iw > pw) { ih = ih * (pw / iw); iw = pw; }
+              if (ih > ph) { iw = iw * (ph / ih); ih = ph; }
+              let dx = ax, dy = ay - ih;
+              if (dx < 0) dx = 0;
+              if (dx + iw > pw) dx = pw - iw;
+              if (dy < 0) dy = 0;
+              if (dy + ih > ph) dy = ph - ih;
+              page.drawImage(img, { x: dx, y: dy, width: iw, height: ih });
               break;
             }
             case 'freehand': {
@@ -2252,10 +2501,79 @@
     return await pdfDoc.save();
   }
 
+  // Save = write back to the original file when we have a handle (issue #6),
+  // matching how Adobe Acrobat's Save behaves. Falls back to Save As when
+  // there's no handle (e.g. file opened via drag-drop or legacy input).
   async function savePDF() {
     if (!S.pdfBytes) return;
+    showStatus('Saving…');
     const savedBytes = await buildEditedPdfBytes();
-    downloadBytes(savedBytes, S.fileName.replace(/\.pdf$/i, '') + '_edited.pdf');
+
+    if (S.fileHandle && S.fileHandle.createWritable) {
+      try {
+        // Make sure we still have write permission; request it if not.
+        if (S.fileHandle.queryPermission) {
+          const p = await S.fileHandle.queryPermission({ mode: 'readwrite' });
+          if (p !== 'granted') {
+            const r = await S.fileHandle.requestPermission({ mode: 'readwrite' });
+            if (r !== 'granted') throw new Error('Write permission denied');
+          }
+        }
+        const writable = await S.fileHandle.createWritable();
+        await writable.write(new Blob([savedBytes], { type: 'application/pdf' }));
+        await writable.close();
+        // Refresh in-memory bytes so subsequent saves stack on top of what's
+        // already on disk rather than re-flattening already-flattened annots.
+        S.pdfBytes = savedBytes;
+        // Annotations are now baked in; clear so they don't get re-flattened.
+        S.annotations = {};
+        S.undoStack = [];
+        S.redoStack = [];
+        updateUndoRedoUI();
+        Object.keys(S.pages).forEach(i => renderAnnotationsForPage(parseInt(i) + 1));
+        showStatus('Saved to ' + S.fileHandle.name);
+        return;
+      } catch (err) {
+        console.warn('Write to original handle failed, falling back to Save As:', err);
+      }
+    }
+
+    // No handle (or write failed) — fall through to Save As behavior.
+    await downloadBytes(savedBytes, S.fileName.replace(/\.pdf$/i, '') + '.pdf');
+  }
+
+  async function saveAsPDF() {
+    if (!S.pdfBytes) return;
+    showStatus('Saving as…');
+    const savedBytes = await buildEditedPdfBytes();
+
+    if (window.showSaveFilePicker && !window.electronAPI) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: S.fileName.replace(/\.pdf$/i, '') + '.pdf',
+          types: [{ description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([savedBytes], { type: 'application/pdf' }));
+        await writable.close();
+        // Adopt the new handle so subsequent Ctrl+S writes here.
+        S.fileHandle = handle;
+        S.fileName = handle.name;
+        S.pdfBytes = savedBytes;
+        S.annotations = {};
+        S.undoStack = [];
+        S.redoStack = [];
+        updateUndoRedoUI();
+        Object.keys(S.pages).forEach(i => renderAnnotationsForPage(parseInt(i) + 1));
+        showStatus('Saved: ' + handle.name);
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') { showStatus('Save cancelled'); return; }
+        console.warn('Save As failed, falling back to download:', err);
+      }
+    }
+
+    await downloadBytes(savedBytes, S.fileName.replace(/\.pdf$/i, '') + '.pdf');
   }
 
   async function downloadBytes(bytes, name) {
@@ -2319,6 +2637,8 @@
   $('#btn-open').addEventListener('click', openFile);
   $('#btn-welcome-open').addEventListener('click', openFile);
   $('#btn-save').addEventListener('click', savePDF);
+  const btnSaveAs = $('#btn-save-as');
+  if (btnSaveAs) btnSaveAs.addEventListener('click', saveAsPDF);
   $('#btn-print').addEventListener('click', () => window.print());
   $('#btn-undo').addEventListener('click', undo);
   $('#btn-redo').addEventListener('click', redo);
@@ -2332,7 +2652,7 @@
     if (e.ctrlKey || e.metaKey) {
       switch (e.key.toLowerCase()) {
         case 'o': e.preventDefault(); openFile(); break;
-        case 's': e.preventDefault(); savePDF(); break;
+        case 's': e.preventDefault(); e.shiftKey ? saveAsPDF() : savePDF(); break;
         case 'z': e.preventDefault(); e.shiftKey ? redo() : undo(); break;
         case 'y': e.preventDefault(); redo(); break;
         case 'p': e.preventDefault(); window.print(); break;
