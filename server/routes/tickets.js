@@ -8,8 +8,13 @@ const path = require('path');
 const router = express.Router();
 
 // Schema migrations — idempotent: ALTER throws if the column already exists,
-// which is fine on every restart after the first.
-(function migrate() {
+// which is fine on every restart after the first. Deferred to the first
+// request so it runs AFTER initDb() in server/index.js (this module is
+// required at app.use() time, before initDb()'s promise resolves).
+let migrated = false;
+function migrate() {
+  if (migrated) return;
+  migrated = true;
   const db = getDb();
   const tries = [
     'ALTER TABLE users ADD COLUMN signature TEXT',
@@ -36,7 +41,8 @@ const router = express.Router();
     changed = true;
   } catch (e) {}
   if (changed) saveDb();
-})();
+}
+router.use((req, res, next) => { try { migrate(); } catch (e) { console.error('tickets migrate failed:', e); } next(); });
 
 // Build the signature block appended to every outbound message. If the user has
 // saved a custom signature, use it verbatim. Otherwise fall back to the legacy
