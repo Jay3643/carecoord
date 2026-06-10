@@ -534,8 +534,11 @@
   <script src="app.js"></script>
 
   <!-- PWA: register service worker + install-to-desktop prompt -->
+  <!-- The install button only appears on the Welcome screen, not while a PDF
+       is open — it used to overlap signatures placed near the page edge.
+       The .pdf-open class is toggled on <body> by app.js after loadPDF. -->
   <button id="pwa-install-btn" hidden
-    style="position:fixed;bottom:16px;right:16px;z-index:9999;display:flex;align-items:center;gap:8px;
+    style="position:fixed;bottom:36px;right:16px;z-index:9999;display:flex;align-items:center;gap:8px;
            padding:10px 16px;border:none;border-radius:8px;background:#e5322d;color:#fff;font:600 13px Inter,sans-serif;
            box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -548,13 +551,19 @@
         navigator.serviceWorker.register('sw.js', { scope: './' }).catch((e) => console.warn('SW register failed:', e));
       });
     }
-    // Custom install prompt (Chrome/Edge). Hidden once installed or unsupported.
+    // Custom install prompt (Chrome/Edge). Hidden once installed, unsupported,
+    // or while a PDF is open (so it doesn't cover page content).
     let deferredPrompt = null;
     const installBtn = document.getElementById('pwa-install-btn');
+    function updateInstallBtn() {
+      if (!installBtn) return;
+      const pdfOpen = document.body.classList.contains('pdf-open');
+      installBtn.hidden = !deferredPrompt || pdfOpen;
+    }
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      if (installBtn) installBtn.hidden = false;
+      updateInstallBtn();
     });
     if (installBtn) {
       installBtn.addEventListener('click', async () => {
@@ -562,10 +571,12 @@
         deferredPrompt.prompt();
         await deferredPrompt.userChoice;
         deferredPrompt = null;
-        installBtn.hidden = true;
+        updateInstallBtn();
       });
     }
-    window.addEventListener('appinstalled', () => { if (installBtn) installBtn.hidden = true; });
+    window.addEventListener('appinstalled', () => { deferredPrompt = null; updateInstallBtn(); });
+    // Re-evaluate visibility whenever app.js toggles body.pdf-open.
+    new MutationObserver(updateInstallBtn).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   </script>
 </body>
 </html>

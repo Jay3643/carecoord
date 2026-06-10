@@ -195,6 +195,9 @@
 
     welcomeEl.style.display = 'none';
     pagesContainer.style.display = 'flex';
+    // Hide the PWA install button while editing — it overlapped page content
+    // and the bottom-corner of forms (clinician report 2026-06-05).
+    document.body.classList.add('pdf-open');
     enableUI();
     buildPages();
     buildThumbnails();
@@ -981,9 +984,13 @@
       box.style.outline = 'none';
       box.style.zIndex = '20';
       box.style.whiteSpace = 'pre-wrap';
+      box.style.wordBreak = 'break-word';
       box.style.cursor = 'text';
       box.style.boxShadow = '0 2px 12px rgba(0,0,0,0.2)';
       box.style.borderRadius = '2px';
+      // Cap width so pasted long lines wrap instead of running off the page.
+      const layerW = layer.offsetWidth || layer.clientWidth || 600;
+      box.style.maxWidth = Math.max(120, layerW - x - 16) + 'px';
 
       layer.appendChild(box);
 
@@ -991,22 +998,55 @@
       requestAnimationFrame(() => box.focus());
 
       let finalized = false;
+      // Read multi-line text from a contenteditable preserving paragraph breaks.
+      // contentEditable inserts <div> or <br> on Enter/paste; innerText preserves
+      // those as \n; textContent collapses them — so use innerText.
+      const readText = () => (box.innerText || box.textContent || '').replace(/ /g, ' ').replace(/\n{3,}/g, '\n\n').trimEnd();
       const finalize = () => {
         if (finalized) return;
         finalized = true;
-        const text = box.textContent.trim();
+        const text = readText();
+        // Capture the final size so the annotation preserves user-resized width
+        const finalWidth = box.offsetWidth;
+        const finalHeight = box.offsetHeight;
         box.remove();
         if (text) {
           addAnn(pageNum, {
             type: 'add-text', x, y, text,
             fontSize, color, fontFamily, bold,
+            width: finalWidth, height: finalHeight,
           });
         }
       };
 
+      // Paste handler: insert as plain text so we don't drag in Word/HTML
+      // formatting that breaks layout. The browser default keeps newlines
+      // as \n inside the text node (with pre-wrap they render as line breaks),
+      // so users get a usable multi-line block instead of overlapping lines.
+      box.addEventListener('paste', (ev) => {
+        ev.preventDefault();
+        const text = (ev.clipboardData || window.clipboardData).getData('text/plain') || '';
+        // Use the Selection API; document.execCommand is deprecated but still
+        // works everywhere and gives the right undo/cursor behavior.
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) {
+          box.textContent += text;
+        } else {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(text));
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+
       box.addEventListener('blur', finalize);
       box.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); box.blur(); }
+        // Enter inserts a newline; only finalize on Ctrl/Cmd+Enter or Escape,
+        // or by clicking outside the box. This lets users paste long
+        // multi-line content without it being truncated to a single line.
+        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); box.blur(); }
         if (ev.key === 'Escape') { box.textContent = ''; box.blur(); }
       });
     } catch (err) {
@@ -1039,9 +1079,11 @@
         return;
       case 'add-text':
         placeInlineTextBox(x, y, pageNum, parseInt($('#prop-size').value), $('#prop-color').value, $('#prop-font').value, $('#prop-bold').checked);
+        showStatus('Type or paste — Enter for new line, Ctrl+Enter or click outside to finish');
         return;
       case 'fill-text':
         placeInlineTextBox(x, y, pageNum, getFillSize(), getFillColor(), 'Helvetica', false);
+        showStatus('Type or paste — Enter for new line, Ctrl+Enter or click outside to finish');
         return;
       case 'add-image':
         imageFileInput._pageNum = pageNum;
@@ -1486,8 +1528,12 @@
     }
   }
 
-  function applySignatureFromDataUrl(dataUrl, addToLib) {
+  async function applySignatureFromDataUrl(dataUrl, addToLib) {
     if (!dataUrl) return;
+    // Strip any white background — handles legacy library entries created
+    // before the transparent-canvas fix, and uploaded images that almost
+    // always come with a white background.
+    dataUrl = await stripWhiteBg(dataUrl);
     if (addToLib) {
       const entry = addToSignatureLibrary(dataUrl, sigTarget.mode);
       if (sigTarget.mode === 'signature') S.signatureData = entry.dataUrl;
@@ -1648,6 +1694,48 @@
     tc.width = right - left + 1; tc.height = bot - top + 1;
     tc.getContext('2d').drawImage(src, left, top, tc.width, tc.height, 0, 0, tc.width, tc.height);
     return tc.toDataURL('image/png');
+  }
+
+  // Strip near-white pixels from a PNG data URL so signatures sit flat on the
+  // document with no white box. Used on uploaded images, legacy library
+  // entries created before the transparent-canvas fix, and as a safety net
+  // for drawn/typed signatures. Returns a Promise<dataUrl>.
+  function stripWhiteBg(dataUrl, threshold) {
+    threshold = threshold != null ? threshold : 235;
+    return new Promise((resolve) => {
+      if (!dataUrl) return resolve(dataUrl);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const data = ctx.getImageData(0, 0, c.width, c.height);
+          const px = data.data;
+          for (let i = 0; i < px.length; i += 4) {
+            const r = px[i], g = px[i + 1], b = px[i + 2];
+            if (r >= threshold && g >= threshold && b >= threshold) {
+              px[i + 3] = 0; // fully transparent
+            } else if (r > 200 && g > 200 && b > 200) {
+              // Fade near-white edges so anti-aliased borders blend smoothly
+              const m = Math.min(r, g, b);
+              const t = (m - 200) / (threshold - 200);
+              px[i + 3] = Math.round(px[i + 3] * (1 - t));
+            }
+          }
+          ctx.putImageData(data, 0, 0);
+          resolve(c.toDataURL('image/png'));
+        } catch (e) {
+          // Tainted canvas (cross-origin) or anything else → fall back to original
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
   }
 
   function textToDataUrl(text, font, color) {
@@ -2217,12 +2305,73 @@
   // =============================================================
   // SAVE PDF
   // =============================================================
+  // Normalize intrinsic page rotation: for every page with Rotate != 0, embed
+  // its content as a Form XObject, replace it with a same-display-size page at
+  // rotation 0, and draw the embedded form rotated so the visual result is
+  // identical to what the viewer would show. After this runs, all pages have
+  // rotation 0 and content is upright in user-space, so annotations drawn
+  // axis-aligned end up properly oriented in the saved PDF.
+  async function bakePageRotations(pdfDoc) {
+    const originalPages = pdfDoc.getPages();
+    // Snapshot rotation/size info first so we don't mutate-while-iterating.
+    const work = [];
+    for (let i = 0; i < originalPages.length; i++) {
+      const p = originalPages[i];
+      const angle = ((p.getRotation && p.getRotation().angle) || 0) % 360;
+      if (angle === 0) continue;
+      const size = p.getSize();
+      work.push({ idx: i, page: p, angle, w: size.width, h: size.height });
+    }
+    if (!work.length) return;
+
+    // Embed all rotated pages first (embedPage works against the original page object)
+    const embeds = [];
+    for (const w of work) {
+      embeds.push(await pdfDoc.embedPage(w.page));
+    }
+
+    // Replace each rotated page with a fresh page at "display" dimensions
+    // (swap w/h for 90/270) and rotation 0, then draw the form with rotation.
+    for (let k = 0; k < work.length; k++) {
+      const { idx, angle, w: pw, h: ph } = work[k];
+      const embedded = embeds[k];
+      const displayW = (angle === 90 || angle === 270) ? ph : pw;
+      const displayH = (angle === 90 || angle === 270) ? pw : ph;
+
+      pdfDoc.removePage(idx);
+      const newPage = pdfDoc.insertPage(idx, [displayW, displayH]);
+
+      // pdf-lib's drawPage with `rotate` rotates around (x, y) in user-space.
+      // For each PDF Rotate value, compute the anchor that lands the rotated
+      // form's bottom-left at the new page's bottom-left so the content fills
+      // the page upright (matching what the viewer was showing pre-bake).
+      const opts = { width: pw, height: ph, rotate: pdfDegrees(-angle) };
+      if (angle === 90)       { opts.x = displayW; opts.y = 0;        }
+      else if (angle === 180) { opts.x = displayW; opts.y = displayH; }
+      else if (angle === 270) { opts.x = 0;        opts.y = displayH; }
+      else                    { opts.x = 0;        opts.y = 0;        }
+
+      newPage.drawPage(embedded, opts);
+    }
+  }
+
   // Flatten all rotations + annotations into the loaded PDF and return the bytes.
   async function buildEditedPdfBytes() {
     const pdfDoc = await PDFDocument.load(S.pdfBytes);
+
+    // Bake intrinsic page rotations (e.g. scanned forms that have Rotate=90
+    // in metadata) BEFORE drawing annotations. Otherwise annotations land in
+    // un-rotated user-space while the form content is drawn rotated, and the
+    // viewer's rotation makes the annotations appear sideways relative to
+    // the form. After baking, every page has rotation=0 and the form content
+    // is drawn upright in user-space — so axis-aligned annotations sit
+    // correctly on the form. Reported by clinician 2026-06-05.
+    await bakePageRotations(pdfDoc);
+
     const pages = pdfDoc.getPages();
 
-    // Apply rotations
+    // Apply user-added rotations (from Organize > Rotate CW/CCW) AFTER baking,
+    // so we don't double-rotate intrinsic rotations.
     for (const [pnStr, rot] of Object.entries(S.pageRotations)) {
       const pg = pages[parseInt(pnStr) - 1];
       if (pg && rot) pg.setRotation(pdfDegrees(rot));
