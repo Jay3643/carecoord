@@ -655,12 +655,17 @@ kbd {
 }
 
 /* Inline add-text box — grows with content, wraps long lines so big edits
-   on letterheads don't run together or compress (issue #9). */
+   on letterheads don't run together or compress (issue #9).
+   line-height MUST be set explicitly: .page-wrapper sets line-height: 0
+   so its canvas has no baseline gap, and without this override every
+   wrapped line of pasted text renders on top of the previous one
+   (clinician report 2026-06-10). */
 .inline-text-box {
   caret-color: #1473e6;
   word-break: break-word;
   white-space: pre-wrap;
   overflow: visible;
+  line-height: 1.3;
 }
 .inline-text-box:empty::before {
   content: 'Type here...';
@@ -673,13 +678,18 @@ kbd {
 .annot-add-text, .annot-text, .annot-fill-text {
   min-width: 30px; min-height: 1.4em;
   max-width: none;
+  line-height: 1.3;
 }
 .annot-add-text .annot-text-content,
 .annot-text .annot-text-content,
 .annot-fill-text .annot-text-content {
   white-space: pre-wrap; word-break: break-word;
   width: 100%; height: 100%;
+  line-height: 1.3;
 }
+
+/* Defensive override for the text overlay used in Edit Text mode too. */
+.text-overlay-block { line-height: 1.3; }
 
 /* Loading spinner */
 .page-loading {

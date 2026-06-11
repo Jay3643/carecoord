@@ -1697,39 +1697,47 @@
   }
 
   // Strip near-white pixels from a PNG data URL so signatures sit flat on the
-  // document with no white box. Used on uploaded images, legacy library
-  // entries created before the transparent-canvas fix, and as a safety net
-  // for drawn/typed signatures. Returns a Promise<dataUrl>.
-  function stripWhiteBg(dataUrl, threshold) {
-    threshold = threshold != null ? threshold : 235;
+  // document, AND downscale oversized uploads to keep dragging snappy.
+  // Clinician feedback 2026-06-10: prefers the signature with a "barely grey"
+  // background over a fully transparent one — feels more like a real
+  // ink-on-paper signature. So we only kill genuinely white pixels and leave
+  // the soft anti-aliased halo intact. Uploaded scans (often 1000+px wide)
+  // are downscaled to a sensible max so drags/saves don't stutter.
+  function stripWhiteBg(dataUrl) {
+    const MAX_WIDTH = 800;
     return new Promise((resolve) => {
       if (!dataUrl) return resolve(dataUrl);
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         try {
+          // Downscale first if oversized — cuts pixel work proportionally and
+          // keeps the resulting PNG dataURL small.
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (w > MAX_WIDTH) {
+            const k = MAX_WIDTH / w;
+            w = Math.round(w * k);
+            h = Math.round(h * k);
+          }
           const c = document.createElement('canvas');
-          c.width = img.naturalWidth;
-          c.height = img.naturalHeight;
+          c.width = w;
+          c.height = h;
           const ctx = c.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          const data = ctx.getImageData(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, w, h);
+          const data = ctx.getImageData(0, 0, w, h);
           const px = data.data;
+          // Only kill pure-white-ish pixels (>= 245 on all channels). Anything
+          // darker — including the soft grey halo of an anti-aliased stroke
+          // edge — is left untouched, which preserves the clinician's
+          // preferred "barely grey" look.
           for (let i = 0; i < px.length; i += 4) {
-            const r = px[i], g = px[i + 1], b = px[i + 2];
-            if (r >= threshold && g >= threshold && b >= threshold) {
-              px[i + 3] = 0; // fully transparent
-            } else if (r > 200 && g > 200 && b > 200) {
-              // Fade near-white edges so anti-aliased borders blend smoothly
-              const m = Math.min(r, g, b);
-              const t = (m - 200) / (threshold - 200);
-              px[i + 3] = Math.round(px[i + 3] * (1 - t));
+            if (px[i] >= 245 && px[i + 1] >= 245 && px[i + 2] >= 245) {
+              px[i + 3] = 0;
             }
           }
           ctx.putImageData(data, 0, 0);
           resolve(c.toDataURL('image/png'));
         } catch (e) {
-          // Tainted canvas (cross-origin) or anything else → fall back to original
           resolve(dataUrl);
         }
       };
@@ -2144,13 +2152,52 @@
     }
   }
 
-  async function extractPage(pageNum) {
+  // Parse a page-range string like "1-3, 5, 7-9" into a sorted, de-duplicated
+  // array of 0-based page indices. Out-of-bounds and malformed segments are
+  // ignored. Returns [] if nothing valid found.
+  function parsePageRange(input, total) {
+    if (!input) return [];
+    const out = new Set();
+    const parts = String(input).split(/[,\s]+/).filter(Boolean);
+    for (const p of parts) {
+      const m = /^(\d+)\s*(?:-\s*(\d+))?$/.exec(p);
+      if (!m) continue;
+      let a = parseInt(m[1], 10);
+      let b = m[2] != null ? parseInt(m[2], 10) : a;
+      if (!a || !b) continue;
+      if (b < a) { const t = a; a = b; b = t; }
+      a = Math.max(1, Math.min(total, a));
+      b = Math.max(1, Math.min(total, b));
+      for (let i = a; i <= b; i++) out.add(i - 1);
+    }
+    return [...out].sort((x, y) => x - y);
+  }
+
+  async function extractPage(currentPageNum) {
+    // Multi-patient therapy PDFs come bundled — clinicians need to slice out
+    // one patient's pages at a time. Prompt for a range; default to the
+    // current page so the legacy single-page workflow still works in one tap.
+    const ans = prompt(
+      `Extract which pages?\n\nExamples:\n  ${currentPageNum}   (just this page)\n  4-7\n  1-3, 5, 8-10\n\nDocument has ${S.totalPages} pages.`,
+      String(currentPageNum)
+    );
+    if (ans == null) return; // cancelled
+    const indices = parsePageRange(ans, S.totalPages);
+    if (!indices.length) {
+      alert('Could not parse "' + ans + '". Use a single page number, a range like 4-7, or a list like 1-3, 5, 8-10.');
+      return;
+    }
+    showStatus('Extracting ' + indices.length + ' page' + (indices.length === 1 ? '' : 's') + '…');
     const doc = await PDFDocument.load(S.pdfBytes);
     const newDoc = await PDFDocument.create();
-    const [page] = await newDoc.copyPages(doc, [pageNum - 1]);
-    newDoc.addPage(page);
+    const copied = await newDoc.copyPages(doc, indices);
+    copied.forEach(p => newDoc.addPage(p));
     const bytes = await newDoc.save();
-    downloadBytes(bytes, `${S.fileName.replace('.pdf', '')}_page${pageNum}.pdf`);
+    // Build a friendly suffix: "_pages4-7" or "_pages1-3_5_8-10" capped in length
+    const suffix = indices.length === 1
+      ? `_page${indices[0] + 1}`
+      : `_pages_${ans.replace(/\s+/g, '').replace(/[^0-9,-]/g, '').slice(0, 40)}`;
+    downloadBytes(bytes, `${S.fileName.replace(/\.pdf$/i, '')}${suffix}.pdf`);
   }
 
   async function splitDocument() {
