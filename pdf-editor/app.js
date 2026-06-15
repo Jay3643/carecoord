@@ -261,8 +261,12 @@
         if (e.target.closest('.text-overlay-block') || e.target.closest('.inline-text-box')) return;
         if (e.target.closest('.annot')) return;
         if (!S.activeTool) {
-          S.selected = null;
-          renderAnnotationsForPage(i + 1);
+          // Targeted deselect — no full layer rebuild, so clicking blank
+          // space doesn't re-decode signatures on the page.
+          if (S.selected) {
+            clearSelectionOnPage(i + 1);
+            S.selected = null;
+          }
           return;
         }
         onAnnotLayerDown(e, i);
@@ -501,7 +505,33 @@
   function addAnn(pageNum, ann) {
     getAnns(pageNum).push(ann);
     pushUndo({ action: 'add', page: pageNum, ann });
-    renderAnnotationsForPage(pageNum);
+    // Append-only — DO NOT call renderAnnotationsForPage here. Full-layer
+    // rebuilds re-decode every signature PNG already on the page, which
+    // caused the "very laggy with texts and signatures" report 2026-06-15.
+    // Add/remove/undo all use targeted DOM updates instead.
+    const idx = pageNum - 1;
+    if (S.pages[idx]) {
+      S.pages[idx].annotLayer.appendChild(createAnnotEl(ann, pageNum));
+    }
+  }
+
+  // Targeted helper: clear the .selected class from every annot on a page
+  // without rebuilding the layer. Used for plain "click empty area to
+  // deselect" interactions, which were previously full rebuilds per click.
+  function clearSelectionOnPage(pageNum) {
+    const idx = pageNum - 1;
+    const layer = S.pages[idx] && S.pages[idx].annotLayer;
+    if (!layer) return;
+    layer.querySelectorAll('.annot.selected').forEach(n => {
+      n.classList.remove('selected');
+    });
+  }
+
+  function selectAnnot(ann, el, pageNum) {
+    if (S.selected === ann) return;
+    clearSelectionOnPage(pageNum);
+    el.classList.add('selected');
+    S.selected = ann;
   }
 
   function removeAnn(pageNum, ann) {
@@ -511,9 +541,17 @@
       list.splice(idx, 1);
       pushUndo({ action: 'remove', page: pageNum, ann, idx });
       if (S.selected === ann) S.selected = null;
-      renderAnnotationsForPage(pageNum);
+      // Targeted DOM remove — much faster than the previous full-layer
+      // rebuild, especially on pages with many signature PNGs.
+      const el = annElMap.get(ann);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      annElMap.delete(ann);
     }
   }
+
+  // ann -> DOM element. Lets removeAnn / selection target individual elements
+  // instead of rebuilding the whole annotation layer (lag report 2026-06-15).
+  const annElMap = new WeakMap();
 
   function pushUndo(entry) {
     S.undoStack.push(entry);
@@ -586,6 +624,7 @@
     if (ann.width) el.style.width = ann.width + 'px';
     if (ann.height) el.style.height = ann.height + 'px';
     if (ann === S.selected) el.classList.add('selected');
+    annElMap.set(ann, el);
 
     // Delete button
     const del = document.createElement('button');
@@ -606,8 +645,9 @@
     el.addEventListener('mousedown', e => {
       if (e.target === del) return;
       e.stopPropagation();
-      S.selected = ann;
-      renderAnnotationsForPage(pageNum);
+      // Targeted class toggle instead of full layer rebuild — selecting an
+      // annotation no longer re-decodes every other signature on the page.
+      selectAnnot(ann, el, pageNum);
 
       if (e.target === resize) {
         startResize(e, ann, el, pageNum);
@@ -1522,18 +1562,22 @@
       });
       card.appendChild(del);
       card.addEventListener('click', () => {
-        applySignatureFromDataUrl(entry.dataUrl, /*addToLib*/ false);
+        // Library entries were already stripped at add time — skip the
+        // redundant strip pass on reuse.
+        applySignatureFromDataUrl(entry.dataUrl, /*addToLib*/ false, /*alreadyClean*/ true);
       });
       grid.appendChild(card);
     }
   }
 
-  async function applySignatureFromDataUrl(dataUrl, addToLib) {
+  async function applySignatureFromDataUrl(dataUrl, addToLib, alreadyClean) {
     if (!dataUrl) return;
-    // Strip any white background — handles legacy library entries created
-    // before the transparent-canvas fix, and uploaded images that almost
-    // always come with a white background.
-    dataUrl = await stripWhiteBg(dataUrl);
+    // Strip any white background — but skip if the caller already knows the
+    // image is transparent (canvas-drawn, typed signatures, or a library
+    // entry that was stripped when it was first added). This avoids a costly
+    // pixel pass on every reuse, which was a meaningful share of the
+    // 2026-06-15 "very laggy" report.
+    if (!alreadyClean) dataUrl = await stripWhiteBg(dataUrl);
     if (addToLib) {
       const entry = addToSignatureLibrary(dataUrl, sigTarget.mode);
       if (sigTarget.mode === 'signature') S.signatureData = entry.dataUrl;
@@ -1647,6 +1691,9 @@
   $('#sig-apply').addEventListener('click', () => {
     const activePane = $('.mtab-pane.active', $('#modal-signature'));
     let dataUrl = null;
+    // Draw / Type create on a transparent canvas (clearRect, no fill); upload
+    // typically brings white pixels and needs stripping.
+    let alreadyClean = false;
 
     if (activePane.id === 'sig-library') {
       // Nothing to apply from this tab; user clicks a card directly.
@@ -1654,17 +1701,20 @@
     } else if (activePane.id === 'sig-draw') {
       dataUrl = trimSigCanvas(sigCanvas);
       if (!dataUrl) { showStatus('Draw a signature first'); return; }
+      alreadyClean = true;
     } else if (activePane.id === 'sig-type') {
       const text = $('#sig-text-input').value.trim();
       if (!text) return;
       const font = $('.sig-font-opt.selected')?.dataset.font || "'Great Vibes', cursive";
       dataUrl = textToDataUrl(text, font, $('#sig-color').value);
+      alreadyClean = true;
     } else if (activePane.id === 'sig-upload') {
       const prev = $('#sig-upload-preview');
       if (prev.src && prev.style.display !== 'none') dataUrl = prev.src;
+      alreadyClean = false;
     }
 
-    applySignatureFromDataUrl(dataUrl, /*addToLib*/ true);
+    applySignatureFromDataUrl(dataUrl, /*addToLib*/ true, alreadyClean);
   });
 
   function trimSigCanvas(src) {
@@ -2352,6 +2402,35 @@
   // =============================================================
   // SAVE PDF
   // =============================================================
+  // Wrap text to a target width using pdf-lib font metrics. The contenteditable
+  // box wraps text visually via CSS, but the underlying string has no
+  // newlines, so without this the saved PDF draws each paragraph as one long
+  // line that runs off the page (clinician report 2026-06-15).
+  function wrapTextToWidth(text, font, fontSize, maxWidth) {
+    if (!text) return [''];
+    const measure = (s) => {
+      try { return font.widthOfTextAtSize(s, fontSize); }
+      catch { return s.length * fontSize * 0.5; }
+    };
+    const out = [];
+    for (const para of String(text).split('\n')) {
+      if (!para) { out.push(''); continue; }
+      const tokens = para.match(/\S+|\s+/g) || [para];
+      let line = '';
+      for (const tok of tokens) {
+        const test = line + tok;
+        if (measure(test) > maxWidth && line) {
+          out.push(line.replace(/\s+$/, ''));
+          line = /\S/.test(tok) ? tok : '';
+        } else {
+          line = test;
+        }
+      }
+      if (line || out.length === 0) out.push(line.replace(/\s+$/, ''));
+    }
+    return out;
+  }
+
   // Normalize intrinsic page rotation: for every page with Rotate != 0, embed
   // its content as a Form XObject, replace it with a same-display-size page at
   // rotation 0, and draw the embedded form rotated so the visual result is
@@ -2472,9 +2551,23 @@
               const font = await pdfDoc.embedFont(fontKey);
               const sz = (ann.fontSize || 12) * ratio;
               const c = hexRgb(ann.color);
-              const lines = (ann.text || '').split('\n');
+              // Match the editor's visual wrapping: the contenteditable box
+              // wraps long lines at ann.width via CSS, but textContent has no
+              // newlines. Without wrapping here, lines run off the page on
+              // save/print. Allow a small horizontal padding to match the
+              // .annot-text-content style.
+              const padPx = 6; // ~ inline box padding (4-6px each side)
+              const maxW = ann.width
+                ? Math.max(20, (ann.width - padPx * 2) * ratio)
+                : Math.max(20, pw - ax - 4);
+              const lineHeight = sz * 1.25; // match CSS line-height: 1.3 (close enough at PDF baseline)
+              const lines = wrapTextToWidth(ann.text || '', font, sz, maxW);
               lines.forEach((line, li) => {
-                page.drawText(line, { x: ax, y: ay - sz * (li + 1), size: sz, font, color: rgb(c.r, c.g, c.b) });
+                page.drawText(line, {
+                  x: ax,
+                  y: ay - lineHeight * (li + 1) + (lineHeight - sz) * 0.4,
+                  size: sz, font, color: rgb(c.r, c.g, c.b),
+                });
               });
               break;
             }
