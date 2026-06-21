@@ -214,6 +214,24 @@ body {
 .thumb-item.dragging { opacity: 0.45; }
 .thumb-item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
 .thumb-item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+/* Multi-select highlight (Ctrl/Shift-click in thumbnail sidebar).
+   Distinct from the .active "current page" border so users can see both. */
+.thumb-item.multi-selected {
+  background: rgba(20,115,230,0.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.thumb-item.multi-selected::before {
+  content: '\2713';
+  position: absolute; top: 4px; left: 4px;
+  width: 18px; height: 18px;
+  background: var(--accent); color: #fff;
+  border-radius: 50%;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
 .thumb-item canvas {
   display: block; width: 100%; border-radius: 2px;
   background: white;

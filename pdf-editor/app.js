@@ -36,6 +36,8 @@
     thumbObserver: null,
     fileHandle: null,           // FS Access API handle for Save-to-original
     signatureLibrary: [],       // [{ id, dataUrl, label, kind: 'signature'|'initials' }]
+    selectedPages: new Set(),   // 0-based indices for multi-select extract/delete
+    lastClickedThumb: -1,       // anchor for shift-click range select
   };
 
   // =============================================================
@@ -142,7 +144,11 @@
   }
 
   fileInput.addEventListener('change', e => {
-    if (e.target.files[0]) loadPDF(e.target.files[0]);
+    if (e.target.files[0]) {
+      // Legacy input has no FS handle — clear any prior so Save uses Save As.
+      S.fileHandle = null;
+      loadPDF(e.target.files[0]);
+    }
     fileInput.value = '';
   });
 
@@ -291,8 +297,7 @@
 
   async function setPlaceholderSize(idx) {
     const page = await S.pdfDoc.getPage(idx + 1);
-    const rot = S.pageRotations[idx + 1] || 0;
-    const vp = page.getViewport({ scale: S.scale, rotation: rot });
+    const vp = viewportFor(page, idx + 1, S.scale);
     S.pages[idx].canvas.width = vp.width;
     S.pages[idx].canvas.height = vp.height;
     S.pages[idx].canvas.style.width = vp.width + 'px';
@@ -327,8 +332,7 @@
     pg.rendering = true;
 
     const page = await S.pdfDoc.getPage(idx + 1);
-    const rot = S.pageRotations[idx + 1] || 0;
-    const vp = page.getViewport({ scale: S.scale, rotation: rot });
+    const vp = viewportFor(page, idx + 1, S.scale);
     pg.viewport = vp;
 
     pg.canvas.width = vp.width;
@@ -395,10 +399,9 @@
         if (cvs.dataset.rendered) return;
 
         const page = await S.pdfDoc.getPage(idx + 1);
-        const rot = S.pageRotations[idx + 1] || 0;
-        const baseVp = page.getViewport({ scale: 1, rotation: rot });
+        const baseVp = viewportFor(page, idx + 1, 1);
         const scale = computeThumbScale(e.target, baseVp);
-        const vp = page.getViewport({ scale, rotation: rot });
+        const vp = viewportFor(page, idx + 1, scale);
         cvs.width = vp.width;
         cvs.height = vp.height;
         cvs.style.width = '100%';
@@ -423,7 +426,38 @@
       label.textContent = i + 1;
       item.appendChild(label);
 
-      item.addEventListener('click', () => scrollToPage(i));
+      // Click = jump to page. Ctrl/Cmd-click = toggle in multi-selection.
+      // Shift-click = range from last clicked. Multi-selected pages are used
+      // by Extract / Delete when present (clinician 2026-06-15 — couldn't
+      // select multiple pages for therapy-order extraction).
+      item.addEventListener('click', (ev) => {
+        if (ev.shiftKey && S.lastClickedThumb >= 0) {
+          ev.preventDefault();
+          const a = Math.min(S.lastClickedThumb, i);
+          const b = Math.max(S.lastClickedThumb, i);
+          for (let k = a; k <= b; k++) S.selectedPages.add(k);
+          refreshThumbSelectionClasses();
+          updateSelectionBadge();
+          return;
+        }
+        if (ev.ctrlKey || ev.metaKey) {
+          ev.preventDefault();
+          if (S.selectedPages.has(i)) S.selectedPages.delete(i);
+          else S.selectedPages.add(i);
+          S.lastClickedThumb = i;
+          refreshThumbSelectionClasses();
+          updateSelectionBadge();
+          return;
+        }
+        // Plain click: clear multi-selection and jump.
+        if (S.selectedPages.size) {
+          S.selectedPages.clear();
+          refreshThumbSelectionClasses();
+          updateSelectionBadge();
+        }
+        S.lastClickedThumb = i;
+        scrollToPage(i);
+      });
 
       // Drag-and-drop to reorder pages (issue #10)
       item.addEventListener('dragstart', (e) => {
@@ -470,6 +504,20 @@
     }
   }
 
+  // Toggle the .multi-selected class to match S.selectedPages — purely visual.
+  function refreshThumbSelectionClasses() {
+    $$('.thumb-item', sidebarThumbs).forEach((t, i) => {
+      t.classList.toggle('multi-selected', S.selectedPages.has(i));
+    });
+  }
+
+  // Status-bar badge: "3 pages selected — Extract or Delete will use these"
+  function updateSelectionBadge() {
+    if (!S.selectedPages.size) { showStatus(''); return; }
+    const n = S.selectedPages.size;
+    showStatus(`${n} page${n === 1 ? '' : 's'} selected — click Extract/Delete to use them, Esc to clear`);
+  }
+
   // Track current page on scroll
   viewport.addEventListener('scroll', () => {
     const scrollTop = viewport.scrollTop + 100;
@@ -497,6 +545,21 @@
   // =============================================================
   // ANNOTATIONS DATA
   // =============================================================
+  // pdf.js getViewport's `rotation` option OVERRIDES the page's intrinsic
+  // rotation, it doesn't add to it. Passing rotation:0 means "render this
+  // page un-rotated regardless of its Rotate metadata", which made a 195-page
+  // Updox doc (intrinsic Rotate=90 on every page) appear sideways in the
+  // editor — clinician 2026-06-15. Fix: only pass `rotation` when the user
+  // has explicitly rotated, and add it to the intrinsic value.
+  function viewportFor(page, pageNum, scale) {
+    const userRot = S.pageRotations[pageNum];
+    if (userRot) {
+      const intrinsic = page.rotate || 0;
+      return page.getViewport({ scale, rotation: (intrinsic + userRot) % 360 });
+    }
+    return page.getViewport({ scale });
+  }
+
   function getAnns(pageNum) {
     if (!S.annotations[pageNum]) S.annotations[pageNum] = [];
     return S.annotations[pageNum];
@@ -1883,8 +1946,7 @@
         const textContent = await page.getTextContent();
         if (gen !== editTextGeneration) return; // aborted
 
-        const rot = S.pageRotations[i + 1] || 0;
-        const vp = page.getViewport({ scale: S.scale, rotation: rot });
+        const vp = viewportFor(page, i + 1, S.scale);
         const lines = groupTextIntoLines(textContent.items, vp);
 
         for (const line of lines) {
@@ -2113,8 +2175,15 @@
 
       case 'page-delete':
         if (S.totalPages <= 1) { alert('Cannot delete the only page.'); return; }
-        if (!confirm(`Delete page ${pageNum}?`)) return;
-        await deletePageFromPDF(pageNum);
+        if (S.selectedPages.size) {
+          const indices = [...S.selectedPages].sort((a, b) => a - b);
+          if (indices.length >= S.totalPages) { alert('Cannot delete every page.'); return; }
+          if (!confirm(`Delete ${indices.length} selected pages?`)) return;
+          await deletePagesFromPDF(indices);
+        } else {
+          if (!confirm(`Delete page ${pageNum}?`)) return;
+          await deletePageFromPDF(pageNum);
+        }
         break;
 
       case 'page-extract':
@@ -2162,6 +2231,17 @@
     doc.removePage(pageNum - 1);
     const bytes = await doc.save();
     await loadPDFBytes(bytes, S.fileName);
+  }
+
+  // Delete several pages at once. Pass 0-based indices.
+  async function deletePagesFromPDF(indices) {
+    const sorted = [...indices].sort((a, b) => b - a); // delete high-to-low so lower indices stay valid
+    const doc = await PDFDocument.load(S.pdfBytes);
+    for (const idx of sorted) doc.removePage(idx);
+    const bytes = await doc.save();
+    S.selectedPages.clear();
+    await loadPDFBytes(bytes, S.fileName);
+    showStatus(`Deleted ${indices.length} pages`);
   }
 
   // Reorder a page: move srcIdx → destIdx (0-based). Rebuilds the PDF via
@@ -2224,18 +2304,27 @@
   }
 
   async function extractPage(currentPageNum) {
-    // Multi-patient therapy PDFs come bundled — clinicians need to slice out
-    // one patient's pages at a time. Prompt for a range; default to the
-    // current page so the legacy single-page workflow still works in one tap.
-    const ans = prompt(
-      `Extract which pages?\n\nExamples:\n  ${currentPageNum}   (just this page)\n  4-7\n  1-3, 5, 8-10\n\nDocument has ${S.totalPages} pages.`,
-      String(currentPageNum)
-    );
-    if (ans == null) return; // cancelled
-    const indices = parsePageRange(ans, S.totalPages);
-    if (!indices.length) {
-      alert('Could not parse "' + ans + '". Use a single page number, a range like 4-7, or a list like 1-3, 5, 8-10.');
-      return;
+    // Three ways to choose pages, in priority order:
+    //   1. Pages multi-selected in the thumbnail sidebar (ctrl/shift+click)
+    //   2. Range typed into the prompt
+    //   3. Current page (the prompt default)
+    let indices;
+    let suffixHint = '';
+    if (S.selectedPages.size) {
+      indices = [...S.selectedPages].sort((a, b) => a - b);
+      suffixHint = indices.map(i => i + 1).join(',');
+    } else {
+      const ans = prompt(
+        `Extract which pages?\n\nTip: ctrl-click or shift-click thumbnails in the sidebar to multi-select.\n\nExamples:\n  ${currentPageNum}   (just this page)\n  4-7\n  1-3, 5, 8-10\n\nDocument has ${S.totalPages} pages.`,
+        String(currentPageNum)
+      );
+      if (ans == null) return; // cancelled
+      indices = parsePageRange(ans, S.totalPages);
+      if (!indices.length) {
+        alert('Could not parse "' + ans + '". Use a single page number, a range like 4-7, or a list like 1-3, 5, 8-10.');
+        return;
+      }
+      suffixHint = ans.replace(/\s+/g, '');
     }
     showStatus('Extracting ' + indices.length + ' page' + (indices.length === 1 ? '' : 's') + '…');
     const doc = await PDFDocument.load(S.pdfBytes);
@@ -2246,7 +2335,7 @@
     // Build a friendly suffix: "_pages4-7" or "_pages1-3_5_8-10" capped in length
     const suffix = indices.length === 1
       ? `_page${indices[0] + 1}`
-      : `_pages_${ans.replace(/\s+/g, '').replace(/[^0-9,-]/g, '').slice(0, 40)}`;
+      : `_pages_${suffixHint.replace(/[^0-9,-]/g, '').slice(0, 40)}`;
     downloadBytes(bytes, `${S.fileName.replace(/\.pdf$/i, '')}${suffix}.pdf`);
   }
 
@@ -2262,8 +2351,16 @@
   }
 
   combineFileInput.addEventListener('change', async e => {
-    const files = [...e.target.files];
+    // Browsers don't guarantee the file picker returns files in any
+    // particular order — Chrome on Windows returns them in selection order,
+    // which means "fax_1, fax_10, fax_2" stays jumbled and the combined
+    // PDF has pages out of order (clinician 2026-06-15). Natural-sort by
+    // name so "fax_2.pdf" comes before "fax_10.pdf" predictably.
+    const files = [...e.target.files].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    );
     if (!files.length) return;
+    showStatus(`Combining ${files.length} files (sorted by name)…`);
     const doc = await PDFDocument.load(S.pdfBytes);
     for (const file of files) {
       const buf = await file.arrayBuffer();
@@ -2274,6 +2371,7 @@
     const bytes = await doc.save();
     await loadPDFBytes(bytes, S.fileName);
     combineFileInput.value = '';
+    showStatus('Combined ' + files.length + ' files: ' + files.map(f => f.name).join(', '));
   });
 
   insertFileInput.addEventListener('change', async e => {
@@ -2295,10 +2393,9 @@
     const cvs = item.querySelector('canvas');
     cvs.dataset.rendered = '';
     const page = await S.pdfDoc.getPage(idx + 1);
-    const rot = S.pageRotations[idx + 1] || 0;
-    const baseVp = page.getViewport({ scale: 1, rotation: rot });
+    const baseVp = viewportFor(page, idx + 1, 1);
     const scale = computeThumbScale(item, baseVp);
-    const vp = page.getViewport({ scale, rotation: rot });
+    const vp = viewportFor(page, idx + 1, scale);
     cvs.width = vp.width;
     cvs.height = vp.height;
     cvs.style.width = '100%';
@@ -2962,6 +3059,12 @@
     if (e.key === 'Escape') {
       setTool(null);
       S.selected = null;
+      // Clear multi-page selection too.
+      if (S.selectedPages.size) {
+        S.selectedPages.clear();
+        refreshThumbSelectionClasses();
+        showStatus('');
+      }
       Object.keys(S.annotations).forEach(pn => renderAnnotationsForPage(parseInt(pn)));
       // Close any open modal
       $$('.modal').forEach(m => m.style.display = 'none');
@@ -2976,17 +3079,40 @@
   // Find the first PDF in a DataTransfer. Many sources (File Explorer on
   // Windows, Outlook/Gmail attachments, browser drag-out, cloud-sync folders)
   // hand us files with an empty or non-standard MIME type, so we also accept
-  // anything with a .pdf extension. Returns { file } if found, otherwise
-  // { rejected: 'name.ext' } if files were dropped but none looked like a PDF.
-  function extractPdfFromDrop(dt) {
-    const files = dt && dt.files ? Array.from(dt.files) : [];
+  // anything with a .pdf extension. Returns { file, handle? } if found,
+  // otherwise { rejected: 'name.ext' } if files were dropped but none looked
+  // like a PDF. When the browser supports it (Chrome/Edge), we grab a
+  // FileSystemFileHandle from the drop event so Ctrl+S can overwrite the
+  // original file instead of creating a duplicate (clinician 2026-06-15).
+  const isPdfFile = (f) => f && (
+    f.type === 'application/pdf' ||
+    f.type === 'application/x-pdf' ||
+    /\.pdf$/i.test(f.name || '')
+  );
+
+  async function extractPdfFromDrop(dt) {
+    if (!dt) return { rejected: null };
+
+    // Preferred path: DataTransferItem.getAsFileSystemHandle() (Chromium).
+    // Gives us a writable handle, so Save can overwrite in place.
+    if (dt.items && dt.items.length && typeof dt.items[0].getAsFileSystemHandle === 'function') {
+      for (let i = 0; i < dt.items.length; i++) {
+        const item = dt.items[i];
+        if (item.kind !== 'file') continue;
+        try {
+          const handle = await item.getAsFileSystemHandle();
+          if (handle && handle.kind === 'file') {
+            const file = await handle.getFile();
+            if (isPdfFile(file)) return { file, handle };
+          }
+        } catch (_e) { /* fall through to file-only */ }
+      }
+    }
+
+    // Fallback: file-only (Firefox, Safari < 18, older Edge).
+    const files = dt.files ? Array.from(dt.files) : [];
     if (!files.length) return { rejected: null };
-    const isPdf = (f) => f && (
-      f.type === 'application/pdf' ||
-      f.type === 'application/x-pdf' ||
-      /\.pdf$/i.test(f.name || '')
-    );
-    const match = files.find(isPdf);
+    const match = files.find(isPdfFile);
     if (match) return { file: match };
     return { rejected: files[0].name || 'file' };
   }
@@ -3017,25 +3143,31 @@
     if (dragOverlay && !viewport.contains(e.relatedTarget)) removeDragOverlay();
   });
 
-  viewport.addEventListener('drop', e => {
+  viewport.addEventListener('drop', async e => {
     e.preventDefault();
     e.stopPropagation(); // prevent the body-level fallback from double-loading
     removeDragOverlay();
-    const { file, rejected } = extractPdfFromDrop(e.dataTransfer);
-    if (file) loadPDF(file);
-    else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
+    const { file, handle, rejected } = await extractPdfFromDrop(e.dataTransfer);
+    if (file) {
+      S.fileHandle = handle || null;
+      await loadPDF(file);
+      if (handle) showStatus('Opened: ' + file.name + ' — Ctrl+S to save back');
+    } else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
   });
 
   // Whole-window fallback so a drop slightly outside #viewport still works,
   // and so the page never navigates away to the dropped file by default.
   document.body.addEventListener('dragenter', e => e.preventDefault());
   document.body.addEventListener('dragover', e => e.preventDefault());
-  document.body.addEventListener('drop', e => {
+  document.body.addEventListener('drop', async e => {
     e.preventDefault();
     removeDragOverlay();
-    const { file, rejected } = extractPdfFromDrop(e.dataTransfer);
-    if (file) loadPDF(file);
-    else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
+    const { file, handle, rejected } = await extractPdfFromDrop(e.dataTransfer);
+    if (file) {
+      S.fileHandle = handle || null;
+      await loadPDF(file);
+      if (handle) showStatus('Opened: ' + file.name + ' — Ctrl+S to save back');
+    } else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
   });
 
   // =============================================================
