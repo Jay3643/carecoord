@@ -2528,24 +2528,30 @@
     return out;
   }
 
-  // Normalize intrinsic page rotation: for every page with Rotate != 0, embed
-  // its content as a Form XObject, replace it with a same-display-size page at
-  // rotation 0, and draw the embedded form rotated so the visual result is
-  // identical to what the viewer would show. After this runs, all pages have
-  // rotation 0 and content is upright in user-space, so annotations drawn
-  // axis-aligned end up properly oriented in the saved PDF.
+  // Normalize ALL rotation (intrinsic + user-added) into the page content:
+  // for every page whose total display rotation != 0, embed it as a Form
+  // XObject, replace with a same-display-size page at rotation 0, and draw
+  // the embedded form rotated to bake in the orientation. After this runs,
+  // every saved page has rotation 0 and content is upright in user-space
+  // matching what the user saw in the editor. Critical so that annotations
+  // (especially signatures) drawn axis-aligned in user-space don't end up
+  // sideways relative to the content after the viewer's display rotation.
+  // Returns the set of page indices that were baked, so the caller knows
+  // which pages' coords were re-mapped to the new (display-sized) user-space.
   async function bakePageRotations(pdfDoc) {
     const originalPages = pdfDoc.getPages();
-    // Snapshot rotation/size info first so we don't mutate-while-iterating.
+    const baked = new Set();
     const work = [];
     for (let i = 0; i < originalPages.length; i++) {
       const p = originalPages[i];
-      const angle = ((p.getRotation && p.getRotation().angle) || 0) % 360;
+      const intrinsic = ((p.getRotation && p.getRotation().angle) || 0) % 360;
+      const user = (S.pageRotations[i + 1] || 0) % 360;
+      const angle = ((intrinsic + user) % 360 + 360) % 360;
       if (angle === 0) continue;
       const size = p.getSize();
       work.push({ idx: i, page: p, angle, w: size.width, h: size.height });
     }
-    if (!work.length) return;
+    if (!work.length) return baked;
 
     // Embed all rotated pages first (embedPage works against the original page object)
     const embeds = [];
@@ -2575,30 +2581,26 @@
       else                    { opts.x = 0;        opts.y = 0;        }
 
       newPage.drawPage(embedded, opts);
+      baked.add(idx);
     }
+    return baked;
   }
 
   // Flatten all rotations + annotations into the loaded PDF and return the bytes.
   async function buildEditedPdfBytes() {
     const pdfDoc = await PDFDocument.load(S.pdfBytes);
 
-    // Bake intrinsic page rotations (e.g. scanned forms that have Rotate=90
-    // in metadata) BEFORE drawing annotations. Otherwise annotations land in
-    // un-rotated user-space while the form content is drawn rotated, and the
-    // viewer's rotation makes the annotations appear sideways relative to
-    // the form. After baking, every page has rotation=0 and the form content
-    // is drawn upright in user-space — so axis-aligned annotations sit
-    // correctly on the form. Reported by clinician 2026-06-05.
+    // Bake BOTH intrinsic and user-added rotation into page content BEFORE
+    // drawing annotations. We used to bake only intrinsic and apply user
+    // rotation via setRotation on the metadata — but then the viewer's
+    // display rotation also rotated our axis-aligned annotations, so a
+    // signature placed on a rotated EKG tracing appeared sideways in the
+    // saved PDF (clinician 2026-06-16). With everything baked into the
+    // content, the saved page has rotation=0 and axis-aligned annotations
+    // stay axis-aligned for the viewer.
     await bakePageRotations(pdfDoc);
 
     const pages = pdfDoc.getPages();
-
-    // Apply user-added rotations (from Organize > Rotate CW/CCW) AFTER baking,
-    // so we don't double-rotate intrinsic rotations.
-    for (const [pnStr, rot] of Object.entries(S.pageRotations)) {
-      const pg = pages[parseInt(pnStr) - 1];
-      if (pg && rot) pg.setRotation(pdfDegrees(rot));
-    }
 
     // Embed annotations
     for (const [pnStr, anns] of Object.entries(S.annotations)) {
@@ -2610,21 +2612,15 @@
       const cvs = pg?.canvas;
       if (!cvs) continue;
       const ratio = pw / cvs.width; // PDF points per canvas pixel — used for sizes
-      const vp = pg?.viewport;      // the pdf.js viewport this page was rendered with
-      // pdf-lib draws relative to the MediaBox lower-left; convertToPdfPoint returns
-      // absolute user-space, so subtract the MediaBox origin (no-op for [0,0,…] pages).
-      const mb = (typeof page.getMediaBox === 'function') ? page.getMediaBox() : { x: 0, y: 0 };
 
-      // Map a canvas pixel (top-left origin) to pdf-lib coords (bottom-left origin).
-      // Uses pdf.js's exact inverse render transform so flattened annotations land
-      // where they were drawn, accounting for rotation / CropBox / MediaBox offsets.
-      const toPdfPoint = (x, y) => {
-        if (vp && typeof vp.convertToPdfPoint === 'function') {
-          const p = vp.convertToPdfPoint(x, y);
-          return { x: p[0] - (mb.x || 0), y: p[1] - (mb.y || 0) };
-        }
-        return { x: x * ratio, y: ph - y * ratio };
-      };
+      // Canvas pixel (top-left origin) → pdf-lib coord (bottom-left origin).
+      // bakePageRotations() above made every page upright at display
+      // dimensions that match the editor canvas, so this is a straight
+      // scale + y-flip. (We used to defer to vp.convertToPdfPoint for
+      // "accuracy", but that returned coords for the PRE-bake page and
+      // landed annotations in the wrong place on intrinsically-rotated
+      // pages like the Updox 195-page doc — fix 2026-06-16.)
+      const toPdfPoint = (x, y) => ({ x: x * ratio, y: ph - y * ratio });
 
       for (const ann of anns) {
         const pt = toPdfPoint(ann.x, ann.y);
@@ -2817,10 +2813,23 @@
             }
             case 'fill-check': {
               if (ann.checked) {
-                const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                page.drawText('\u2713', {
-                  x: ax, y: ay - 14 * ratio, size: (ann.fontSize || 18) * ratio,
-                  font, color: rgb(0, 0, 0),
+                // U+2713 (\u2713 CHECK MARK) isn't in WinAnsi, which is the
+                // default encoding for pdf-lib StandardFonts.Helvetica.
+                // drawText silently dropped it inside a try/catch and the
+                // check vanished on save (clinician 2026-06-16). Draw it
+                // as two line segments instead \u2014 no font dependency.
+                const c = hexRgb(ann.color || '#000');
+                const sz = (ann.fontSize || 18) * ratio;
+                const thickness = Math.max(1.5, sz * 0.12);
+                page.drawLine({
+                  start: { x: ax + sz * 0.10, y: ay - sz * 0.55 },
+                  end:   { x: ax + sz * 0.40, y: ay - sz * 0.85 },
+                  thickness, color: rgb(c.r, c.g, c.b),
+                });
+                page.drawLine({
+                  start: { x: ax + sz * 0.40, y: ay - sz * 0.85 },
+                  end:   { x: ax + sz * 0.95, y: ay - sz * 0.15 },
+                  thickness, color: rgb(c.r, c.g, c.b),
                 });
               }
               break;
