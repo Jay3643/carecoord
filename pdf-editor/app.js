@@ -193,6 +193,8 @@
     S.redoStack = [];
     S.selected = null;
     S.pageRotations = {};
+    // Re-arm the "no handle" warning so it fires once per loaded document.
+    S._warnedNoHandle = false;
     pagesContainer.innerHTML = '';
     sidebarThumbs.innerHTML = '';
 
@@ -2150,6 +2152,46 @@
     sidebarEl.classList.toggle('sidebar-hidden', !S.sidebarOpen);
   });
 
+  // Drag-to-resize the sidebar so users can show many more page thumbnails
+  // at once (clinician 2026-06-30 wanted Acrobat-like density). Width is
+  // persisted in localStorage and restored on next visit.
+  (function initSidebarResize() {
+    const handle = $('#sidebar-resize');
+    if (!handle) return;
+    const KEY = 'pdfeditor.sidebarWidth.v1';
+    try {
+      const saved = parseInt(localStorage.getItem(KEY), 10);
+      if (saved && saved >= 160 && saved <= 800) {
+        sidebarEl.style.width = saved + 'px';
+      }
+    } catch {}
+
+    let startX = 0, startW = 0;
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startW = sidebarEl.getBoundingClientRect().width;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev) => {
+        const w = Math.max(160, Math.min(window.innerWidth * 0.6, startW + (ev.clientX - startX)));
+        sidebarEl.style.width = w + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try { localStorage.setItem(KEY, String(sidebarEl.getBoundingClientRect().width | 0)); } catch {}
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  })();
+
   // =============================================================
   // PAGE ACTIONS (Organize)
   // =============================================================
@@ -2528,16 +2570,86 @@
     return out;
   }
 
-  // Normalize ALL rotation (intrinsic + user-added) into the page content:
-  // for every page whose total display rotation != 0, embed it as a Form
-  // XObject, replace with a same-display-size page at rotation 0, and draw
-  // the embedded form rotated to bake in the orientation. After this runs,
-  // every saved page has rotation 0 and content is upright in user-space
-  // matching what the user saw in the editor. Critical so that annotations
-  // (especially signatures) drawn axis-aligned in user-space don't end up
-  // sideways relative to the content after the viewer's display rotation.
-  // Returns the set of page indices that were baked, so the caller knows
-  // which pages' coords were re-mapped to the new (display-sized) user-space.
+  // Build a fresh destination document from the source. For pages WITHOUT
+  // annotations, we just copyPages — preserves all content (text, forms,
+  // images, intrinsic rotation) reliably even for 500+ page files. For
+  // pages WITH annotations and a non-zero display rotation, we embed the
+  // source page and draw it rotated onto a new dst page so annotations
+  // drawn axis-aligned in user-space don't come out sideways under the
+  // viewer's display rotation. For pages with annotations but no rotation,
+  // we just copy and draw annotations on the copy.
+  //
+  // This replaces an earlier approach that did removePage+insertPage in a
+  // loop on the loaded source document — which apparently corrupted the
+  // page content references on very large rotated docs (clinician
+  // 2026-06-30: 577-page document saved with all pages blank).
+  //
+  // Returns { dstDoc, dstPages: PDFPage[] } where dstPages[i] is the
+  // destination page corresponding to source page i.
+  async function buildOutputDocument(srcDoc) {
+    const dstDoc = await PDFDocument.create();
+    const total = srcDoc.getPageCount();
+    const annotatedPages = new Set();
+    for (const k of Object.keys(S.annotations)) {
+      const pn = parseInt(k);
+      if (S.annotations[pn] && S.annotations[pn].length) annotatedPages.add(pn - 1);
+    }
+
+    const dstPages = new Array(total);
+    for (let i = 0; i < total; i++) {
+      const srcPage = srcDoc.getPage(i);
+      const intrinsic = ((srcPage.getRotation && srcPage.getRotation().angle) || 0) % 360;
+      const user = (S.pageRotations[i + 1] || 0) % 360;
+      const angle = ((intrinsic + user) % 360 + 360) % 360;
+      const hasAnns = annotatedPages.has(i);
+
+      if (!hasAnns) {
+        // Pages without annotations: straight copy. Preserves intrinsic
+        // rotation; viewer will display correctly. No bake needed.
+        const [copied] = await dstDoc.copyPages(srcDoc, [i]);
+        // Re-apply user rotation, if any, via metadata (no annotation
+        // alignment risk since there are none).
+        if (user) {
+          const total = (intrinsic + user) % 360;
+          copied.setRotation(pdfDegrees(total));
+        }
+        dstPages[i] = dstDoc.addPage(copied);
+        continue;
+      }
+
+      if (angle === 0) {
+        // Annotations but no rotation: copy and draw annotations on the copy.
+        const [copied] = await dstDoc.copyPages(srcDoc, [i]);
+        dstPages[i] = dstDoc.addPage(copied);
+        continue;
+      }
+
+      // Annotations + rotation: bake rotation into content on a fresh page
+      // sized to the rotated display, so annotations drawn axis-aligned
+      // stay axis-aligned for the viewer.
+      const embedded = await dstDoc.embedPage(srcPage);
+      const size = srcPage.getSize();
+      const pw = size.width, ph = size.height;
+      const displayW = (angle === 90 || angle === 270) ? ph : pw;
+      const displayH = (angle === 90 || angle === 270) ? pw : ph;
+      const newPage = dstDoc.addPage([displayW, displayH]);
+
+      const opts = { width: pw, height: ph, rotate: pdfDegrees(-angle) };
+      if (angle === 90)       { opts.x = displayW; opts.y = 0;        }
+      else if (angle === 180) { opts.x = displayW; opts.y = displayH; }
+      else if (angle === 270) { opts.x = 0;        opts.y = displayH; }
+      else                    { opts.x = 0;        opts.y = 0;        }
+
+      newPage.drawPage(embedded, opts);
+      dstPages[i] = newPage;
+    }
+
+    return { dstDoc, dstPages };
+  }
+
+  // DEPRECATED — kept only because nothing else calls it; the in-place
+  // remove+insert pattern below caused data loss on large rotated docs.
+  // buildOutputDocument() replaces it. Will be removed in a follow-up.
   async function bakePageRotations(pdfDoc) {
     const originalPages = pdfDoc.getPages();
     const baked = new Set();
@@ -2586,27 +2698,24 @@
     return baked;
   }
 
-  // Flatten all rotations + annotations into the loaded PDF and return the bytes.
+  // Build the saved PDF: copy all source pages (and annotations) into a
+  // fresh destination document. Bake rotation only for pages that have BOTH
+  // a non-zero display rotation AND user annotations, so large unmodified
+  // documents pass straight through copyPages — no remove/insert mutation
+  // on the loaded source, which was corrupting 500+ page rotated docs.
   async function buildEditedPdfBytes() {
-    const pdfDoc = await PDFDocument.load(S.pdfBytes);
+    const srcDoc = await PDFDocument.load(S.pdfBytes);
+    const { dstDoc, dstPages } = await buildOutputDocument(srcDoc);
 
-    // Bake BOTH intrinsic and user-added rotation into page content BEFORE
-    // drawing annotations. We used to bake only intrinsic and apply user
-    // rotation via setRotation on the metadata — but then the viewer's
-    // display rotation also rotated our axis-aligned annotations, so a
-    // signature placed on a rotated EKG tracing appeared sideways in the
-    // saved PDF (clinician 2026-06-16). With everything baked into the
-    // content, the saved page has rotation=0 and axis-aligned annotations
-    // stay axis-aligned for the viewer.
-    await bakePageRotations(pdfDoc);
-
-    const pages = pdfDoc.getPages();
+    const pdfDoc = dstDoc; // annotation drawing below uses pdfDoc.embedFont/embedPng
+    const pages = dstPages;
 
     // Embed annotations
     for (const [pnStr, anns] of Object.entries(S.annotations)) {
       const idx = parseInt(pnStr) - 1;
       if (idx < 0 || idx >= pages.length) continue;
       const page = pages[idx];
+      if (!page) continue;
       const { width: pw, height: ph } = page.getSize();
       const pg = S.pages[idx];
       const cvs = pg?.canvas;
@@ -2929,11 +3038,35 @@
         showStatus('Saved to ' + S.fileHandle.name);
         return;
       } catch (err) {
-        console.warn('Write to original handle failed, falling back to Save As:', err);
+        // Don't silently fall through to a Save-As dialog — that's what
+        // produced duplicate files on the desktop (clinician 2026-06-30).
+        // Tell the user what happened and let them choose.
+        console.warn('Write to original handle failed:', err);
+        const why = err && err.name === 'NotAllowedError'
+          ? 'Browser blocked the write (permission denied).'
+          : (err && err.message) || 'Unknown error.';
+        const useSaveAs = confirm(
+          'Could not save back to "' + S.fileHandle.name + '".\n\n' +
+          why + '\n\n' +
+          'Click OK to open Save As and choose a destination, or Cancel to keep your edits in the editor and try again.'
+        );
+        if (useSaveAs) await saveAsPDF();
+        else showStatus('Save cancelled — your edits are still in the editor.');
+        return;
       }
     }
 
-    // No handle (or write failed) — fall through to Save As behavior.
+    // No handle at all — show a one-time prompt explaining that this open
+    // path doesn't support save-in-place, then route to Save As.
+    if (!S._warnedNoHandle) {
+      S._warnedNoHandle = true;
+      const proceed = confirm(
+        'This document was opened in a way that does not allow saving back to the original file.\n\n' +
+        'Tip: use the Open button (folder icon) to open the file — that grants this app permission to overwrite it on save.\n\n' +
+        'Click OK to choose a save location now, or Cancel to keep editing.'
+      );
+      if (!proceed) { showStatus('Save cancelled — your edits are still in the editor.'); return; }
+    }
     await downloadBytes(savedBytes, S.fileName.replace(/\.pdf$/i, '') + '.pdf');
   }
 

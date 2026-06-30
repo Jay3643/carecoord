@@ -1,7 +1,7 @@
 /* PDF Editor Pro — service worker
    App code (HTML/JS/CSS) is network-first so releases ship on reload;
    heavy static assets (libs, icons) stay cache-first for offline + speed. */
-const CACHE = 'pdf-editor-v8';
+const CACHE = 'pdf-editor-v9';
 
 // Relative URLs so the SW works at any mount path (/pdf-editor/, localhost, file host).
 const SHELL = [

@@ -26,7 +26,7 @@
   --menubar-h: 40px;
   --tooltabs-h: 36px;
   --toolpanel-h: 44px;
-  --sidebar-w: 200px;
+  --sidebar-w: 280px;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -179,10 +179,27 @@ body {
 #sidebar {
   width: var(--sidebar-w); display: flex; flex-direction: column;
   background: var(--bg-main); border-right: 1px solid var(--border);
-  flex-shrink: 0; transition: width 0.2s, margin-left 0.2s;
+  flex-shrink: 0;
+  /* No width transition while dragging — would feel laggy. The
+     sidebar-hidden state still animates via its own selector. */
   z-index: 10;
+  position: relative;
+  min-width: 0;
+  max-width: 60vw;
 }
-#sidebar.sidebar-hidden { width: 0; overflow: hidden; }
+#sidebar.sidebar-hidden { width: 0 !important; overflow: hidden; transition: width 0.2s; }
+
+/* Drag handle on the right edge to resize the sidebar. */
+#sidebar-resize {
+  position: absolute; top: 0; right: -3px; bottom: 0;
+  width: 6px; cursor: ew-resize; z-index: 11;
+  background: transparent;
+  transition: background 0.15s;
+}
+#sidebar-resize:hover, #sidebar-resize.dragging {
+  background: var(--accent);
+}
+#sidebar.sidebar-hidden #sidebar-resize { display: none; }
 
 #sidebar-tabs {
   display: flex; border-bottom: 1px solid var(--border);
@@ -202,9 +219,18 @@ body {
 .sidebar-panel.active { display: block; }
 .sidebar-empty { color: var(--text-3); text-align: center; padding: 20px; font-size: 12px; }
 
-/* Thumbnails */
+/* Thumbnails — multi-column grid so users see many pages at once on a
+   wide sidebar (clinician 2026-06-30 wanted Acrobat-like density). The
+   `minmax(110px, 1fr)` lets it auto-collapse to 1 column on narrow
+   sidebars and grow to 2-3 columns on wider ones. */
+#sidebar-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
 .thumb-item {
-  position: relative; margin-bottom: 8px; cursor: pointer;
+  position: relative; margin-bottom: 0; cursor: pointer;
   border: 2px solid transparent; border-radius: var(--r);
   transition: border-color 0.15s, opacity 0.15s;
 }
