@@ -195,6 +195,7 @@
     S.pageRotations = {};
     // Re-arm the "no handle" warning so it fires once per loaded document.
     S._warnedNoHandle = false;
+    updateSaveIndicator();
     pagesContainer.innerHTML = '';
     sidebarThumbs.innerHTML = '';
 
@@ -223,6 +224,26 @@
     }, { root: viewport, rootMargin: '200px' });
 
     S.pages.forEach((p, i) => S.observer.observe(p.wrapper));
+  }
+
+  // Update the Save button label/title so the clinician knows at a glance
+  // whether Ctrl+S will overwrite the source file in place or open a
+  // Save-As dialog. This directly addresses the "why did Save create a
+  // duplicate?" complaint — you can see it coming before you click.
+  function updateSaveIndicator() {
+    const btn = document.getElementById('btn-save');
+    if (!btn) return;
+    const willOverwrite = !!(S.fileHandle && (S.fileHandle.createWritable || S.fileHandle.electronPath));
+    if (willOverwrite) {
+      const name = S.fileHandle.name || S.fileName || '';
+      btn.title = 'Save — overwrites ' + name + ' in place (Ctrl+S)';
+      btn.classList.add('save-overwrite');
+      btn.classList.remove('save-download');
+    } else {
+      btn.title = 'Save — will open a Save As dialog (this file was opened without write permission; use the Open button next time to save in place)';
+      btn.classList.add('save-download');
+      btn.classList.remove('save-overwrite');
+    }
   }
 
   function enableUI() {
@@ -3008,10 +3029,34 @@
   // Save = write back to the original file when we have a handle (issue #6),
   // matching how Adobe Acrobat's Save behaves. Falls back to Save As when
   // there's no handle (e.g. file opened via drag-drop or legacy input).
+  // Sanity check: if the save output is dramatically smaller than the
+  // source, refuse to write. This catches the "577 pages went blank"
+  // failure mode (bake-rotation stripped content) before the corrupt
+  // bytes reach disk — much better to fail with a message than to
+  // silently overwrite a good file with an empty one.
+  function assertSaveBytesLookSane(savedBytes) {
+    const srcSize = S.pdfBytes ? S.pdfBytes.byteLength : 0;
+    const outSize = savedBytes ? savedBytes.byteLength : 0;
+    // Threshold: allow shrinkage up to 60% (some overhead + annotations
+    // can add or trim), but a > 60% collapse on a doc with actual content
+    // is almost certainly the bake bug.
+    if (srcSize > 100 * 1024 && outSize > 0 && outSize < srcSize * 0.4) {
+      throw new Error(
+        'Save aborted — the generated file is ' +
+        Math.round(outSize / 1024) + ' KB but the original was ' +
+        Math.round(srcSize / 1024) + ' KB. This usually means page ' +
+        'content was lost during flattening. Please report this file to ' +
+        'the developer; your edits are still in the editor.'
+      );
+    }
+  }
+
   async function savePDF() {
     if (!S.pdfBytes) return;
     showStatus('Saving…');
     const savedBytes = await buildEditedPdfBytes();
+    try { assertSaveBytesLookSane(savedBytes); }
+    catch (err) { alert(err.message); showStatus('Save aborted (safety check)'); return; }
 
     if (S.fileHandle && S.fileHandle.createWritable) {
       try {
@@ -3074,6 +3119,8 @@
     if (!S.pdfBytes) return;
     showStatus('Saving as…');
     const savedBytes = await buildEditedPdfBytes();
+    try { assertSaveBytesLookSane(savedBytes); }
+    catch (err) { alert(err.message); showStatus('Save aborted (safety check)'); return; }
 
     if (window.showSaveFilePicker && !window.electronAPI) {
       try {
@@ -3092,6 +3139,7 @@
         S.undoStack = [];
         S.redoStack = [];
         updateUndoRedoUI();
+        updateSaveIndicator();
         Object.keys(S.pages).forEach(i => renderAnnotationsForPage(parseInt(i) + 1));
         showStatus('Saved: ' + handle.name);
         return;
