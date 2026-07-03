@@ -3029,6 +3029,38 @@
   // Save = write back to the original file when we have a handle (issue #6),
   // matching how Adobe Acrobat's Save behaves. Falls back to Save As when
   // there's no handle (e.g. file opened via drag-drop or legacy input).
+  // After a successful save, reload the editor from the newly-saved bytes
+  // so the canvas re-renders with the flattened content. Previously we only
+  // cleared S.annotations and re-rendered the (now empty) annotation
+  // layers — the user's edits appeared to vanish because the canvas below
+  // was still showing content rendered from the pre-save bytes. Preserve
+  // the current page so the reload doesn't jerk them to the top.
+  // Clinician 2026-07-03: "When I save the changes disappear unless I
+  // refresh and reopen."
+  async function reloadAfterSave(newBytes) {
+    S.pdfBytes = newBytes;
+    S.annotations = {};
+    S.undoStack = [];
+    S.redoStack = [];
+    S.selected = null;
+    S.selectedPages && S.selectedPages.clear && S.selectedPages.clear();
+    S.pageRotations = {};
+    updateUndoRedoUI();
+
+    const currentPage = getCurrentPageNum() - 1;
+
+    // Rebuild the pdf.js document, page wrappers, and thumbnails from the
+    // fresh bytes. initDocument is the same path used after delete/reorder
+    // so it's well-exercised. Scroll position is restored afterwards.
+    await initDocument(S.pdfBytes);
+
+    // Restore roughly where the user was reading.
+    if (currentPage >= 0 && S.pages[currentPage]) {
+      // Wait a tick so the page wrapper's layout is settled before scrolling.
+      setTimeout(() => scrollToPage(currentPage), 40);
+    }
+  }
+
   // Sanity check: if the save output is dramatically smaller than the
   // source, refuse to write. This catches the "577 pages went blank"
   // failure mode (bake-rotation stripped content) before the corrupt
@@ -3071,16 +3103,13 @@
         const writable = await S.fileHandle.createWritable();
         await writable.write(new Blob([savedBytes], { type: 'application/pdf' }));
         await writable.close();
-        // Refresh in-memory bytes so subsequent saves stack on top of what's
-        // already on disk rather than re-flattening already-flattened annots.
-        S.pdfBytes = savedBytes;
-        // Annotations are now baked in; clear so they don't get re-flattened.
-        S.annotations = {};
-        S.undoStack = [];
-        S.redoStack = [];
-        updateUndoRedoUI();
-        Object.keys(S.pages).forEach(i => renderAnnotationsForPage(parseInt(i) + 1));
-        showStatus('Saved to ' + S.fileHandle.name);
+        const savedName = S.fileHandle.name;
+        // Reload the editor from the fresh bytes so the canvas shows the
+        // flattened content. Without this, the canvas keeps rendering
+        // pre-save bytes and the user's edits appear to disappear until
+        // they refresh (clinician 2026-07-03).
+        await reloadAfterSave(savedBytes);
+        showStatus('Saved to ' + savedName);
         return;
       } catch (err) {
         // Don't silently fall through to a Save-As dialog — that's what
@@ -3134,13 +3163,8 @@
         // Adopt the new handle so subsequent Ctrl+S writes here.
         S.fileHandle = handle;
         S.fileName = handle.name;
-        S.pdfBytes = savedBytes;
-        S.annotations = {};
-        S.undoStack = [];
-        S.redoStack = [];
-        updateUndoRedoUI();
+        await reloadAfterSave(savedBytes);
         updateSaveIndicator();
-        Object.keys(S.pages).forEach(i => renderAnnotationsForPage(parseInt(i) + 1));
         showStatus('Saved: ' + handle.name);
         return;
       } catch (err) {
