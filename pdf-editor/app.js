@@ -38,6 +38,8 @@
     signatureLibrary: [],       // [{ id, dataUrl, label, kind: 'signature'|'initials' }]
     selectedPages: new Set(),   // 0-based indices for multi-select extract/delete
     lastClickedThumb: -1,       // anchor for shift-click range select
+    fillHintsByPage: {},        // pageNum -> [{kind, x, y, width, height, source}] cached fill targets
+    fillHintsShownFor: null,    // active tool name that hints are currently visible for
   };
 
   // =============================================================
@@ -196,6 +198,9 @@
     // Re-arm the "no handle" warning so it fires once per loaded document.
     S._warnedNoHandle = false;
     updateSaveIndicator();
+    // Drop any cached form-field hints from the previous document.
+    S.fillHintsByPage = {};
+    S.fillHintsShownFor = null;
     pagesContainer.innerHTML = '';
     sidebarThumbs.innerHTML = '';
 
@@ -374,6 +379,8 @@
     pg.rendering = false;
 
     renderAnnotationsForPage(idx + 1);
+    // If a fill tool is active, add hints to this newly-rendered page too.
+    if (S.fillHintsShownFor) maybeRefreshFillHints();
   }
 
   function rerenderAll() {
@@ -1081,8 +1088,11 @@
   // =============================================================
   // ANNOTATION LAYER CLICK HANDLER
   // =============================================================
-  // Place an editable text box directly on the page — no modal
-  function placeInlineTextBox(x, y, pageNum, fontSize, color, fontFamily, bold) {
+  // Place an editable text box directly on the page — no modal.
+  // opts.width / opts.height (canvas pixels) let a caller pre-size the box
+  // to a specific field (used by the Fill & Sign hint-click flow so the
+  // box snaps to the form field instead of floating).
+  function placeInlineTextBox(x, y, pageNum, fontSize, color, fontFamily, bold, opts) {
     try {
       const idx = pageNum - 1;
       const layer = S.pages[idx]?.annotLayer;
@@ -1091,6 +1101,7 @@
       fontSize = fontSize || 14;
       color = color || '#000000';
       fontFamily = fontFamily || 'Helvetica';
+      opts = opts || {};
 
       const box = document.createElement('div');
       box.contentEditable = 'true';
@@ -1117,6 +1128,10 @@
       // Cap width so pasted long lines wrap instead of running off the page.
       const layerW = layer.offsetWidth || layer.clientWidth || 600;
       box.style.maxWidth = Math.max(120, layerW - x - 16) + 'px';
+      // Explicit dimensions from a Fill-hint click override the free-form
+      // sizing so the editor exactly fills the target field.
+      if (opts.width)  box.style.width  = opts.width  + 'px';
+      if (opts.height) box.style.minHeight = Math.max(fontSize * 1.4, opts.height) + 'px';
 
       layer.appendChild(box);
 
@@ -1941,6 +1956,188 @@
       showEditableTextOverlays();
     } else {
       clearEditableTextOverlays();
+    }
+
+    // Fill & Sign tools: overlay clickable blue hints on real AcroForm fields
+    // and underscore-style blanks so the clinician gets an Adobe-like snap
+    // experience instead of a floating text box (report 2026-07-03).
+    const fillTools = ['fill-text','fill-check','fill-x','fill-dot','fill-circle','fill-date','sign','initials'];
+    if (toolName && fillTools.includes(toolName)) {
+      showFillHints(toolName);
+      showStatus('Click a blue field to fill it — or click anywhere else to place manually.');
+    } else {
+      clearFillHints();
+    }
+  }
+
+  // =============================================================
+  // FILL & SIGN HINTS — highlight fillable fields on hover, click to snap
+  // =============================================================
+  async function loadFillHintsForPage(pageNum) {
+    if (S.fillHintsByPage[pageNum]) return S.fillHintsByPage[pageNum];
+    const hints = [];
+    try {
+      const page = await S.pdfDoc.getPage(pageNum);
+
+      // (1) Real AcroForm widgets from the PDF metadata.
+      const annots = await page.getAnnotations();
+      for (const a of annots) {
+        if (a.subtype !== 'Widget') continue;
+        if (!a.rect || a.rect.length !== 4) continue;
+        // fieldType: 'Tx' text, 'Btn' button/checkbox, 'Ch' choice/dropdown, 'Sig' signature
+        const kind =
+          a.fieldType === 'Sig' ? 'signature' :
+          a.fieldType === 'Btn' ? 'check' :
+          'text';
+        hints.push({ rect: a.rect, kind, source: 'acroform' });
+      }
+
+      // (2) Cheap visual fallback: underscore-runs in the text stream. Many
+      // clinical forms (DME, med lists) don't have real AcroForm fields —
+      // they just have "Name: __________" printed on them. Detect a run of
+      // 5+ underscores and treat it as a text-fill target.
+      const textContent = await page.getTextContent();
+      for (const item of textContent.items) {
+        if (!item.str) continue;
+        const m = item.str.match(/_{5,}/);
+        if (!m) continue;
+        // Estimate the underscore run's bounding rect in user-space using
+        // pdf.js item transform. item.transform is [a,b,c,d,e,f] where
+        // (e,f) is the origin and font size is derived from a/d.
+        const tf = item.transform;
+        const fontHeight = Math.hypot(tf[2], tf[3]) || 10;
+        const charWidth = item.width / (item.str.length || 1);
+        const startX = tf[4] + charWidth * m.index;
+        const runWidth = charWidth * m[0].length;
+        // Extend the fill area a bit above the underscore line so text has
+        // room to sit on top of it rather than below.
+        const bottom = tf[5];
+        const top = bottom + fontHeight * 1.2;
+        hints.push({
+          rect: [startX, bottom, startX + runWidth, top],
+          kind: 'text',
+          source: 'underscore',
+        });
+      }
+    } catch (e) { console.warn('fill-hint scan failed for page', pageNum, e); }
+    S.fillHintsByPage[pageNum] = hints;
+    return hints;
+  }
+
+  async function showFillHints(toolName) {
+    clearFillHints();
+    S.fillHintsShownFor = toolName;
+    for (let i = 0; i < S.pages.length; i++) {
+      const pg = S.pages[i];
+      if (!pg.rendered || !pg.viewport) continue;
+      const hints = await loadFillHintsForPage(i + 1);
+      if (!hints.length) continue;
+      for (const hint of hints) {
+        // Only show hints relevant to the current tool
+        if (toolName === 'sign' || toolName === 'initials') {
+          if (hint.kind !== 'signature' && hint.kind !== 'text') continue;
+        } else if (toolName === 'fill-check' || toolName === 'fill-x' || toolName === 'fill-dot' || toolName === 'fill-circle') {
+          // check-style tools also fit inside text fields (small marks)
+        } else {
+          // fill-text / fill-date want text/underscore fields
+          if (hint.kind !== 'text' && hint.kind !== 'signature') continue;
+        }
+
+        const [ux1, uy1, ux2, uy2] = hint.rect;
+        const [cx1, cy1] = pg.viewport.convertToViewportPoint(ux1, uy1);
+        const [cx2, cy2] = pg.viewport.convertToViewportPoint(ux2, uy2);
+        const left = Math.min(cx1, cx2);
+        const top = Math.min(cy1, cy2);
+        const w = Math.abs(cx2 - cx1);
+        const h = Math.abs(cy2 - cy1);
+        if (w < 8 || h < 4) continue; // ignore microscopic ones
+
+        const el = document.createElement('div');
+        el.className = 'fill-hint fill-hint-' + hint.kind + (hint.source === 'underscore' ? ' fill-hint-under' : '');
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+        el.style.width = w + 'px';
+        el.style.height = h + 'px';
+        el.title = 'Click to fill this field';
+        el.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onFillHintClick(i + 1, left, top, w, h, hint);
+        });
+        pg.annotLayer.appendChild(el);
+      }
+    }
+  }
+
+  function clearFillHints() {
+    S.fillHintsShownFor = null;
+    document.querySelectorAll('.fill-hint').forEach(el => el.remove());
+  }
+
+  function onFillHintClick(pageNum, x, y, width, height, hint) {
+    const tool = S.activeTool;
+    // Pick a font size that fits the field height (with a little breathing room).
+    const fontSize = Math.max(8, Math.min(28, Math.floor(height * 0.6)));
+
+    if (tool === 'fill-text') {
+      // Pre-sized inline editor snapped to the field.
+      placeInlineTextBox(x + 2, y + 1, pageNum, fontSize, getFillColor(), 'Helvetica', false, {
+        width: Math.max(60, width - 4),
+        height: Math.max(fontSize * 1.4, height - 2),
+      });
+      // Hide hints while editing so they don't cover the text.
+      clearFillHints();
+    } else if (tool === 'fill-date') {
+      addAnn(pageNum, {
+        type: 'fill-date', x: x + 4, y: y + Math.max(0, (height - fontSize) / 2),
+        text: new Date().toLocaleDateString(),
+        fontSize, color: getFillColor(),
+        width: Math.max(60, width - 4),
+      });
+      clearFillHints();
+    } else if (tool === 'fill-check') {
+      const sz = Math.max(12, Math.min(28, Math.floor(height * 0.9)));
+      addAnn(pageNum, {
+        type: 'fill-check',
+        x: x + Math.max(0, (width - sz) / 2),
+        y: y + Math.max(0, (height - sz) / 2),
+        checked: true, color: getFillColor(), fontSize: sz,
+      });
+      clearFillHints();
+    } else if (tool === 'fill-x') {
+      const sz = Math.max(12, Math.min(28, Math.floor(height * 0.9)));
+      addAnn(pageNum, {
+        type: 'fill-x',
+        x: x + Math.max(0, (width - sz) / 2),
+        y: y + Math.max(0, (height - sz) / 2),
+        color: getFillColor(), fontSize: sz,
+      });
+      clearFillHints();
+    } else if (tool === 'fill-dot') {
+      addAnn(pageNum, {
+        type: 'fill-dot',
+        x: x + width / 2 - 6, y: y + height / 2 - 6,
+        color: getFillColor(),
+      });
+      clearFillHints();
+    } else if (tool === 'fill-circle') {
+      const sz = Math.max(16, Math.min(32, Math.floor(Math.min(width, height) * 0.9)));
+      addAnn(pageNum, {
+        type: 'fill-circle',
+        x: x + (width - sz) / 2, y: y + (height - sz) / 2,
+        width: sz, height: sz, color: getFillColor(),
+      });
+      clearFillHints();
+    } else if (tool === 'sign' || tool === 'initials') {
+      openSignatureModal(x, y, pageNum, tool === 'initials' ? 'initials' : 'signature');
+      clearFillHints();
+    }
+  }
+
+  // Refresh hints when pages come into view or scroll changes what's rendered.
+  function maybeRefreshFillHints() {
+    if (S.fillHintsShownFor) {
+      showFillHints(S.fillHintsShownFor);
     }
   }
 

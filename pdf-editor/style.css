@@ -710,6 +710,37 @@ kbd {
   outline-offset: 2px;
 }
 
+/* Fill & Sign hints — Adobe-style translucent blue rectangles over the
+   fillable areas of the page. Hover to preview, click to snap a text
+   box / check mark / signature into the field at the right size. */
+.fill-hint {
+  position: absolute;
+  background: rgba(20,115,230,0.14);
+  border: 1px solid rgba(20,115,230,0.5);
+  border-radius: 2px;
+  cursor: pointer;
+  z-index: 3;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.fill-hint:hover {
+  background: rgba(20,115,230,0.28);
+  border-color: rgba(20,115,230,0.95);
+  box-shadow: 0 0 0 2px rgba(20,115,230,0.35);
+}
+/* Underscore-derived hints sit ON the printed line, so use a subtler
+   look — a thin bar hugging the top of the box rather than a full fill. */
+.fill-hint-under {
+  background: transparent;
+  border: none;
+  border-top: 2px solid rgba(20,115,230,0.55);
+}
+.fill-hint-under:hover {
+  background: rgba(20,115,230,0.10);
+  border-top-color: rgba(20,115,230,0.95);
+}
+.fill-hint-signature { background: rgba(46,160,67,0.14); border-color: rgba(46,160,67,0.6); }
+.fill-hint-signature:hover { background: rgba(46,160,67,0.28); border-color: rgba(46,160,67,0.95); }
+
 /* Inline add-text box — grows with content, wraps long lines so big edits
    on letterheads don't run together or compress (issue #9).
    line-height MUST be set explicitly: .page-wrapper sets line-height: 0
