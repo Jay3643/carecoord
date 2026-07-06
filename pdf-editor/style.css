@@ -710,36 +710,52 @@ kbd {
   outline-offset: 2px;
 }
 
-/* Fill & Sign hints — Adobe-style translucent blue rectangles over the
-   fillable areas of the page. Hover to preview, click to snap a text
-   box / check mark / signature into the field at the right size. */
+/* Fill & Sign hints — Adobe-style hover-to-highlight over fillable
+   areas. Invisible by default so we don't double up on pdf.js's own
+   form-field rendering (clinician 2026-07-03: "It's doubling the
+   lines and highlighting everything"). Only the hovered target
+   lights up, matching the way Acrobat's Fill & Sign feels. */
 .fill-hint {
   position: absolute;
-  background: rgba(20,115,230,0.14);
-  border: 1px solid rgba(20,115,230,0.5);
-  border-radius: 2px;
+  background: transparent;
+  border: none;
   cursor: pointer;
   z-index: 3;
-  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  transition: background 0.10s, box-shadow 0.10s, outline 0.10s;
 }
 .fill-hint:hover {
-  background: rgba(20,115,230,0.28);
-  border-color: rgba(20,115,230,0.95);
-  box-shadow: 0 0 0 2px rgba(20,115,230,0.35);
+  background: rgba(20,115,230,0.22);
+  outline: 2px solid rgba(20,115,230,0.9);
+  outline-offset: -1px;
+  box-shadow: 0 0 0 3px rgba(20,115,230,0.20);
 }
-/* Underscore-derived hints sit ON the printed line, so use a subtler
-   look — a thin bar hugging the top of the box rather than a full fill. */
+/* Underscore-derived hints don't have an existing pdf.js rendering,
+   so give them the faintest possible visible cue always — otherwise
+   users would have no idea where to click on a scanned DME form. */
 .fill-hint-under {
   background: transparent;
   border: none;
-  border-top: 2px solid rgba(20,115,230,0.55);
+}
+.fill-hint-under::before {
+  content: '';
+  position: absolute; left: 4px; right: 4px; bottom: 2px;
+  height: 2px;
+  background: rgba(20,115,230,0.28);
+  border-radius: 1px;
+  pointer-events: none;
 }
 .fill-hint-under:hover {
-  background: rgba(20,115,230,0.10);
-  border-top-color: rgba(20,115,230,0.95);
+  background: rgba(20,115,230,0.18);
 }
-.fill-hint-signature { background: rgba(46,160,67,0.14); border-color: rgba(46,160,67,0.6); }
-.fill-hint-signature:hover { background: rgba(46,160,67,0.28); border-color: rgba(46,160,67,0.95); }
+.fill-hint-under:hover::before {
+  background: rgba(20,115,230,0.95);
+  height: 3px;
+}
+.fill-hint-signature:hover {
+  background: rgba(46,160,67,0.22);
+  outline: 2px solid rgba(46,160,67,0.9);
+  box-shadow: 0 0 0 3px rgba(46,160,67,0.20);
+}
 
 /* Inline add-text box — grows with content, wraps long lines so big edits
    on letterheads don't run together or compress (issue #9).

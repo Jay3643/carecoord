@@ -2064,6 +2064,10 @@
           e.preventDefault();
           onFillHintClick(i + 1, left, top, w, h, hint);
         });
+        // Swallow the follow-up click so it doesn't bubble to the annotation
+        // layer (which would trigger a second placeInlineTextBox at the click
+        // point). Without this, hint-click placed two overlapping text boxes.
+        el.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
         pg.annotLayer.appendChild(el);
       }
     }
