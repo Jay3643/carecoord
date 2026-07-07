@@ -2,11 +2,10 @@
   "name": "PDF Editor Pro",
   "short_name": "PDF Editor",
   "description": "Open, edit, and sign PDFs — right in your browser, installable to your desktop.",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "id": "/pdf-editor/",
+  "start_url": "/pdf-editor/",
+  "scope": "/pdf-editor/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#e5322d",
@@ -15,5 +14,6 @@
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+  ],
+  "prefer_related_applications": false
 }

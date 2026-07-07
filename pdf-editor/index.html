@@ -630,42 +630,83 @@
       const modal = document.getElementById('modal-install');
       if (!body || !modal) return;
       const b = detectBrowser();
-      let html = '';
+
+      // Common header — visual pointer to the address-bar install icon,
+      // which is the most reliable way to install a PWA when the
+      // programmatic prompt didn't fire (Chrome/Edge always show it once
+      // criteria are met). Uses inline SVG so it renders even offline.
+      const iconSvg =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" style="vertical-align:-4px;margin:0 2px">' +
+        '<rect x="2" y="4" width="20" height="14" rx="1"/><path d="M8 21h8"/><path d="M12 17v4"/>' +
+        '<path d="M12 8v6m0 0l-3-3m3 3l3-3"/></svg>';
+
+      const primary =
+        '<div style="background:rgba(20,115,230,0.10);border:1px solid rgba(20,115,230,0.4);' +
+        'border-radius:6px;padding:12px;margin-bottom:14px">' +
+        '<b>Fastest way: check the address bar.</b><br>' +
+        'Look at the right end of the URL bar at the top of this window for a small install icon ' +
+        iconSvg + ' — a monitor with a downward arrow. Click it and choose <b>Install</b>.' +
+        '</div>';
+
+      let alt = '';
       if (b === 'chrome') {
-        html = '<p>Your browser didn\'t offer the automatic install this time. To install PDF Editor Pro manually:</p>' +
-          '<ol style="padding-left:22px;margin-top:10px">' +
-          '<li>Click the <b>&#8942;</b> menu at the top-right of Chrome</li>' +
-          '<li>Hover <b>Save and share</b> (or <b>More tools</b>)</li>' +
-          '<li>Click <b>Install PDF Editor Pro…</b></li>' +
-          '</ol>' +
-          '<p style="margin-top:10px;color:var(--text-2)">Tip: an install icon (a monitor with a downward arrow) often appears at the right end of the address bar. Clicking it installs the app directly.</p>';
+        alt = '<p><b>If the address-bar icon isn\'t there</b>, open the ' +
+          '<b>&#8942;</b> menu (top-right of Chrome) and look for one of these:</p>' +
+          '<ul style="padding-left:22px;margin-top:6px">' +
+          '<li><b>Install PDF Editor Pro…</b> (directly in the menu)</li>' +
+          '<li>Under <b>Save and share</b> &rarr; <b>Install page as app…</b></li>' +
+          '<li>Under <b>Cast, save, and share</b> &rarr; <b>Install page as app…</b></li>' +
+          '</ul>';
       } else if (b === 'edge') {
-        html = '<p>Your browser didn\'t offer the automatic install this time. To install PDF Editor Pro manually:</p>' +
-          '<ol style="padding-left:22px;margin-top:10px">' +
-          '<li>Click the <b>&#8943;</b> menu at the top-right of Edge</li>' +
-          '<li>Hover <b>Apps</b></li>' +
-          '<li>Click <b>Install this site as an app</b></li>' +
-          '</ol>' +
-          '<p style="margin-top:10px;color:var(--text-2)">Tip: an install icon may also appear at the right end of the address bar.</p>';
+        alt = '<p><b>If the address-bar icon isn\'t there</b>, open the ' +
+          '<b>&#8943;</b> menu (top-right of Edge), hover <b>Apps</b>, then click ' +
+          '<b>Install this site as an app</b>.</p>';
       } else if (b === 'firefox') {
-        html = '<p>Firefox does not support installing web apps to the desktop. To use PDF Editor Pro as an installable app, please open this URL in <b>Google Chrome</b> or <b>Microsoft Edge</b> and click the Install button.</p>';
+        alt = '<p>Firefox does not support installing web apps to the desktop. ' +
+          'To install PDF Editor Pro, please open this page in <b>Google Chrome</b> ' +
+          'or <b>Microsoft Edge</b>.</p>';
       } else if (b === 'safari') {
-        html = '<p>Safari on macOS does not currently support installing web apps to the desktop dock. To install PDF Editor Pro as an app, open this URL in <b>Google Chrome</b> or <b>Microsoft Edge</b>.</p>';
+        alt = '<p>Safari on macOS does not currently support installing web apps to the dock. ' +
+          'To install PDF Editor Pro, open this page in <b>Google Chrome</b> or <b>Microsoft Edge</b>.</p>';
       } else {
-        html = '<p>Your browser did not expose a programmatic install prompt. Check your browser\'s menu for an "Install app" or "Add to home screen" option, or look for an install icon in the address bar.</p>' +
-          '<p style="margin-top:10px;color:var(--text-2)">If you don\'t see one, try opening this page in Chrome or Edge.</p>';
+        alt = '<p>Look for an <b>Install app</b> or <b>Add to home screen</b> option in your browser\'s menu. ' +
+          'If you can\'t find one, open this page in Chrome or Edge.</p>';
       }
-      body.innerHTML = html;
+
+      const trouble =
+        '<details style="margin-top:14px;color:var(--text-2)">' +
+        '<summary style="cursor:pointer;color:var(--text-3)">Neither option appears?</summary>' +
+        '<p style="margin-top:8px">The install option may be hidden if you previously dismissed an install prompt, ' +
+        'or if you\'re using a work-managed browser that blocks installs. Try:</p>' +
+        '<ul style="padding-left:22px;margin-top:6px">' +
+        '<li>Close this tab, reopen the URL, and click around the app for a few seconds before trying again — Chrome sometimes waits for user engagement.</li>' +
+        '<li>Check that you\'re not in Incognito / InPrivate mode.</li>' +
+        '<li>Update your browser to the latest version.</li>' +
+        '</ul>' +
+        '</details>';
+
+      body.innerHTML = primary + alt + trouble;
       modal.style.display = 'flex';
     }
 
     async function triggerInstall() {
+      // Log why we may have to fall back — helps debugging future clinician
+      // reports of "install doesn't work".
+      console.log('[install] triggered', {
+        standalone: isStandalone(),
+        deferredPromptReady: !!deferredPrompt,
+        browser: detectBrowser(),
+        secureContext: window.isSecureContext,
+        controllerReady: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+      });
       if (isStandalone()) return; // already installed
       if (deferredPrompt) {
         try {
           deferredPrompt.prompt();
-          await deferredPrompt.userChoice;
-        } catch (err) { console.warn('install prompt failed:', err); }
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log('[install] user choice:', outcome);
+        } catch (err) { console.warn('[install] prompt failed:', err); }
         deferredPrompt = null;
         updateInstallButtons();
         return;
