@@ -672,6 +672,12 @@ kbd {
   height: 28px; background: #2b2b30; border-top: 1px solid #4a4a50;
   display: flex; align-items: center; padding: 0 12px;
   font-size: 12px; color: #b0b0b8; z-index: 50;
+  gap: 10px;
+}
+#status-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status-version {
+  color: #7a7a82; font-size: 11px; letter-spacing: 0.5px;
+  cursor: help; user-select: none;
 }
 
 /* Editable text overlays for Edit Text mode */

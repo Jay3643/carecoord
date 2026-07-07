@@ -111,11 +111,23 @@
     { text: 'SIGN HERE', color: '#e5322d', border: '#e5322d' },
   ];
 
-  // Status bar (minimal)
+  // Status bar (minimal) with a stable version marker on the right side.
+  // The marker matches the SW cache name so support can quickly rule out
+  // "user is on a stale cached bundle" without asking the clinician to
+  // open DevTools (repeat-report pattern seen through July 2026).
+  const APP_VERSION = 'v16';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
+  const statusMsgEl = document.createElement('span');
+  statusMsgEl.id = 'status-msg';
+  const statusVerEl = document.createElement('span');
+  statusVerEl.id = 'status-version';
+  statusVerEl.textContent = 'PDF Editor Pro ' + APP_VERSION;
+  statusVerEl.title = 'Build version — if this doesn\'t match the latest release, hard-refresh (Ctrl+Shift+R) to update.';
+  statusEl.appendChild(statusMsgEl);
+  statusEl.appendChild(statusVerEl);
   document.body.appendChild(statusEl);
-  function showStatus(msg) { statusEl.textContent = msg || 'Ready'; }
+  function showStatus(msg) { statusMsgEl.textContent = msg || 'Ready'; }
   showStatus('');
 
   // =============================================================
