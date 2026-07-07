@@ -91,6 +91,11 @@
           <input type="number" id="page-input" min="1" value="1" disabled style="width:40px">
           <span>/ <span id="page-total">0</span></span>
         </span>
+        <div class="menu-sep"></div>
+        <button class="menu-btn" id="btn-install-menu" title="Install PDF Editor Pro as a desktop app" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          Install
+        </button>
       </div>
     </div>
 
@@ -512,6 +517,19 @@
     </div>
   </div>
 
+  <!-- Install Instructions Modal (shown when the native beforeinstallprompt hasn't fired) -->
+  <div class="modal" id="modal-install" style="display:none">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3>Install PDF Editor Pro</h3><button class="modal-x" data-close="modal-install">&times;</button></div>
+      <div class="modal-mid">
+        <div id="install-body" style="font-size:13px;line-height:1.5;color:var(--text)"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="pri-btn" data-close="modal-install">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Sticky Note Modal -->
   <div class="modal" id="modal-note" style="display:none">
     <div class="modal-box modal-sm">
@@ -553,32 +571,116 @@
         navigator.serviceWorker.register('sw.js', { scope: './' }).catch((e) => console.warn('SW register failed:', e));
       });
     }
-    // Custom install prompt (Chrome/Edge). Hidden once installed, unsupported,
-    // or while a PDF is open (so it doesn't cover page content).
+
+    // Install experience — two buttons drive the same handler:
+    //   * #btn-install-menu (menubar) — always visible unless the app is
+    //     already installed. Doesn't overlap page content. This is the
+    //     canonical entry point (fix for clinician 2026-07-07: "install
+    //     on desktop function is not working" — the old floating button
+    //     was hidden whenever a PDF was open, and beforeinstallprompt
+    //     may not fire on every visit).
+    //   * #pwa-install-btn (floating) — kept for the welcome screen only,
+    //     as an extra affordance when there's no PDF loaded yet.
+    //
+    // If Chrome/Edge fires beforeinstallprompt, we call it. Otherwise we
+    // show a modal with browser-specific instructions so the clinician
+    // can still install manually (Chrome menu, Edge menu, address-bar
+    // icon) or knows to switch browsers on Firefox/Safari.
     let deferredPrompt = null;
-    const installBtn = document.getElementById('pwa-install-btn');
-    function updateInstallBtn() {
-      if (!installBtn) return;
-      const pdfOpen = document.body.classList.contains('pdf-open');
-      installBtn.hidden = !deferredPrompt || pdfOpen;
+    const btnMenu = document.getElementById('btn-install-menu');
+    const btnFloat = document.getElementById('pwa-install-btn');
+
+    function isStandalone() {
+      return (window.matchMedia && (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+        window.matchMedia('(display-mode: minimal-ui)').matches
+      )) || navigator.standalone === true;
     }
+
+    function updateInstallButtons() {
+      const installed = isStandalone();
+      const pdfOpen = document.body.classList.contains('pdf-open');
+      if (btnMenu) btnMenu.hidden = installed;
+      if (btnFloat) btnFloat.hidden = installed || pdfOpen || !deferredPrompt;
+    }
+
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      updateInstallBtn();
+      updateInstallButtons();
     });
-    if (installBtn) {
-      installBtn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
-        deferredPrompt = null;
-        updateInstallBtn();
-      });
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      updateInstallButtons();
+    });
+
+    function detectBrowser() {
+      const ua = (navigator.userAgent || '').toLowerCase();
+      if (/edg\//.test(ua)) return 'edge';
+      if (/opr\/|opera/.test(ua)) return 'opera';
+      if (/firefox|fxios/.test(ua)) return 'firefox';
+      if (/chrome|crios|chromium/.test(ua) && !/edg\//.test(ua)) return 'chrome';
+      if (/safari/.test(ua) && !/chrome|chromium|crios/.test(ua)) return 'safari';
+      return 'other';
     }
-    window.addEventListener('appinstalled', () => { deferredPrompt = null; updateInstallBtn(); });
-    // Re-evaluate visibility whenever app.js toggles body.pdf-open.
-    new MutationObserver(updateInstallBtn).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    function showManualInstallInstructions() {
+      const body = document.getElementById('install-body');
+      const modal = document.getElementById('modal-install');
+      if (!body || !modal) return;
+      const b = detectBrowser();
+      let html = '';
+      if (b === 'chrome') {
+        html = '<p>Your browser didn\'t offer the automatic install this time. To install PDF Editor Pro manually:</p>' +
+          '<ol style="padding-left:22px;margin-top:10px">' +
+          '<li>Click the <b>&#8942;</b> menu at the top-right of Chrome</li>' +
+          '<li>Hover <b>Save and share</b> (or <b>More tools</b>)</li>' +
+          '<li>Click <b>Install PDF Editor Pro…</b></li>' +
+          '</ol>' +
+          '<p style="margin-top:10px;color:var(--text-2)">Tip: an install icon (a monitor with a downward arrow) often appears at the right end of the address bar. Clicking it installs the app directly.</p>';
+      } else if (b === 'edge') {
+        html = '<p>Your browser didn\'t offer the automatic install this time. To install PDF Editor Pro manually:</p>' +
+          '<ol style="padding-left:22px;margin-top:10px">' +
+          '<li>Click the <b>&#8943;</b> menu at the top-right of Edge</li>' +
+          '<li>Hover <b>Apps</b></li>' +
+          '<li>Click <b>Install this site as an app</b></li>' +
+          '</ol>' +
+          '<p style="margin-top:10px;color:var(--text-2)">Tip: an install icon may also appear at the right end of the address bar.</p>';
+      } else if (b === 'firefox') {
+        html = '<p>Firefox does not support installing web apps to the desktop. To use PDF Editor Pro as an installable app, please open this URL in <b>Google Chrome</b> or <b>Microsoft Edge</b> and click the Install button.</p>';
+      } else if (b === 'safari') {
+        html = '<p>Safari on macOS does not currently support installing web apps to the desktop dock. To install PDF Editor Pro as an app, open this URL in <b>Google Chrome</b> or <b>Microsoft Edge</b>.</p>';
+      } else {
+        html = '<p>Your browser did not expose a programmatic install prompt. Check your browser\'s menu for an "Install app" or "Add to home screen" option, or look for an install icon in the address bar.</p>' +
+          '<p style="margin-top:10px;color:var(--text-2)">If you don\'t see one, try opening this page in Chrome or Edge.</p>';
+      }
+      body.innerHTML = html;
+      modal.style.display = 'flex';
+    }
+
+    async function triggerInstall() {
+      if (isStandalone()) return; // already installed
+      if (deferredPrompt) {
+        try {
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice;
+        } catch (err) { console.warn('install prompt failed:', err); }
+        deferredPrompt = null;
+        updateInstallButtons();
+        return;
+      }
+      showManualInstallInstructions();
+    }
+
+    if (btnMenu)  btnMenu.addEventListener('click', triggerInstall);
+    if (btnFloat) btnFloat.addEventListener('click', triggerInstall);
+
+    // Menu button stays visible even before beforeinstallprompt fires,
+    // so the clinician always has an entry point. Floating button
+    // remains gated on deferredPrompt + welcome screen.
+    if (btnMenu && !isStandalone()) btnMenu.hidden = false;
+    new MutationObserver(updateInstallButtons).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   </script>
 </body>
 </html>
