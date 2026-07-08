@@ -115,7 +115,7 @@
   // The marker matches the SW cache name so support can quickly rule out
   // "user is on a stale cached bundle" without asking the clinician to
   // open DevTools (repeat-report pattern seen through July 2026).
-  const APP_VERSION = 'v16';
+  const APP_VERSION = 'v19';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
   const statusMsgEl = document.createElement('span');

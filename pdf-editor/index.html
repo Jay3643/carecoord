@@ -391,6 +391,17 @@
               <div><kbd>Ctrl+P</kbd> Print</div>
               <div><kbd>Del</kbd> Delete</div>
             </div>
+            <!-- Native Windows installer download. Only visible on the welcome
+                 screen (not while a PDF is loaded), so it never bleeds into
+                 print output — the reason the previous PWA install button
+                 was removed on 2026-07-08. -->
+            <div class="welcome-desktop-download">
+              <a href="./downloads/PDF-Editor-Pro-Setup.exe" download="PDF-Editor-Pro-Setup.exe" id="btn-download-desktop">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                <span>Install Desktop Version <small>(Windows, 84 MB)</small></span>
+              </a>
+              <p class="welcome-desktop-hint">Runs offline. Associates .pdf files with PDF Editor Pro so double-clicking any PDF opens it here.</p>
+            </div>
           </div>
         </div>
         <!-- Pages render here -->
