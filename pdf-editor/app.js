@@ -221,9 +221,6 @@
 
     welcomeEl.style.display = 'none';
     pagesContainer.style.display = 'flex';
-    // Hide the PWA install button while editing — it overlapped page content
-    // and the bottom-corner of forms (clinician report 2026-06-05).
-    document.body.classList.add('pdf-open');
     enableUI();
     buildPages();
     buildThumbnails();
@@ -2868,10 +2865,17 @@
       const displayH = (angle === 90 || angle === 270) ? pw : ph;
       const newPage = dstDoc.addPage([displayW, displayH]);
 
+      // pdf-lib rotates the embedded page about the anchor (x,y) in the new
+      // page's user space. These anchors land the rotated content's corners
+      // exactly on the display-sized page so the whole page stays visible.
+      // (The previous 90°/270° anchors pushed the content entirely off-page,
+      // leaving a blank page with only the annotations — the "signing a
+      // turned page deletes everything" bug.) Verified 0/90/180/270 all render
+      // at full coverage with a consistent rigid rotation.
       const opts = { width: pw, height: ph, rotate: pdfDegrees(-angle) };
-      if (angle === 90)       { opts.x = displayW; opts.y = 0;        }
+      if (angle === 90)       { opts.x = 0;        opts.y = displayH; }
       else if (angle === 180) { opts.x = displayW; opts.y = displayH; }
-      else if (angle === 270) { opts.x = 0;        opts.y = displayH; }
+      else if (angle === 270) { opts.x = displayW; opts.y = 0;        }
       else                    { opts.x = 0;        opts.y = 0;        }
 
       newPage.drawPage(embedded, opts);
@@ -3445,6 +3449,46 @@
   }
 
   // =============================================================
+  // Print the FLATTENED document (annotations + signatures baked in), not the
+  // app window. window.print() printed the whole UI — toolbar, the "Install on
+  // desktop" button, and no signature (annotations are DOM overlays that don't
+  // reliably print). Build the edited bytes and print them via a hidden iframe
+  // so what prints is exactly what saves.
+  async function printPDF() {
+    if (!S.pdfBytes) return;
+    showStatus('Preparing print…');
+    let bytes;
+    try {
+      bytes = await buildEditedPdfBytes();
+      assertSaveBytesLookSane(bytes);
+    } catch (err) {
+      showStatus('Print failed');
+      alert((err && err.message) || 'Could not prepare the document for printing.');
+      return;
+    }
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    iframe.src = url;
+    let done = false;
+    const cleanup = () => { if (done) return; done = true; setTimeout(() => { URL.revokeObjectURL(url); iframe.remove(); }, 60000); };
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        showStatus('Print dialog opened');
+      } catch (e) {
+        // Some browsers block printing a blob PDF from a hidden frame — open
+        // it in a new tab so the user can print from the built-in viewer.
+        window.open(url, '_blank');
+        showStatus('Opened print preview in a new tab');
+      }
+      cleanup();
+    };
+    document.body.appendChild(iframe);
+  }
+
   // TOOLBAR ACTIONS
   // =============================================================
   $('#btn-open').addEventListener('click', openFile);
@@ -3452,7 +3496,7 @@
   $('#btn-save').addEventListener('click', savePDF);
   const btnSaveAs = $('#btn-save-as');
   if (btnSaveAs) btnSaveAs.addEventListener('click', saveAsPDF);
-  $('#btn-print').addEventListener('click', () => window.print());
+  $('#btn-print').addEventListener('click', printPDF);
   $('#btn-undo').addEventListener('click', undo);
   $('#btn-redo').addEventListener('click', redo);
 
@@ -3468,7 +3512,7 @@
         case 's': e.preventDefault(); e.shiftKey ? saveAsPDF() : savePDF(); break;
         case 'z': e.preventDefault(); e.shiftKey ? redo() : undo(); break;
         case 'y': e.preventDefault(); redo(); break;
-        case 'p': e.preventDefault(); window.print(); break;
+        case 'p': e.preventDefault(); printPDF(); break;
         case 'f': e.preventDefault(); searchInput.focus(); break;
       }
     }

@@ -91,11 +91,6 @@
           <input type="number" id="page-input" min="1" value="1" disabled style="width:40px">
           <span>/ <span id="page-total">0</span></span>
         </span>
-        <div class="menu-sep"></div>
-        <button class="menu-btn" id="btn-install-menu" title="Install PDF Editor Pro as a desktop app" hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-          Install
-        </button>
       </div>
     </div>
 
@@ -517,19 +512,6 @@
     </div>
   </div>
 
-  <!-- Install Instructions Modal (shown when the native beforeinstallprompt hasn't fired) -->
-  <div class="modal" id="modal-install" style="display:none">
-    <div class="modal-box modal-sm">
-      <div class="modal-head"><h3>Install PDF Editor Pro</h3><button class="modal-x" data-close="modal-install">&times;</button></div>
-      <div class="modal-mid">
-        <div id="install-body" style="font-size:13px;line-height:1.5;color:var(--text)"></div>
-      </div>
-      <div class="modal-foot">
-        <button class="pri-btn" data-close="modal-install">Got it</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Sticky Note Modal -->
   <div class="modal" id="modal-note" style="display:none">
     <div class="modal-box modal-sm">
@@ -553,18 +535,7 @@
 
   <script src="app.js"></script>
 
-  <!-- PWA: register service worker + install-to-desktop prompt -->
-  <!-- The install button only appears on the Welcome screen, not while a PDF
-       is open — it used to overlap signatures placed near the page edge.
-       The .pdf-open class is toggled on <body> by app.js after loadPDF. -->
-  <button id="pwa-install-btn" hidden
-    style="position:fixed;bottom:36px;right:16px;z-index:9999;display:flex;align-items:center;gap:8px;
-           padding:10px 16px;border:none;border-radius:8px;background:#e5322d;color:#fff;font:600 13px Inter,sans-serif;
-           box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-    Install on desktop
-  </button>
+  <!-- PWA: register service worker (offline caching). Install-to-desktop UI removed per request 2026-07-08. -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -572,156 +543,11 @@
       });
     }
 
-    // Install experience — two buttons drive the same handler:
-    //   * #btn-install-menu (menubar) — always visible unless the app is
-    //     already installed. Doesn't overlap page content. This is the
-    //     canonical entry point (fix for clinician 2026-07-07: "install
-    //     on desktop function is not working" — the old floating button
-    //     was hidden whenever a PDF was open, and beforeinstallprompt
-    //     may not fire on every visit).
-    //   * #pwa-install-btn (floating) — kept for the welcome screen only,
-    //     as an extra affordance when there's no PDF loaded yet.
-    //
-    // If Chrome/Edge fires beforeinstallprompt, we call it. Otherwise we
-    // show a modal with browser-specific instructions so the clinician
-    // can still install manually (Chrome menu, Edge menu, address-bar
-    // icon) or knows to switch browsers on Firefox/Safari.
-    let deferredPrompt = null;
-    const btnMenu = document.getElementById('btn-install-menu');
-    const btnFloat = document.getElementById('pwa-install-btn');
-
-    function isStandalone() {
-      return (window.matchMedia && (
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.matchMedia('(display-mode: window-controls-overlay)').matches ||
-        window.matchMedia('(display-mode: minimal-ui)').matches
-      )) || navigator.standalone === true;
-    }
-
-    function updateInstallButtons() {
-      const installed = isStandalone();
-      const pdfOpen = document.body.classList.contains('pdf-open');
-      if (btnMenu) btnMenu.hidden = installed;
-      if (btnFloat) btnFloat.hidden = installed || pdfOpen || !deferredPrompt;
-    }
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      updateInstallButtons();
-    });
-    window.addEventListener('appinstalled', () => {
-      deferredPrompt = null;
-      updateInstallButtons();
-    });
-
-    function detectBrowser() {
-      const ua = (navigator.userAgent || '').toLowerCase();
-      if (/edg\//.test(ua)) return 'edge';
-      if (/opr\/|opera/.test(ua)) return 'opera';
-      if (/firefox|fxios/.test(ua)) return 'firefox';
-      if (/chrome|crios|chromium/.test(ua) && !/edg\//.test(ua)) return 'chrome';
-      if (/safari/.test(ua) && !/chrome|chromium|crios/.test(ua)) return 'safari';
-      return 'other';
-    }
-
-    function showManualInstallInstructions() {
-      const body = document.getElementById('install-body');
-      const modal = document.getElementById('modal-install');
-      if (!body || !modal) return;
-      const b = detectBrowser();
-
-      // Common header — visual pointer to the address-bar install icon,
-      // which is the most reliable way to install a PWA when the
-      // programmatic prompt didn't fire (Chrome/Edge always show it once
-      // criteria are met). Uses inline SVG so it renders even offline.
-      const iconSvg =
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-        'stroke-width="2" style="vertical-align:-4px;margin:0 2px">' +
-        '<rect x="2" y="4" width="20" height="14" rx="1"/><path d="M8 21h8"/><path d="M12 17v4"/>' +
-        '<path d="M12 8v6m0 0l-3-3m3 3l3-3"/></svg>';
-
-      const primary =
-        '<div style="background:rgba(20,115,230,0.10);border:1px solid rgba(20,115,230,0.4);' +
-        'border-radius:6px;padding:12px;margin-bottom:14px">' +
-        '<b>Fastest way: check the address bar.</b><br>' +
-        'Look at the right end of the URL bar at the top of this window for a small install icon ' +
-        iconSvg + ' — a monitor with a downward arrow. Click it and choose <b>Install</b>.' +
-        '</div>';
-
-      let alt = '';
-      if (b === 'chrome') {
-        alt = '<p><b>If the address-bar icon isn\'t there</b>, open the ' +
-          '<b>&#8942;</b> menu (top-right of Chrome) and look for one of these:</p>' +
-          '<ul style="padding-left:22px;margin-top:6px">' +
-          '<li><b>Install PDF Editor Pro…</b> (directly in the menu)</li>' +
-          '<li>Under <b>Save and share</b> &rarr; <b>Install page as app…</b></li>' +
-          '<li>Under <b>Cast, save, and share</b> &rarr; <b>Install page as app…</b></li>' +
-          '</ul>';
-      } else if (b === 'edge') {
-        alt = '<p><b>If the address-bar icon isn\'t there</b>, open the ' +
-          '<b>&#8943;</b> menu (top-right of Edge), hover <b>Apps</b>, then click ' +
-          '<b>Install this site as an app</b>.</p>';
-      } else if (b === 'firefox') {
-        alt = '<p>Firefox does not support installing web apps to the desktop. ' +
-          'To install PDF Editor Pro, please open this page in <b>Google Chrome</b> ' +
-          'or <b>Microsoft Edge</b>.</p>';
-      } else if (b === 'safari') {
-        alt = '<p>Safari on macOS does not currently support installing web apps to the dock. ' +
-          'To install PDF Editor Pro, open this page in <b>Google Chrome</b> or <b>Microsoft Edge</b>.</p>';
-      } else {
-        alt = '<p>Look for an <b>Install app</b> or <b>Add to home screen</b> option in your browser\'s menu. ' +
-          'If you can\'t find one, open this page in Chrome or Edge.</p>';
-      }
-
-      const trouble =
-        '<details style="margin-top:14px;color:var(--text-2)">' +
-        '<summary style="cursor:pointer;color:var(--text-3)">Neither option appears?</summary>' +
-        '<p style="margin-top:8px">The install option may be hidden if you previously dismissed an install prompt, ' +
-        'or if you\'re using a work-managed browser that blocks installs. Try:</p>' +
-        '<ul style="padding-left:22px;margin-top:6px">' +
-        '<li>Close this tab, reopen the URL, and click around the app for a few seconds before trying again — Chrome sometimes waits for user engagement.</li>' +
-        '<li>Check that you\'re not in Incognito / InPrivate mode.</li>' +
-        '<li>Update your browser to the latest version.</li>' +
-        '</ul>' +
-        '</details>';
-
-      body.innerHTML = primary + alt + trouble;
-      modal.style.display = 'flex';
-    }
-
-    async function triggerInstall() {
-      // Log why we may have to fall back — helps debugging future clinician
-      // reports of "install doesn't work".
-      console.log('[install] triggered', {
-        standalone: isStandalone(),
-        deferredPromptReady: !!deferredPrompt,
-        browser: detectBrowser(),
-        secureContext: window.isSecureContext,
-        controllerReady: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
-      });
-      if (isStandalone()) return; // already installed
-      if (deferredPrompt) {
-        try {
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          console.log('[install] user choice:', outcome);
-        } catch (err) { console.warn('[install] prompt failed:', err); }
-        deferredPrompt = null;
-        updateInstallButtons();
-        return;
-      }
-      showManualInstallInstructions();
-    }
-
-    if (btnMenu)  btnMenu.addEventListener('click', triggerInstall);
-    if (btnFloat) btnFloat.addEventListener('click', triggerInstall);
-
-    // Menu button stays visible even before beforeinstallprompt fires,
-    // so the clinician always has an entry point. Floating button
-    // remains gated on deferredPrompt + welcome screen.
-    if (btnMenu && !isStandalone()) btnMenu.hidden = false;
-    new MutationObserver(updateInstallButtons).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    // Chrome may still auto-surface an install affordance in the address bar;
+    // suppress the browser's automatic mini-infobar so the app never nudges
+    // the user to install. (Install-to-desktop buttons/modal removed per
+    // clinician request 2026-07-08 — the button was bleeding into printouts.)
+    window.addEventListener('beforeinstallprompt', (e) => e.preventDefault());
   </script>
 </body>
 </html>
