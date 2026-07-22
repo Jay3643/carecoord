@@ -315,6 +315,19 @@ body {
 }
 .primary-btn:hover { background: var(--accent-h); }
 
+/* Welcome-screen secondary action, sits next to the primary "Open PDF File"
+   button. Used for the "Convert to PDF" entry point. */
+.secondary-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px; margin-left: 10px;
+  background: var(--bg-surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 15px; cursor: pointer;
+  font-family: var(--font); font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+.secondary-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+
 .welcome-shortcuts {
   display: flex; flex-wrap: wrap; gap: 8px 16px;
   justify-content: center; margin-top: 24px;

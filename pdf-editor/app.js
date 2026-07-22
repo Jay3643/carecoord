@@ -5,7 +5,31 @@
   'use strict';
 
   const pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+  // Configure pdf.js's Web Worker source. In the browser (PWA) we can just
+  // point at the relative URL. Under Electron the page origin is file://,
+  // and Chromium refuses to spawn a Worker from a file:// script URL even
+  // with webSecurity: false — the Worker errors out with "PDF rendering
+  // worker failed to start" (clinician 2026-07-10 v1.2.2 report). Blob URLs
+  // have their own opaque origin, so we fetch the worker source, wrap it in
+  // a Blob, and hand pdf.js the blob: URL. Synchronous XHR keeps this
+  // before any PDF open call.
+  (function configureWorker() {
+    if (window.electronAPI) {
+      try {
+        const req = new XMLHttpRequest();
+        req.open('GET', 'lib/pdf.worker.min.js', false); // sync
+        req.send(null);
+        if (req.status === 0 || (req.status >= 200 && req.status < 400)) {
+          const blob = new Blob([req.responseText], { type: 'application/javascript' });
+          pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+          return;
+        }
+      } catch (e) {
+        console.warn('[pdf.js worker blob] fallback:', e);
+      }
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+  })();
   const { PDFDocument, rgb, StandardFonts, degrees: pdfDegrees } = PDFLib;
 
   // =============================================================
@@ -94,6 +118,7 @@
   const imageFileInput = $('#image-file-input');
   const combineFileInput = $('#combine-file-input');
   const insertFileInput = $('#insert-file-input');
+  const convertFileInput = $('#convert-file-input');
   const sidebarEl = $('#sidebar');
   const sidebarThumbs = $('#sidebar-thumbs');
 
@@ -115,7 +140,7 @@
   // The marker matches the SW cache name so support can quickly rule out
   // "user is on a stale cached bundle" without asking the clinician to
   // open DevTools (repeat-report pattern seen through July 2026).
-  const APP_VERSION = 'v19';
+  const APP_VERSION = 'v20';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
   const statusMsgEl = document.createElement('span');
@@ -195,6 +220,141 @@
     S.pdfBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     S.fileName = name || S.fileName;
     await initDocument(S.pdfBytes);
+  }
+
+  // =============================================================
+  // CONVERT NON-PDF FILES → PDF
+  // =============================================================
+  // Images (JPG/PNG/GIF/BMP/WebP) become one page each, letter-sized with
+  // aspect preserved. Text files (.txt/.md/.log) are paginated with word
+  // wrap. All formats are pipelined through pdf-lib (already bundled),
+  // so this stays 100% client-side — no upload, no server round-trip.
+  // Clinician request 2026-07-22.
+
+  const CONVERT_IMAGE_RX = /^image\/|\.(jpe?g|png|gif|bmp|webp)$/i;
+  const CONVERT_TEXT_RX  = /^text\/|\.(txt|md|log|csv)$/i;
+
+  function isImageFile(f) {
+    return !!f && (CONVERT_IMAGE_RX.test(f.type || '') || CONVERT_IMAGE_RX.test(f.name || ''));
+  }
+  function isTextFile(f) {
+    return !!f && (CONVERT_TEXT_RX.test(f.type || '') || CONVERT_TEXT_RX.test(f.name || ''));
+  }
+  function isConvertible(f) { return isImageFile(f) || isTextFile(f); }
+
+  // Render any browser-supported image to a PNG data URL via a canvas so
+  // pdf-lib.embedPng handles every format uniformly (embedJpg is strict,
+  // GIF/BMP/WebP aren't natively embeddable at all).
+  async function imageFileToPngDataUrl(file) {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('Could not read ' + file.name));
+      r.readAsDataURL(file);
+    });
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not decode ' + file.name));
+      el.src = dataUrl;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || img.width;
+    c.height = img.naturalHeight || img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    return c.toDataURL('image/png');
+  }
+
+  async function convertFilesToPdf(files) {
+    const list = Array.from(files || []).filter(f => f && f.size > 0);
+    if (!list.length) return;
+    showStatus('Converting ' + list.length + ' file(s) to PDF…');
+
+    const dst = await PDFDocument.create();
+    const helv = await dst.embedFont(StandardFonts.Helvetica);
+
+    // US Letter page target; content is fit-to-page with aspect preserved.
+    const PAGE_W = 612, PAGE_H = 792;
+    const MARGIN = 40;
+
+    let addedPages = 0;
+    for (const file of list) {
+      try {
+        if (isImageFile(file)) {
+          const pngUrl = await imageFileToPngDataUrl(file);
+          const img = await dst.embedPng(pngUrl);
+          // Fit image within a Letter-sized page, preserving aspect.
+          const usableW = PAGE_W - MARGIN * 2;
+          const usableH = PAGE_H - MARGIN * 2;
+          const scale = Math.min(usableW / img.width, usableH / img.height, 1);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          const page = dst.addPage([PAGE_W, PAGE_H]);
+          page.drawImage(img, {
+            x: (PAGE_W - w) / 2,
+            y: (PAGE_H - h) / 2,
+            width: w, height: h,
+          });
+          addedPages++;
+        } else if (isTextFile(file)) {
+          const text = await file.text();
+          const fontSize = 11;
+          const lineH = fontSize * 1.4;
+          const usableW = PAGE_W - MARGIN * 2;
+          // Word-wrap each paragraph.
+          const wrapped = [];
+          for (const rawLine of String(text).split(/\r?\n/)) {
+            if (!rawLine) { wrapped.push(''); continue; }
+            const words = rawLine.split(/(\s+)/);
+            let cur = '';
+            for (const w of words) {
+              const test = cur + w;
+              if (helv.widthOfTextAtSize(test, fontSize) > usableW && cur.trim()) {
+                wrapped.push(cur.replace(/\s+$/, ''));
+                cur = /\S/.test(w) ? w : '';
+              } else {
+                cur = test;
+              }
+            }
+            if (cur) wrapped.push(cur.replace(/\s+$/, ''));
+          }
+          const linesPerPage = Math.max(1, Math.floor((PAGE_H - MARGIN * 2) / lineH));
+          for (let i = 0; i < wrapped.length; i += linesPerPage) {
+            const page = dst.addPage([PAGE_W, PAGE_H]);
+            for (let j = 0; j < linesPerPage && i + j < wrapped.length; j++) {
+              const line = wrapped[i + j];
+              if (!line) continue;
+              page.drawText(line, {
+                x: MARGIN,
+                y: PAGE_H - MARGIN - (j + 1) * lineH + fontSize * 0.2,
+                size: fontSize, font: helv, color: rgb(0, 0, 0),
+              });
+            }
+            addedPages++;
+          }
+        } else {
+          console.warn('Skipping unsupported file:', file.name, file.type);
+        }
+      } catch (err) {
+        console.error('Convert failed for', file.name, err);
+        showStatus('Could not convert ' + file.name + ': ' + (err.message || err));
+      }
+    }
+
+    if (!addedPages) {
+      alert('Nothing to convert. Supported formats: JPG, PNG, GIF, BMP, WebP, TXT, MD, LOG, CSV.');
+      showStatus('');
+      return;
+    }
+
+    const bytes = await dst.save();
+    // No source file handle — conversion always saves as a new document.
+    S.fileHandle = null;
+    const outName = list.length === 1
+      ? (list[0].name.replace(/\.[^.]+$/, '') || 'converted') + '.pdf'
+      : 'converted-' + list.length + '.pdf';
+    await loadPDFBytes(bytes, outName);
+    showStatus('Converted ' + addedPages + ' page(s) — save with Ctrl+S to keep the result.');
   }
 
   async function initDocument(bytes) {
@@ -3493,6 +3653,21 @@
   // =============================================================
   $('#btn-open').addEventListener('click', openFile);
   $('#btn-welcome-open').addEventListener('click', openFile);
+  // Convert-to-PDF entry points (menubar + welcome screen). Both open the
+  // same file picker, which accepts images/text/etc.; the change handler
+  // hands them off to convertFilesToPdf().
+  const openConvertDialog = () => convertFileInput && convertFileInput.click();
+  const btnConvert = $('#btn-convert');
+  const btnWelcomeConvert = $('#btn-welcome-convert');
+  if (btnConvert) btnConvert.addEventListener('click', openConvertDialog);
+  if (btnWelcomeConvert) btnWelcomeConvert.addEventListener('click', openConvertDialog);
+  if (convertFileInput) {
+    convertFileInput.addEventListener('change', async (e) => {
+      const files = [...(e.target.files || [])];
+      convertFileInput.value = '';
+      if (files.length) await convertFilesToPdf(files);
+    });
+  }
   $('#btn-save').addEventListener('click', savePDF);
   const btnSaveAs = $('#btn-save-as');
   if (btnSaveAs) btnSaveAs.addEventListener('click', saveAsPDF);
@@ -3614,16 +3789,32 @@
     if (dragOverlay && !viewport.contains(e.relatedTarget)) removeDragOverlay();
   });
 
-  viewport.addEventListener('drop', async e => {
-    e.preventDefault();
-    e.stopPropagation(); // prevent the body-level fallback from double-loading
-    removeDragOverlay();
-    const { file, handle, rejected } = await extractPdfFromDrop(e.dataTransfer);
+  // Drop handler: PDF drops open normally; image / text drops auto-route
+  // through convertFilesToPdf so clinicians can just drag a JPG onto the
+  // editor and immediately sign it (2026-07-22 request).
+  async function handleDrop(dt) {
+    const { file, handle, rejected } = await extractPdfFromDrop(dt);
     if (file) {
       S.fileHandle = handle || null;
       await loadPDF(file);
       if (handle) showStatus('Opened: ' + file.name + ' — Ctrl+S to save back');
-    } else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
+      return;
+    }
+    // Not a PDF — see if any dropped file is convertible.
+    const dropped = dt && dt.files ? Array.from(dt.files) : [];
+    const convertible = dropped.filter(isConvertible);
+    if (convertible.length) {
+      await convertFilesToPdf(convertible);
+      return;
+    }
+    if (rejected) showStatus('Unsupported file: ' + rejected + ' (drop PDF, JPG, PNG, or TXT)');
+  }
+
+  viewport.addEventListener('drop', async e => {
+    e.preventDefault();
+    e.stopPropagation(); // prevent the body-level fallback from double-loading
+    removeDragOverlay();
+    await handleDrop(e.dataTransfer);
   });
 
   // Whole-window fallback so a drop slightly outside #viewport still works,
@@ -3633,12 +3824,7 @@
   document.body.addEventListener('drop', async e => {
     e.preventDefault();
     removeDragOverlay();
-    const { file, handle, rejected } = await extractPdfFromDrop(e.dataTransfer);
-    if (file) {
-      S.fileHandle = handle || null;
-      await loadPDF(file);
-      if (handle) showStatus('Opened: ' + file.name + ' — Ctrl+S to save back');
-    } else if (rejected) showStatus('Only PDF files can be opened (got: ' + rejected + ')');
+    await handleDrop(e.dataTransfer);
   });
 
   // =============================================================

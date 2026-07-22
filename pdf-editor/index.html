@@ -38,6 +38,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>
           Open
         </button>
+        <button class="menu-btn" id="btn-convert" title="Convert images (JPG/PNG/etc.) or text files to PDF and open here">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="14,3 14,9 20,9"/><path d="M9 15l2 2 4-4"/></svg>
+          Convert to PDF
+        </button>
         <button class="menu-btn" id="btn-save" title="Save (Ctrl+S) — writes back to the original file" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>
           Save
@@ -381,6 +385,10 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>
                 Open PDF File
               </button>
+              <button id="btn-welcome-convert" class="secondary-btn" title="Convert images or text to PDF">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="14,3 14,9 20,9"/><path d="M9 15l2 2 4-4"/></svg>
+                Convert to PDF
+              </button>
             </div>
             <p class="welcome-hint">or drag &amp; drop a PDF here</p>
             <div class="welcome-shortcuts">
@@ -543,6 +551,8 @@
   <input type="file" id="image-file-input" accept="image/*" hidden>
   <input type="file" id="combine-file-input" accept=".pdf,application/pdf" hidden multiple>
   <input type="file" id="insert-file-input" accept=".pdf,application/pdf" hidden>
+  <!-- Convert-to-PDF input: accepts images and plaintext; converted client-side via pdf-lib. -->
+  <input type="file" id="convert-file-input" accept="image/*,text/plain,text/markdown,text/csv,.txt,.md,.log,.csv" hidden multiple>
 
   <script src="app.js"></script>
 
