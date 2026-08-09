@@ -140,7 +140,7 @@
   // The marker matches the SW cache name so support can quickly rule out
   // "user is on a stale cached bundle" without asking the clinician to
   // open DevTools (repeat-report pattern seen through July 2026).
-  const APP_VERSION = 'v20';
+  const APP_VERSION = 'v21';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
   const statusMsgEl = document.createElement('span');
@@ -438,10 +438,18 @@
       wrapper.dataset.pageIndex = i;
 
       const cvs = document.createElement('canvas');
+      // Invisible selectable text layer sits between the canvas and the
+      // annotation layer so users can highlight + Ctrl+C copy text out of
+      // the PDF, just like Acrobat (clinician 2026-08-09 med-reconciliation
+      // workflow — copy meds from MAR into Practice Fusion). Rendered via
+      // pdf.js's renderTextLayer with viewport-aligned spans.
+      const textLayer = document.createElement('div');
+      textLayer.className = 'text-layer';
       const annotLayer = document.createElement('div');
       annotLayer.className = 'annotation-layer';
 
       wrapper.appendChild(cvs);
+      wrapper.appendChild(textLayer);
       wrapper.appendChild(annotLayer);
 
       const numLabel = document.createElement('div');
@@ -452,8 +460,9 @@
       pagesContainer.appendChild(numLabel);
 
       S.pages.push({
-        canvas: cvs, wrapper, annotLayer,
+        canvas: cvs, wrapper, annotLayer, textLayer,
         rendered: false, rendering: false, viewport: null,
+        textLayerTask: null,
       });
 
       // Set placeholder size from page info
@@ -495,14 +504,19 @@
   async function setPlaceholderSize(idx) {
     const page = await S.pdfDoc.getPage(idx + 1);
     const vp = viewportFor(page, idx + 1, S.scale);
-    S.pages[idx].canvas.width = vp.width;
-    S.pages[idx].canvas.height = vp.height;
-    S.pages[idx].canvas.style.width = vp.width + 'px';
-    S.pages[idx].canvas.style.height = vp.height + 'px';
-    S.pages[idx].annotLayer.style.width = vp.width + 'px';
-    S.pages[idx].annotLayer.style.height = vp.height + 'px';
-    S.pages[idx].wrapper.style.width = vp.width + 'px';
-    S.pages[idx].wrapper.style.height = vp.height + 'px';
+    const pg = S.pages[idx];
+    pg.canvas.width = vp.width;
+    pg.canvas.height = vp.height;
+    pg.canvas.style.width = vp.width + 'px';
+    pg.canvas.style.height = vp.height + 'px';
+    pg.annotLayer.style.width = vp.width + 'px';
+    pg.annotLayer.style.height = vp.height + 'px';
+    if (pg.textLayer) {
+      pg.textLayer.style.width = vp.width + 'px';
+      pg.textLayer.style.height = vp.height + 'px';
+    }
+    pg.wrapper.style.width = vp.width + 'px';
+    pg.wrapper.style.height = vp.height + 'px';
   }
 
   // =============================================================
@@ -538,6 +552,20 @@
     pg.canvas.style.height = vp.height + 'px';
     pg.annotLayer.style.width = vp.width + 'px';
     pg.annotLayer.style.height = vp.height + 'px';
+    if (pg.textLayer) {
+      pg.textLayer.style.width = vp.width + 'px';
+      pg.textLayer.style.height = vp.height + 'px';
+      // Cancel any prior text-layer task for this page so we don't stack
+      // spans from an old zoom level on top of the new one.
+      if (pg.textLayerTask && typeof pg.textLayerTask.cancel === 'function') {
+        try { pg.textLayerTask.cancel(); } catch {}
+        pg.textLayerTask = null;
+      }
+      pg.textLayer.innerHTML = '';
+      // The text layer's CSS uses --scale-factor for scaling the transparent
+      // text spans; pdf.js honors this variable in its computed style.
+      pg.textLayer.style.setProperty('--scale-factor', String(vp.scale));
+    }
     pg.wrapper.style.width = vp.width + 'px';
     pg.wrapper.style.height = vp.height + 'px';
 
@@ -546,6 +574,30 @@
 
     pg.rendered = true;
     pg.rendering = false;
+
+    // Fire-and-forget text-layer render so canvas display isn't delayed.
+    // Selectable text becomes available a moment after the page appears.
+    if (pg.textLayer && pdfjsLib && typeof pdfjsLib.renderTextLayer === 'function') {
+      try {
+        const textContent = await page.getTextContent();
+        if (pg.textLayer.isConnected) {
+          const task = pdfjsLib.renderTextLayer({
+            textContentSource: textContent,
+            textContent: textContent, // older signature
+            container: pg.textLayer,
+            viewport: vp,
+            textDivs: [],
+          });
+          pg.textLayerTask = task;
+          const p = task && task.promise ? task.promise : task;
+          Promise.resolve(p).catch(() => {});
+        }
+      } catch (e) {
+        // Non-fatal — the PDF just won't have text selection on this page
+        // (typical for scanned image-only pages).
+        console.warn('text-layer render failed for page', idx + 1, e);
+      }
+    }
 
     renderAnnotationsForPage(idx + 1);
     // If a fill tool is active, add hints to this newly-rendered page too.
