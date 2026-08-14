@@ -417,6 +417,37 @@ kbd {
 }
 .text-layer .highlight { background: rgba(180, 0, 170, 0.25); border-radius: 2px; }
 
+/* Custom right-click menu for the page area. Currently only carries a
+   "Paste" action — kept intentionally small so we don't compete with
+   the browser's native menu on selected text (which has Copy) or with
+   editable fields (which have their own paste). 2026-08-09 clinician
+   request. */
+.ctx-menu {
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  padding: 4px;
+  z-index: 10000;
+  min-width: 130px;
+  font-family: var(--font);
+  font-size: 13px;
+  user-select: none;
+}
+.ctx-item {
+  display: flex; align-items: center;
+  background: none; border: none; color: var(--text);
+  padding: 7px 12px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: inherit;
+}
+.ctx-item:hover { background: var(--bg-hover); }
+
 /* Annotation overlay per page — sits ABOVE the text layer for annotation
    interaction. Default pointer-events: none so text selection passes
    through to the layer below; the class-toggle enables it when a tool

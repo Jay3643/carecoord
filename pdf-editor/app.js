@@ -140,7 +140,7 @@
   // The marker matches the SW cache name so support can quickly rule out
   // "user is on a stale cached bundle" without asking the clinician to
   // open DevTools (repeat-report pattern seen through July 2026).
-  const APP_VERSION = 'v21';
+  const APP_VERSION = 'v22';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
   const statusMsgEl = document.createElement('span');
@@ -1931,6 +1931,158 @@
     };
     img.src = dataUrl;
   }
+
+  // =============================================================
+  // PASTE (Ctrl+V) + RIGHT-CLICK PASTE — for pasted signatures
+  // =============================================================
+  // Clinician 2026-08-09 asked for two related fixes:
+  //  a) Pasted signatures were coming in with a solid white rectangular
+  //     background (the source image had white pixels around the strokes
+  //     and paste bypassed stripWhiteBg). Now every pasted image is
+  //     stripped exactly like a drawn/typed signature.
+  //  b) Right-click had no Paste option on the page area (browser's native
+  //     context menu only offers Paste inside editable fields). Added a
+  //     small custom context menu that appears on right-click over blank
+  //     page area — right-click on selected text still falls through to
+  //     the browser's native Copy menu.
+  async function placePastedImage(blobOrFile) {
+    if (!blobOrFile || !S.pdfDoc) return;
+    let dataUrl;
+    try {
+      dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blobOrFile);
+      });
+    } catch (e) { showStatus('Could not read pasted image'); return; }
+
+    // Apply the same near-white → transparent pass we use for library
+    // signatures — that's the whole point of this fix.
+    dataUrl = await stripWhiteBg(dataUrl);
+
+    // Fit within a reasonable on-page size (max ~300px wide, keep aspect).
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('image decode failed'));
+      el.src = dataUrl;
+    }).catch(() => null);
+    if (!img) return;
+
+    const pageNum = getCurrentPageNum();
+    const pg = S.pages[pageNum - 1];
+    if (!pg) return;
+
+    const targetW = Math.max(80, Math.min(300, Math.round(pg.canvas.width * 0.35)));
+    const scale = Math.min(1, targetW / img.naturalWidth);
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+
+    // Drop it near the middle of whatever part of the page is on-screen,
+    // so the clinician sees it appear without having to scroll.
+    const vpRect = viewport.getBoundingClientRect();
+    const pgRect = pg.wrapper.getBoundingClientRect();
+    const overlapLeft   = Math.max(vpRect.left,   pgRect.left);
+    const overlapRight  = Math.min(vpRect.right,  pgRect.right);
+    const overlapTop    = Math.max(vpRect.top,    pgRect.top);
+    const overlapBottom = Math.min(vpRect.bottom, pgRect.bottom);
+    const centerScreenX = (overlapLeft + overlapRight) / 2;
+    const centerScreenY = (overlapTop + overlapBottom) / 2;
+    let x = Math.round(centerScreenX - pgRect.left - w / 2);
+    let y = Math.round(centerScreenY - pgRect.top - h / 2);
+    // Clamp so it stays inside the page.
+    x = Math.max(0, Math.min(x, pg.canvas.width - w));
+    y = Math.max(0, Math.min(y, pg.canvas.height - h));
+
+    addAnn(pageNum, { type: 'signature', x, y, width: w, height: h, dataUrl });
+    showStatus('Signature pasted — drag to reposition, corner handle to resize.');
+  }
+
+  // Ctrl+V from anywhere on the page (except inside text fields, which
+  // handle their own paste for text content).
+  document.addEventListener('paste', async (ev) => {
+    const t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (!S.pdfDoc) return;
+    const items = ev.clipboardData && ev.clipboardData.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
+        ev.preventDefault();
+        await placePastedImage(item.getAsFile());
+        return;
+      }
+    }
+  });
+
+  // ---------- Right-click Paste menu ----------
+  const pasteMenu = document.createElement('div');
+  pasteMenu.id = 'paste-menu';
+  pasteMenu.className = 'ctx-menu';
+  pasteMenu.innerHTML = '<button class="ctx-item" type="button" data-action="paste">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px">' +
+    '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2"/></svg>' +
+    'Paste</button>';
+  pasteMenu.style.display = 'none';
+  document.body.appendChild(pasteMenu);
+
+  function hidePasteMenu() { pasteMenu.style.display = 'none'; }
+  function showPasteMenu(x, y) {
+    pasteMenu.style.left = x + 'px';
+    pasteMenu.style.top = y + 'px';
+    pasteMenu.style.display = 'block';
+    // Keep it on-screen if right-click was near the viewport edge.
+    const r = pasteMenu.getBoundingClientRect();
+    if (r.right > window.innerWidth) pasteMenu.style.left = (window.innerWidth - r.width - 4) + 'px';
+    if (r.bottom > window.innerHeight) pasteMenu.style.top = (window.innerHeight - r.height - 4) + 'px';
+  }
+
+  pasteMenu.addEventListener('click', async (e) => {
+    const action = e.target.closest('.ctx-item') && e.target.closest('.ctx-item').dataset.action;
+    hidePasteMenu();
+    if (action !== 'paste') return;
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      showStatus('Right-click paste needs a newer browser — use Ctrl+V');
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            await placePastedImage(blob);
+            return;
+          }
+        }
+      }
+      showStatus('No image found on the clipboard');
+    } catch (err) {
+      // Browser permission denied, or clipboard is empty
+      showStatus('Clipboard access denied — use Ctrl+V instead');
+    }
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!pasteMenu.contains(e.target)) hidePasteMenu();
+  });
+  window.addEventListener('resize', hidePasteMenu);
+  viewport.addEventListener('scroll', hidePasteMenu, { passive: true });
+
+  viewport.addEventListener('contextmenu', (e) => {
+    // Keep the browser's native menu when there's selected text — the user
+    // most likely wants the Copy option (from the text-selection layer
+    // added in v21). Also let native menu handle right-click inside our
+    // annotations / inputs.
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+    const tgt = e.target;
+    if (tgt.closest && (tgt.closest('.annot') || tgt.closest('input') || tgt.closest('textarea') || tgt.closest('.inline-text-box') || tgt.closest('.text-overlay-block'))) return;
+    e.preventDefault();
+    showPasteMenu(e.clientX, e.clientY);
+  });
 
   function clearSigCanvas() {
     const w = sigCanvas.parentElement ? Math.max(400, sigCanvas.parentElement.offsetWidth - 36) : 500;
