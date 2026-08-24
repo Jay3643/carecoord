@@ -140,7 +140,7 @@
   // The marker matches the SW cache name so support can quickly rule out
   // "user is on a stale cached bundle" without asking the clinician to
   // open DevTools (repeat-report pattern seen through July 2026).
-  const APP_VERSION = 'v22';
+  const APP_VERSION = 'v23';
   const statusEl = document.createElement('div');
   statusEl.id = 'status-bar';
   const statusMsgEl = document.createElement('span');
@@ -357,6 +357,59 @@
     showStatus('Converted ' + addedPages + ' page(s) — save with Ctrl+S to keep the result.');
   }
 
+  // =============================================================
+  // ANNOTATION PERSISTENCE — sessionStorage safety net
+  // =============================================================
+  // Fingerprint the loaded PDF so we can save/restore annotations under a
+  // stable per-document key. If the tab is backgrounded, alt-tabbed, or
+  // reloaded during a session, edits survive as long as the same document
+  // bytes come back in (clinician 2026-08-14 workflow: reference chart /
+  // email between paragraphs of documenting on a MAR).
+  function docFingerprint(bytes) {
+    if (!bytes || !bytes.length) return null;
+    const n = Math.min(4096, bytes.length);
+    let h = 2166136261;
+    for (let i = 0; i < n; i++) {
+      h ^= bytes[i];
+      h = (h * 16777619) >>> 0;
+    }
+    return 'pdfedit_ann_' + bytes.length + '_' + h.toString(16);
+  }
+  function persistAnnotations() {
+    const key = docFingerprint(S.pdfBytes);
+    if (!key) return;
+    try {
+      const payload = {
+        v: 1,
+        annotations: S.annotations,
+        pageRotations: S.pageRotations,
+      };
+      sessionStorage.setItem(key, JSON.stringify(payload));
+    } catch (e) {
+      // Quota exceeded (large signature images) — best-effort only, don't
+      // interrupt the user. Their in-memory state is still fine; they just
+      // don't get the tab-reload safety net for this document.
+    }
+  }
+  function restoreAnnotations() {
+    const key = docFingerprint(S.pdfBytes);
+    if (!key) return false;
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return false;
+      const payload = JSON.parse(raw);
+      if (!payload || payload.v !== 1) return false;
+      S.annotations = payload.annotations || {};
+      S.pageRotations = payload.pageRotations || {};
+      return true;
+    } catch { return false; }
+  }
+  function clearPersistedAnnotations() {
+    const key = docFingerprint(S.pdfBytes);
+    if (!key) return;
+    try { sessionStorage.removeItem(key); } catch {}
+  }
+
   async function initDocument(bytes) {
     // Cleanup
     if (S.observer) S.observer.disconnect();
@@ -375,6 +428,10 @@
     S.fillHintsShownFor = null;
     pagesContainer.innerHTML = '';
     sidebarThumbs.innerHTML = '';
+
+    // Restore any annotations persisted for this exact document during
+    // the current tab session (Issue 2 safety net).
+    restoreAnnotations();
 
     S.pdfDoc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
     S.totalPages = S.pdfDoc.numPages;
@@ -827,6 +884,7 @@
     if (S.pages[idx]) {
       S.pages[idx].annotLayer.appendChild(createAnnotEl(ann, pageNum));
     }
+    persistAnnotations();
   }
 
   // Targeted helper: clear the .selected class from every annot on a page
@@ -860,6 +918,7 @@
       const el = annElMap.get(ann);
       if (el && el.parentNode) el.parentNode.removeChild(el);
       annElMap.delete(ann);
+      persistAnnotations();
     }
   }
 
@@ -889,6 +948,7 @@
     S.selected = null;
     renderAnnotationsForPage(e.page);
     updateUndoRedoUI();
+    persistAnnotations();
   }
 
   function redo() {
@@ -907,6 +967,7 @@
     S.selected = null;
     renderAnnotationsForPage(e.page);
     updateUndoRedoUI();
+    persistAnnotations();
   }
 
   function updateUndoRedoUI() {
@@ -2028,8 +2089,20 @@
   pasteMenu.style.display = 'none';
   document.body.appendChild(pasteMenu);
 
-  function hidePasteMenu() { pasteMenu.style.display = 'none'; }
-  function showPasteMenu(x, y) {
+  // Paste menu has two modes. 'image' places the clipboard image as a
+  // signature annotation (existing behavior). 'text' inserts clipboard
+  // text at the caret inside the editable target — the fix for the
+  // 2026-08-14 "no right-click paste in text box" report.
+  let pasteMode = 'image';
+  let pasteTargetEditable = null;
+
+  function hidePasteMenu() {
+    pasteMenu.style.display = 'none';
+    pasteTargetEditable = null;
+  }
+  function showPasteMenu(x, y, mode, editableTarget) {
+    pasteMode = mode || 'image';
+    pasteTargetEditable = editableTarget || null;
     pasteMenu.style.left = x + 'px';
     pasteMenu.style.top = y + 'px';
     pasteMenu.style.display = 'block';
@@ -2039,10 +2112,55 @@
     if (r.bottom > window.innerHeight) pasteMenu.style.top = (window.innerHeight - r.height - 4) + 'px';
   }
 
+  // Insert text at the current selection inside the given editable
+  // element. Works for contentEditable divs (.inline-text-box,
+  // .text-overlay-block); an <input>/<textarea> path is not needed here
+  // because the native browser menu already handles those.
+  function insertTextAtCaret(editable, text) {
+    if (!editable || !text) return;
+    editable.focus();
+    const sel = window.getSelection();
+    let range = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    // If the selection isn't inside our editable (e.g. clicking the menu
+    // moved focus), place a caret at end of the editable's content.
+    if (!range || !editable.contains(range.commonAncestorContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(editable);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   pasteMenu.addEventListener('click', async (e) => {
     const action = e.target.closest('.ctx-item') && e.target.closest('.ctx-item').dataset.action;
+    const mode = pasteMode;
+    const editable = pasteTargetEditable;
     hidePasteMenu();
     if (action !== 'paste') return;
+
+    // TEXT mode — paste clipboard text into an editable text box.
+    if (mode === 'text' && editable) {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        showStatus('Right-click paste needs a newer browser — use Ctrl+V');
+        return;
+      }
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) { showStatus('No text found on the clipboard'); return; }
+        insertTextAtCaret(editable, text);
+      } catch (err) {
+        showStatus('Clipboard access denied — use Ctrl+V instead');
+      }
+      return;
+    }
+
+    // IMAGE mode — place clipboard image as a signature annotation.
     if (!navigator.clipboard || !navigator.clipboard.read) {
       showStatus('Right-click paste needs a newer browser — use Ctrl+V');
       return;
@@ -2058,9 +2176,19 @@
           }
         }
       }
-      showStatus('No image found on the clipboard');
+      // No image on clipboard — try text as a graceful fallback so
+      // right-click-Paste is never a dead end.
+      if (navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          // Place text as an add-text annotation near the click location
+          // by opening the Add Text inline editor there.
+          showStatus('Clipboard has text — click Add Text and paste with Ctrl+V to place it.');
+          return;
+        }
+      }
+      showStatus('No image or text found on the clipboard');
     } catch (err) {
-      // Browser permission denied, or clipboard is empty
       showStatus('Clipboard access denied — use Ctrl+V instead');
     }
   });
@@ -2074,14 +2202,25 @@
   viewport.addEventListener('contextmenu', (e) => {
     // Keep the browser's native menu when there's selected text — the user
     // most likely wants the Copy option (from the text-selection layer
-    // added in v21). Also let native menu handle right-click inside our
-    // annotations / inputs.
+    // added in v21).
     const sel = window.getSelection && window.getSelection();
     if (sel && sel.toString().length > 0) return;
     const tgt = e.target;
-    if (tgt.closest && (tgt.closest('.annot') || tgt.closest('input') || tgt.closest('textarea') || tgt.closest('.inline-text-box') || tgt.closest('.text-overlay-block'))) return;
+    // Right-click inside our editable text boxes → show custom Paste that
+    // inserts clipboard text at the caret (browser's native menu often
+    // omits Paste on contentEditable divs; Electron's is minimal).
+    const editable = tgt.closest && (tgt.closest('.inline-text-box') || tgt.closest('.text-overlay-block'));
+    if (editable) {
+      e.preventDefault();
+      showPasteMenu(e.clientX, e.clientY, 'text', editable);
+      return;
+    }
+    // Native menu inside form <input>/<textarea> (they handle their own paste).
+    if (tgt.closest && (tgt.closest('input') || tgt.closest('textarea'))) return;
+    // Right-click on an existing annotation → don't override.
+    if (tgt.closest && tgt.closest('.annot')) return;
     e.preventDefault();
-    showPasteMenu(e.clientX, e.clientY);
+    showPasteMenu(e.clientX, e.clientY, 'image');
   });
 
   function clearSigCanvas() {
@@ -2564,10 +2703,16 @@
           el.dataset.origY = line.y;
           el.dataset.fontSize = line.fontSize;
 
-          // Mousedown: prevent it from reaching the annotation layer
+          // Mousedown: activate inline editing at the click point. Do NOT
+          // select-all — that was clinician-reported (2026-08-14) as
+          // "editing a specific portion deletes the entire line": with
+          // all text selected on click, the very next keystroke replaced
+          // the whole line. Now we place the caret at the click position
+          // (via document.caretPositionFromPoint or the deprecated
+          // caretRangeFromPoint fallback) and leave the rest of the line
+          // alone, so users can pick out and change just one word.
           el.addEventListener('mousedown', (ev) => {
             ev.stopPropagation();
-            // Activate inline editing
             $$('.text-overlay-block.editing').forEach(o => {
               o.classList.remove('editing');
               o.contentEditable = false;
@@ -2576,10 +2721,30 @@
             el.classList.add('editing');
             el.contentEditable = true;
             el.style.color = '#000';
+            const clickX = ev.clientX, clickY = ev.clientY;
             setTimeout(() => {
               el.focus();
-              const range = document.createRange();
-              range.selectNodeContents(el);
+              let range = null;
+              // Preferred (spec): caretPositionFromPoint returns an offset.
+              if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(clickX, clickY);
+                if (pos) {
+                  range = document.createRange();
+                  range.setStart(pos.offsetNode, pos.offset);
+                  range.collapse(true);
+                }
+              }
+              // Fallback (Chromium): caretRangeFromPoint.
+              if (!range && document.caretRangeFromPoint) {
+                const r = document.caretRangeFromPoint(clickX, clickY);
+                if (r) { range = r; range.collapse(true); }
+              }
+              // Last resort: caret at end of line.
+              if (!range) {
+                range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+              }
               const sel = window.getSelection();
               sel.removeAllRanges();
               sel.addRange(range);
@@ -3020,7 +3185,41 @@
     const pages = await doc.copyPages(srcDoc, srcDoc.getPageIndices());
     pages.forEach((p, i) => doc.insertPage(afterPage + i, p));
     const bytes = await doc.save();
+
+    // Snapshot annotations + rotations, then re-map page numbers so nothing
+    // typed on the original document is lost when new pages are inserted
+    // (clinician 2026-08-14). loadPDFBytes → initDocument wipes S.annotations
+    // to {}, so we save first and restore right after with shifted keys.
+    const savedAnn = S.annotations;
+    const savedRot = S.pageRotations;
+    const numInserted = pages.length;
+
     await loadPDFBytes(bytes, S.fileName);
+
+    // 1-indexed page N: N <= afterPage stays; N > afterPage shifts by numInserted.
+    const remapPageKey = (n) => (n > afterPage ? n + numInserted : n);
+    const nextAnn = {};
+    const nextRot = {};
+    for (const [k, v] of Object.entries(savedAnn || {})) {
+      const orig = parseInt(k, 10);
+      if (!isFinite(orig)) continue;
+      nextAnn[remapPageKey(orig)] = v;
+    }
+    for (const [k, v] of Object.entries(savedRot || {})) {
+      const orig = parseInt(k, 10);
+      if (!isFinite(orig)) continue;
+      nextRot[remapPageKey(orig)] = v;
+    }
+    S.annotations = nextAnn;
+    S.pageRotations = nextRot;
+    // Undo stack references old page numbers too — remap in place.
+    (S.undoStack || []).forEach(entry => { if (entry && entry.page) entry.page = remapPageKey(entry.page); });
+    (S.redoStack || []).forEach(entry => { if (entry && entry.page) entry.page = remapPageKey(entry.page); });
+    // Re-render every touched page so the DOM matches.
+    Object.keys(nextAnn).forEach(pn => renderAnnotationsForPage(parseInt(pn, 10)));
+    persistAnnotations();
+    showStatus('Inserted ' + numInserted + ' page' + (numInserted === 1 ? '' : 's') + ' — existing edits preserved.');
+
     insertFileInput.value = '';
   });
 
@@ -3619,6 +3818,12 @@
   // Clinician 2026-07-03: "When I save the changes disappear unless I
   // refresh and reopen."
   async function reloadAfterSave(newBytes) {
+    // Annotations were just baked into the saved bytes — any sessionStorage
+    // entry keyed on the pre-save fingerprint is now stale (points to
+    // annotations already flattened into the file). Clear the OLD key so
+    // we don't accidentally restore them on a subsequent reload of a
+    // different doc that happens to fingerprint the same.
+    clearPersistedAnnotations();
     S.pdfBytes = newBytes;
     S.annotations = {};
     S.undoStack = [];
@@ -3627,6 +3832,9 @@
     S.selectedPages && S.selectedPages.clear && S.selectedPages.clear();
     S.pageRotations = {};
     updateUndoRedoUI();
+    // Clear the NEW key too — the saved bytes have all edits baked in;
+    // there's nothing left to restore.
+    clearPersistedAnnotations();
 
     const currentPage = getCurrentPageNum() - 1;
 
